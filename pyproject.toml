@@ -1,0 +1,22 @@
+[project]
+name = "tdom"
+version = "0.1.0"
+description = "PEP750 based t strings for both SSR and FE"
+readme = "README.md"
+authors = [
+    { name = "Andrea Giammarchi", email = "agiammarchi@anaconda.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "hatchling>=1.27.0",
+    "pytest"
+]
