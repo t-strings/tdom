@@ -142,6 +142,7 @@ def _clone(node):
 
 def _replaceWith(current, node):
     parent = current.parent
+    # TODO Test if current.parent is None before doing the following
     children = parent['children']
     children[children.index(current)] = node
     node.parent = parent
