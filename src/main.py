@@ -2,35 +2,31 @@ from tdom import render, html, svg
 from random import random
 from json import dumps
 
-
 def passthrough(value, listeners):
+  try:
+    import js
+    js.console.log(js.JSON.parse(dumps(value)))
+  except Exception as e:
+    pass
+
+  output = str(value)
+  print(output)
+
+  if len(listeners) > 0:
+    from base64 import b64encode
     try:
-        import js
-
-        js.console.log(js.JSON.parse(dumps(value)))
-    except Exception as e:
-        pass
-
-    output = str(value)
-    print(output)
-
-    if len(listeners) > 0:
-        from base64 import b64encode
-
-        try:
-            import dill
-
-            code = b64encode(dill.dumps(listeners)).decode("utf-8")
-            output += f"""<script type="py">
+      import dill
+      code = b64encode(dill.dumps(listeners)).decode('utf-8')
+      output += f'''<script type="py">
 from base64 import b64decode
 import dill
 import js
 js.python_listeners = dill.loads(b64decode('{code}'))
-</script>"""
-        except Exception as e:
-            pass
+</script>'''
+    except Exception as e:
+      pass
 
-    return output
+  return output
 
 
 data = {"a": 1, "b": 2}
@@ -40,27 +36,21 @@ names = ["John", "Jane", "Jim", "Jill"]
 
 # listener example
 def on_click(event):
-    import js
-
-    js.alert(event.type)
+  import js
+  js.alert(event.type)
 
 
 # Component example
 def Component(props, children):
-    return html(
-        t"""
+  return html(t'''
     <div a={props['a']} b={props['b']}>
       {children}
     </div>
-  """
-    )
+  ''')
 
 
 # SSR example
-content = render(
-    passthrough,
-    html(
-        t"""
+content = render(passthrough, html(t'''
   <div>
     <!-- boolean attributes hints: try with True -->
     <h1 hidden={False}>Hello, PEP750 SSR!</h1>
@@ -87,14 +77,20 @@ content = render(
       <!-- lists within parts of the layout -->
       {[html(t"<li>{name}</li>") for name in names]}
     </ul>
+    <script>
+      // special nodes are not escaped
+      console.log('a & b')
+    </script>
   </div>
-"""
-    ),
-)
+'''))
 
 try:
-    from js import document
+  from js import document
+  document.body.innerHTML = content
+  for script in document.body.querySelectorAll('script:not([type])'):
+    clone = document.createElement('script')
+    clone.textContent = script.textContent
+    script.replaceWith(clone)
 
-    document.body.innerHTML = content
 except Exception as e:
-    pass
+  pass
