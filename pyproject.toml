@@ -6,7 +6,7 @@ readme = "README.md"
 authors = [
     { name = "Andrea Giammarchi", email = "agiammarchi@anaconda.com" }
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.14"
 dependencies = []
 
 
@@ -17,6 +17,10 @@ build-backend = "hatchling.build"
 
 [dependency-groups]
 dev = [
+    "black",
     "hatchling>=1.27.0",
-    "pytest"
+    "pytest",
 ]
+
+[tool.uv.sources]
+black = { git = "https://github.com/davepeck/black", branch = "pep750-support" }
