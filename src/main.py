@@ -89,6 +89,7 @@ try:
   document.body.innerHTML = content
   for script in document.body.querySelectorAll('script:not([type])'):
     clone = document.createElement('script')
+    print("script.textContent", script.textContent)
     clone.textContent = script.textContent
     script.replaceWith(clone)
 
