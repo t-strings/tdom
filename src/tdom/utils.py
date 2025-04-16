@@ -1,5 +1,5 @@
 from .parser import _instrument, _prefix
-from .dom import Fragment, Node, Text
+from .dom import Fragment, Node, Text, Props
 from .dom import COMMENT, ELEMENT, FRAGMENT
 from .dom import _appendChildren, _replaceWith, parse as domify
 
@@ -27,7 +27,7 @@ def _as_comment(node):
 
 
 def _as_component(node, components):
-  return lambda value: components.append(lambda: _replaceWith(node, value(node['props'], node['children'])))
+  return lambda value: components.append(lambda: _replaceWith(node, value(Props(node['props']), node['children'])))
 
 
 def _as_node(value):
@@ -130,9 +130,7 @@ class _Update:
 def _parse(listeners, template, length, svg):
   updates = []
   content = _instrument(template, svg)
-  print("content", content)
   fragment = domify(content, svg)
-  print("fragment", fragment)
 
   if len(fragment['children']) == 1:
     node = fragment['children'][0]
