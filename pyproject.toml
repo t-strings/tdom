@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "PEP750 based t strings for both SSR and FE"
 readme = "README.md"
 authors = [
-    { name = "Andrea Giammarchi", email = "agiammarchi@anaconda.com" }
+    { name = "Andrea Giammarchi", email = "andrea.giammarchi@gmail.com" }
 ]
 requires-python = ">=3.14"
 dependencies = []
