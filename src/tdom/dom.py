@@ -16,12 +16,19 @@ DOCUMENT_TYPE = 10
 FRAGMENT = 11
 # NOTATION = 12
 
-# TODO: style,script,textarea,title,xmp are nodes which content is not escaped
-#       and it cannot contain interpolations right now but these need to be handled
+
+
+TEXT_ELEMENTS = re.compile(
+  r'^(?:plaintext|script|style|textarea|title|xmp)$',
+  # there is no IGNORECASE in MicroPython - this is an easy one to circumvent
+  # re.IGNORECASE
+)
 
 VOID_ELEMENTS = re.compile(
+  # TODO: either split this in two regexes or use a different method due MicroPython issue
   r'^(?:area|base|br|col|embed|hr|img|input|keygen|link|menuitem|meta|param|source|track|wbr)$',
-  re.IGNORECASE
+  # there is no IGNORECASE in MicroPython - this is an easy one to circumvent
+  # re.IGNORECASE
 )
 
 
@@ -31,8 +38,8 @@ class Node(dict):
     super().__init__(type=self.type, **kwargs)
     self.parent = None
 
-  def __getattribute__(self, name):
-    return self[name] if name in self else super().__getattribute__(name)
+  def __getattr__(self, name):
+    return self[name] if name in self else None
 
 
 class Comment(Node):
@@ -42,7 +49,7 @@ class Comment(Node):
     super().__init__(data=data)
 
   def __str__(self):
-    return f"<!--{escape(str(self['data']))}-->"
+    return f'<!--{escape(str(self['data']))}-->'
 
 
 class DocumentType(Node):
@@ -52,7 +59,7 @@ class DocumentType(Node):
     super().__init__(data=data)
 
   def __str__(self):
-    return f"<!{self['data']}>"
+    return f'<!{self['data']}>'
 
 
 class Text(Node):
@@ -72,27 +79,28 @@ class Element(Node):
     super().__init__(name=name, xml=xml, props={}, children=[])
 
   def __str__(self):
+    xml = self['xml']
     name = self['name']
-    html = f"<{name}"
+    html = f'<{name}'
     for key, value in self['props'].items():
       if value != None:
         if isinstance(value, bool):
           if value:
-            html += f" {key}"
+            html += f' {key}=""' if xml else f' {key}'
         else:
-          html += f" {key}=\"{escape(str(value))}\""
+          html += f' {key}="{escape(str(value))}"'
     if len(self['children']) > 0:
-      html += ">"
+      html += '>'
+      just_text = not xml and TEXT_ELEMENTS.match(name.lower())
       for child in self['children']:
-        # TODO: handle <title> and others that don't need/want escaping
-        html += str(child)
-      html += f"</{name}>"
-    elif self['xml']:
-      html += " />"
+        html += child['data'] if just_text else str(child)
+      html += f'</{name}>'
+    elif xml:
+      html += ' />'
     else:
-      html += ">"
-      if not VOID_ELEMENTS.match(name):
-        html += "</" + name + ">"
+      html += '>'
+      if not VOID_ELEMENTS.match(name.lower()):
+        html += '</' + name + '>'
     return html
 
 
@@ -103,7 +111,7 @@ class Fragment(Node):
     super().__init__(children=[])
 
   def __str__(self):
-    return "".join(str(child) for child in self['children'])
+    return ''.join(str(child) for child in self['children'])
 
 
 
@@ -142,7 +150,6 @@ def _clone(node):
 
 def _replaceWith(current, node):
     parent = current.parent
-    # TODO Test if current.parent is None before doing the following
     children = parent['children']
     children[children.index(current)] = node
     node.parent = parent
@@ -182,7 +189,7 @@ class DOMParser(HTMLParser):
     _append(self.node, DocumentType(data))
 
   def unknown_decl(self, data):
-    raise Exception(f"Unknown declaration: {data}")
+    raise Exception(f'Unknown declaration: {data}')
 
 
 def parse(content, xml=False):
