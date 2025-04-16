@@ -44,7 +44,9 @@ def _as_node(value):
   return Text(value)
 
 
-def _as_prop(props, listeners, name):
+def _as_prop(node, name, listeners):
+  props = node['props']
+
   def aria(value):
     for k, v in value.items():
       props[k if k == 'role' else f'aria-{k.lower()}'] = v
@@ -69,7 +71,8 @@ def _as_prop(props, listeners, name):
     return listener
   if name == 'aria':
     return aria
-  elif name == 'data':
+  # TODO: find which other node has a `data` attribute
+  elif name == 'data' and node['name'].lower() != 'object':
     return dataset
   else:
     return attribute
@@ -107,7 +110,7 @@ class _Attribute:
     self.name = name
 
   def __call__(self, node, listeners):
-    return _as_prop(node['props'], listeners, self.name)
+    return _as_prop(node, self.name, listeners)
 
 
 class _Comment:
