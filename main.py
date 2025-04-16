@@ -77,11 +77,20 @@ content = render(passthrough, html(t'''
       <!-- lists within parts of the layout -->
       {[html(t"<li>{name}</li>") for name in names]}
     </ul>
+    <script>
+      // special nodes are not escaped
+      console.log('a & b')
+    </script>
   </div>
 '''))
 
 try:
   from js import document
   document.body.innerHTML = content
+  for script in document.body.querySelectorAll('script:not([type])'):
+    clone = document.createElement('script')
+    clone.textContent = script.textContent
+    script.replaceWith(clone)
+
 except Exception as e:
   pass
