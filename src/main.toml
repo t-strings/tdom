@@ -1,0 +1,8 @@
+name = "PEP 750"
+
+interpreter = "https://koxudaxi.github.io/pyodide/tstrings/pyodide.mjs"
+
+packages = ["dill"]
+
+[files]
+"./tdom.zip" = "./*"
