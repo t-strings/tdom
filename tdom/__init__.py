@@ -1,4 +1,4 @@
-from .utils import _Attribute, _Comment, _parse
+from .utils import _Attribute, _Comment, _parse, _slice
 from .dom import COMMENT, DOCUMENT_TYPE, TEXT, ELEMENT, FRAGMENT
 from .dom import Node, Comment, DocumentType, Text, Element, Fragment, DOMParser, parse, _clone
 
@@ -9,11 +9,9 @@ _listeners = []
 
 def _util(svg):
   def fn(t):
-    template = t.args[0::2]
+    template = _slice(t.args, step=2)
 
-    values = []
-    for entry in t.args[1::2]:
-      values.append(entry.value)
+    values = [entry.value for entry in _slice(t.args, start=1, step=2)]
 
     length = len(values)
 
@@ -63,8 +61,8 @@ svg = _util(True)
 
 
 __all__ = [
-  "render", "html", "svg",
-  "DOMParser", "parse",
-  "Node", "Comment", "DocumentType", "Text", "Element", "Fragment",
-  "COMMENT", "DOCUMENT_TYPE", "TEXT", "ELEMENT", "FRAGMENT",
+  'render', 'html', 'svg',
+  'DOMParser', 'parse',
+  'Node', 'Comment', 'DocumentType', 'Text', 'Element', 'Fragment',
+  'COMMENT', 'DOCUMENT_TYPE', 'TEXT', 'ELEMENT', 'FRAGMENT',
 ]
