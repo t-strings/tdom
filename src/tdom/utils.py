@@ -130,10 +130,14 @@ class _Update:
 def _parse(listeners, template, length, svg):
   updates = []
   content = _instrument(template, svg)
+  print("content", content)
   fragment = domify(content, svg)
+  print("fragment", fragment)
 
   if len(fragment['children']) == 1:
-    fragment = fragment['children'][0]
+    node = fragment['children'][0]
+    if node['type'] != ELEMENT or node['name'] != _prefix:
+      fragment = node
 
   _set_updates(fragment, listeners, updates, [])
 
