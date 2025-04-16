@@ -6,6 +6,6 @@ PEP750 based t strings for both SSR and FE
 
 ## Python setup
 
-- Clone the t-strings branch
-- Make a .venv
+- Clone the main branch
+- Make a .venv (or `. env.sh`)
 - `uv sync`
