@@ -77,21 +77,21 @@ def test_component():
     def Component(props, children):
         return html(
             t"""
-                    <div a={props['a']} b={props['b']}>
-                      {children}
-                    </div>
-                  """
+                <div a={props['a']} b={props['b']}>
+                    {children}
+                </div>
+            """
         )
 
     result = html(
         t"""
-<{Component} a="1" b={2}>
-  <p>Hello Components!</p>
-<//>    
-    """
+            <{Component} a="1" b={2}>
+                <p>Hello Components!</p>
+            <//>
+        """
     )
 
-    assert "<p>Hello Components!</p" in str(component)
+    assert "<p>Hello Components!</p>" in str(result)
 
 
 def test_lists_within_layout():
@@ -100,10 +100,10 @@ def test_lists_within_layout():
     names = ["John", "Jane", "Jill"]
     result = html(
         t"""
-    <ul>
-      {[html(t"<li>{name}</li>") for name in names]}
-    </ul>
-    """
+            <ul>
+                {[html(t"<li>{name}</li>") for name in names]}
+            </ul>
+        """
     )
 
     assert "<li>John</li>" in str(result)
