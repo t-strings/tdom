@@ -23,17 +23,33 @@ FRAGMENT = 11
 
 
 
-TEXT_ELEMENTS = re.compile(
-  r'^(?:plaintext|script|style|textarea|title|xmp)$',
-  # there is no IGNORECASE in MicroPython - this is an easy one to circumvent
-  # re.IGNORECASE
+TEXT_ELEMENTS = (
+  'plaintext',
+  'script',
+  'style',
+  'textarea',
+  'title',
+  'xmp',
 )
 
-VOID_ELEMENTS = re.compile(
-  # TODO: either split this in two regexes or use a different method due MicroPython issue
-  r'^(?:area|base|br|col|embed|hr|img|input|keygen|link|menuitem|meta|param|source|track|wbr)$',
-  # there is no IGNORECASE in MicroPython - this is an easy one to circumvent
-  # re.IGNORECASE
+
+VOID_ELEMENTS = (
+  'area',
+  'base',
+  'br',
+  'col',
+  'embed',
+  'hr',
+  'img',
+  'input',
+  'keygen',
+  'link',
+  'menuitem',
+  'meta',
+  'param',
+  'source',
+  'track',
+  'wbr',
 )
 
 
@@ -104,7 +120,7 @@ class Element(Node):
           html += f' {key}="{escape(str(value))}"'
     if len(self['children']) > 0:
       html += '>'
-      just_text = not xml and TEXT_ELEMENTS.match(name.lower())
+      just_text = not xml and name.lower() in TEXT_ELEMENTS
       for child in self['children']:
         html += child['data'] if just_text else str(child)
       html += f'</{name}>'
@@ -112,7 +128,7 @@ class Element(Node):
       html += ' />'
     else:
       html += '>'
-      if not VOID_ELEMENTS.match(name.lower()):
+      if not name.lower() in VOID_ELEMENTS:
         html += '</' + name + '>'
     return html
 
