@@ -79,7 +79,7 @@ content = render(passthrough, html(t'''
     </ul>
     <script>
       // special nodes are not escaped
-      console.log('a & b')
+      console.log('a & {'b'}')
     </script>
   </div>
 '''))
