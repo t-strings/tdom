@@ -1,6 +1,11 @@
 from html.parser import HTMLParser
 from html import escape
+from random import random
 import re
+
+
+_prefix = 't🐍' + str(random())[2:5]
+_data = f'<!--{_prefix}-->'
 
 
 ELEMENT = 1
@@ -185,7 +190,20 @@ class DOMParser(HTMLParser):
       self.node = parent
 
   def handle_data(self, data):
-    _append(self.node, Text(data))
+    # this is needed to handle sparse interpolations
+    # within <style> or <script> tags where this parser
+    # won't allow children nodes and it passes all as data
+    text = data.split(_data)
+    for i in range(len(text) - 1):
+      # empty nodes are ignored
+      if len(text[i].strip()) > 0:
+        _append(self.node, Text(text[i]))
+      # the comment node though is needed to handle updates
+      _append(self.node, Comment(_prefix))
+
+    # same applies for the last node
+    if len(text[-1].strip()) > 0:
+      _append(self.node, Text(text[-1]))
 
   def handle_comment(self, data):
     if data == '/':
