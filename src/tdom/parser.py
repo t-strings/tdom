@@ -1,9 +1,5 @@
-from .dom import VOID_ELEMENTS
-from random import random
+from .dom import VOID_ELEMENTS, _prefix
 import re
-
-
-_prefix = 't🐍' + str(random())[2:5]
 
 
 _elements = re.compile(
