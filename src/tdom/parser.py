@@ -21,7 +21,7 @@ def _as_attribute(match):
 
 def _as_closing(name, xml, self_closing):
   if len(self_closing) > 0:
-    if xml or re.match(VOID_ELEMENTS, name):
+    if xml or name.lower() in VOID_ELEMENTS:
       return ' /'
     else:
       return f'></{name}'
