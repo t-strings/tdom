@@ -66,6 +66,8 @@ Thanks to `t` strings, attributes in here can be *dynamic* or even *mixed*, exam
 
 <!-- 👍 this works perfectly fine -->
 <div class={f"a {runtime} b"}></div>
+<div class={callback}></div>
+<div class={some_class(runtime)}></div>
 ```
 
 #### Special Attributes
@@ -124,7 +126,7 @@ Currently experimental, we've already managed to bring real Python listeners to 
 
 ### Content
 
-Runtime content can be placed almost anywhere and it could represent and it could be a string, number, node returned by `html` or `svg` utility or a callback that will be invoked to return any of these values or, ultimately, a `list` or a `tuple` that contains any previously mentioned value, or a component.
+Runtime content can be placed almost anywhere and it could represent a string, number, node returned by `html` or `svg` utility or a callback that will be invoked to return any of these values or, ultimately, a `list` or a `tuple` that contains any previously mentioned value, or a component.
 
 ```html
 <div>
@@ -139,31 +141,6 @@ Runtime content can be placed almost anywhere and it could represent and it coul
   </ul>
   <{MyComponent} a='1' b={2} />
 </div>
-```
-
-#### Special Content
-
-Some HTML element cannot contain nodes in it, just content (as string or text) and `plaintext`, `script`, `style`, `textarea`, `title` or `xmp` are an example.
-
-For these nodes, it is not possible to pass along other nodes, components or whatnot, so the same treatment needed for *attributes* is required, meaning their content can be dynamic, but only if defined all at once:
-
-```html
-<!-- ⚠️ this is not possible -->
-<style>
-  #id {{ color: {some_color} }}
-</style>
-
-
-<!-- 👍 this works perfectly fine -->
-<style>
-  {f'#id {{ color: {some_color} }}'}
-</style>
-<script>
-  {compute_js(some_value)}
-</script>
-<textarea>
-  {'some runtime value'}
-</textarea>
 ```
 
 
