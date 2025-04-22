@@ -4,24 +4,6 @@ from .dom import COMMENT, ELEMENT, FRAGMENT
 from .dom import _appendChildren, _replaceWith, parse as domify
 
 
-try:
-  if [1,2,3][::2] != [1,3]:
-    raise Exception('🐍')
-
-  def _slice(iterable, start=None, end=None, step=None):
-    return iterable[start:end:step]
-except Exception as MicroPythonGotcha:
-  def _slice(iterable, start=None, end=None, step=1):
-    if start is None:
-      start = 0
-    if end is None:
-      end = len(iterable)
-    if step is None:
-      step = 1
-    result = [iterable[i] for i in range(start, end, step)]
-    return result if isinstance(iterable, list) else tuple(result)
-
-
 def _as_comment(node):
   return lambda value: _replaceWith(node, _as_node(value))
 

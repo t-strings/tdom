@@ -1,4 +1,4 @@
-from .utils import _Attribute, _Comment, _parse, _slice
+from .utils import _Attribute, _Comment, _parse
 from .dom import COMMENT, DOCUMENT_TYPE, TEXT, ELEMENT, FRAGMENT
 from .dom import Props, Node, Comment, DocumentType, Text, Element, Fragment, DOMParser, parse, _clone
 
@@ -9,16 +9,16 @@ _listeners = []
 
 def _util(svg):
   def fn(t):
-    template = _slice(t.args, step=2)
+    strings = t.strings
 
-    values = [entry.value for entry in _slice(t.args, start=1, step=2)]
+    values = [entry.value for entry in t.interpolations]
 
     length = len(values)
 
-    if not template in _parsed:
-      _parsed[template] = _parse(_listeners, template, length, svg)
+    if not strings in _parsed:
+      _parsed[strings] = _parse(_listeners, strings, length, svg)
 
-    content, updates = _parsed[template]
+    content, updates = _parsed[strings]
 
     node = _clone(content)
     changes = []
