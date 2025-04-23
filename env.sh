@@ -1,4 +1,4 @@
-python -m venv env
-source env/bin/activate
-pip install --upgrade pip
-pip install uv dill
+/tmp/cpython/python -m venv .venv
+.venv/bin/pip install --upgrade pip
+.venv/bin/pip install uv dill
+source .venv/bin/activate
