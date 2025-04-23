@@ -1,3 +1,4 @@
+from types import GeneratorType
 from .parser import _instrument, _prefix
 from .dom import Fragment, Node, Text, Props
 from .dom import COMMENT, ELEMENT, FRAGMENT
@@ -9,13 +10,21 @@ def _as_comment(node):
 
 
 def _as_component(node, components):
-  return lambda value: components.append(lambda: _replaceWith(node, value(Props(node['props']), node['children'])))
+  def component(value):
+    def reveal():
+      props = Props(node['props'])
+      children = node['children']
+      _replaceWith(node, _as_node(value(props, children)))
+    
+    components.append(reveal)
+
+  return component
 
 
 def _as_node(value):
   if isinstance(value, Node):
     return value
-  if isinstance(value, (list, tuple)):
+  if isinstance(value, (list, tuple, GeneratorType)):
     node = Fragment()
     _appendChildren(node, value)
     return node
