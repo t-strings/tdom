@@ -41,9 +41,9 @@ def on_click(event):
 
 
 # Component example
-def Component(props, children):
+def Component(a:str, b:int, children:list):
   return html(t'''
-    <div a={props['a']} b={props.b}>
+    <div a={a} b={b}>
       {children}
     </div>
   ''')
