@@ -64,9 +64,7 @@ def test_svg():
     """
     )
     assert str(result) == (
-        "<svg>\n"
-        '      <rect width="200" height="100" rx="20" ry="20" fill="blue" />\n'
-        "    </svg>"
+        '<svg><rect width="200" height="100" rx="20" ry="20" fill="blue" /></svg>'
     )
 
 
