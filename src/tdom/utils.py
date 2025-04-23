@@ -1,6 +1,6 @@
 from types import GeneratorType
 from .parser import _instrument, _prefix
-from .dom import Fragment, Node, Text, Props
+from .dom import Fragment, Node, Text
 from .dom import COMMENT, ELEMENT, FRAGMENT
 from .dom import _appendChildren, _replaceWith, parse as domify
 
@@ -12,9 +12,11 @@ def _as_comment(node):
 def _as_component(node, components):
   def component(value):
     def reveal():
-      props = Props(node['props'])
-      children = node['children']
-      _replaceWith(node, _as_node(value(props, children)))
+      props = { 'children': node['children'] }
+      for k, v in node['props'].items():
+        props[k] = v
+
+      _replaceWith(node, _as_node(value(**props)))
     
     components.append(reveal)
 

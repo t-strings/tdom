@@ -53,15 +53,6 @@ VOID_ELEMENTS = (
 )
 
 
-
-class Props(dict):
-  def __init__(self, props):
-    super().__init__(props)
-
-  def __getattr__(self, name):
-    return self[name] if name in self else None
-
-
 class Node(dict):
   def __init__(self, **kwargs):
     super().__init__(type=self.type, **kwargs)
