@@ -91,9 +91,7 @@ def clear_tracking(link):
 def create_reactive_system(update_computed, notify_effect):
   class Reactive:
     def __init__(self):
-      self.notifyBuffer = []
-      self.notifyIndex = 0
-      self.notifyBufferLength = 0
+      self.notify_buffer = []
 
     def link(self, dep, sub):
       current_dep = sub.deps_tail
@@ -143,14 +141,12 @@ def create_reactive_system(update_computed, notify_effect):
               continue
 
           if (sub_flags & EFFECT):
-              self.notifyBuffer.append(sub)
-              self.notifyBufferLength += 1
+              self.notify_buffer.append(sub)
 
         elif not (sub_flags & (TRACKING | target_flag)):
           sub.flags = sub_flags | target_flag | NOTIFIED
           if (sub_flags & (EFFECT | NOTIFIED)) == EFFECT:
-            self.notifyBuffer.append(sub)
-            self.notifyBufferLength += 1
+            self.notify_buffer.append(sub)
 
         elif (not (sub_flags & target_flag)) and (sub_flags & PROPAGATED) and is_valid_link(current, sub):
           sub.flags = sub_flags | target_flag
@@ -201,16 +197,11 @@ def create_reactive_system(update_computed, notify_effect):
       sub.flags &= ~TRACKING
 
     def process_effect_notifications(self):
-      while self.notifyIndex < self.notifyBufferLength:
-          effect = self.notifyBuffer[self.notifyIndex];
-          self.notifyBuffer[self.notifyIndex] = None
-          self.notifyIndex += 1
-          if not notify_effect(effect):
-            effect.flags &= ~NOTIFIED
+      for effect in self.notify_buffer:
+        if not notify_effect(effect):
+          effect.flags &= ~NOTIFIED
 
-      self.notifyIndex = 0
-      self.notifyBufferLength = 0
-      self.notifyBuffer.clear()
+      self.notify_buffer.clear()
 
     def process_computed_update(self, computed, flags):
       if (flags & DIRTY) or self.check_dirty(computed.deps):
@@ -241,8 +232,7 @@ def create_reactive_system(update_computed, notify_effect):
         if (sub_flags & (PENDING_COMPUTED | DIRTY)) == PENDING_COMPUTED:
           sub.flags = sub_flags | DIRTY | NOTIFIED
           if (sub_flags & (EFFECT | NOTIFIED)) == EFFECT:
-            self.notifyBuffer.append(sub)
-            self.notifyBufferLength += 1
+            self.notify_buffer.append(sub)
 
         link = link.next_sub
         if link == None:

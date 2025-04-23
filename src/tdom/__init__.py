@@ -16,7 +16,7 @@ def _util(svg):
     length = len(values)
 
     if not strings in _parsed:
-      _parsed[strings] = _parse(_listeners, strings, length, svg)
+      _parsed[strings] = _parse(strings, length, svg)
 
     content, updates = _parsed[strings]
 
