@@ -49,7 +49,7 @@ def test_child_nodes():
 def test_doctype():
     """Sometimes it is hard to get a DOCTYPE in to the resulting output."""
     result = html(t"<!DOCTYPE html>\n<div>Hello World</div>")
-    assert str(result) == "<!DOCTYPE html>\n<div>Hello World</div>"
+    assert str(result) == "<!DOCTYPE html><div>Hello World</div>"
 
 
 def test_reducing_boolean():
