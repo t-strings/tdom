@@ -6,9 +6,14 @@ from .dom import Props, Node, Comment, DocumentType, Text, Element, Fragment, DO
 _parsed = {}
 _listeners = []
 
+T = (t'').__class__
+
 
 def _util(svg):
   def fn(t):
+    if not isinstance(t, T):
+      raise ValueError('Argument is not a Template instance')
+
     strings = t.strings
 
     values = [entry.value for entry in t.interpolations]
