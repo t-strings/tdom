@@ -72,7 +72,7 @@ def test_svg():
 def test_component():
     """Render a t-string that references a component."""
 
-    def Component(a, b, children=[]):
+    def Component(a:str, b:int, children:list):
         return html(
             t"""
                 <div a={a} b={b}>

@@ -33,11 +33,13 @@ def test_attribute_value_expression():
     assert str(result) == '<div class="container1">Hello World</div>'
 
 
-@pytest.mark.xfail(raises=ValueError)
 def test_expressions_in_attribute_value():
-    """Simple Python expression inside an attribute value."""
-    result = html(t'<div class="container{1}">Hello World</div>')
-    assert str(result) == {"class": "container1"}
+    """Simple Python expression cannot be used inside an attribute value."""
+    try:
+        result = html(t'<div class="container{1}">Hello World</div>')
+        raise Exception("Should not happen")
+    except ValueError as e:
+        assert str(e) == "0 updates found, expected 1"
 
 
 def test_child_nodes():
