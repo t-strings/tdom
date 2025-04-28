@@ -11,6 +11,8 @@ from tdom import html
 def fixture_name():
     return "Fixture Name"
 
+def no_fixture_name():
+    return "Fixture Name"
 
 def test_insert_variable():
     """Template is in a function, and `name` comes from that scope."""
@@ -26,7 +28,7 @@ def test_from_import():
     assert str(result) == "<div>Hello pytest</div>"
 
 
-def test_from_function_arg(fixture_name):
+def test_from_function_arg(fixture_name=no_fixture_name):
     """A symbol is passed into a function."""
     result = html(t"<div>Hello {fixture_name}</div>")
     assert str(result) == "<div>Hello Fixture Name</div>"

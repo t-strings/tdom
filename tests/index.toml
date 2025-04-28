@@ -1,0 +1,13 @@
+interpreter = "https://koxudaxi.github.io/pyodide/tstrings/pyodide.mjs"
+
+packages = ["pytest"]
+
+[files]
+"../src/tdom/__init__.py" = "./tdom/__init__.py"
+"../src/tdom/dom.py" = "./tdom/dom.py"
+"../src/tdom/parser.py" = "./tdom/parser.py"
+"../src/tdom/utils.py" = "./tdom/utils.py"
+"./test_demo.py" = "./test/demo.py"
+"./test_viewdom_expressions.py" = "./test/viewdom_expressions.py"
+"./test_viewdom_static_string.py" = "./test/viewdom_static_string.py"
+"./test_viewdom_variables.py" = "./test/viewdom_variables.py"
