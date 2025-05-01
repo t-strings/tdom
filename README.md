@@ -1,27 +1,35 @@
-# Template repository for creating new Python libraries
+# tdom
 
-This GitHub [template repository](https://docs.github.com/en/github/creating-cloning-and-archiving-repositories/creating-a-repository-on-github/creating-a-repository-from-a-template) can be used to create a new repository with the skeleton of a Python library, based on the [python-lib](https://github.com/simonw/python-lib) cookiecutter.
+[![PyPI](https://img.shields.io/pypi/v/tdom.svg)](https://pypi.org/project/tdom/)
+[![Tests](https://github.com/t-strings/tdom/actions/workflows/test.yml/badge.svg)](https://github.com/t-strings/tdom/actions/workflows/test.yml)
+[![Changelog](https://img.shields.io/github/v/release/t-strings/tdom?include_prereleases&label=changelog)](https://github.com/t-strings/tdom/releases)
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/t-strings/tdom/blob/main/LICENSE)
 
-Start here: https://github.com/simonw/python-lib-template-repository/generate
+Placeholder for future library on PyPI using PEP 750 t-strings.
 
-The name of your repository will be the name of the Python package that you publish to [PyPI](https://pypi.org/), so make sure that name is not taken already!
+## Installation
 
-Add a one-line description of your repository, then click "Create repository from template".
+Install this library using `pip`:
+```bash
+pip install tdom
+```
+## Usage
 
-![Screenshot of the create repository interface](https://user-images.githubusercontent.com/9599/131230293-7ed5760e-b385-407e-bbf1-c6fc7540d3fe.png)
+Usage instructions go here.
 
-Once created, your new repository will execute a GitHub Actions workflow that uses cookiecutter to rewrite the repository to the desired state. This make take 30 seconds or so.
+## Development
 
-You can see an example of a repository generated using this template here:
-
-- https://github.com/simonw/python-lib-template-repository-demo
-
-## GitHub Actions setup by this repository
-
-The `test.yml` GitHub Actions workflow will run your tests automatically any time you push a change to the repo.
-
-The `publish.yml` Action runs when you create a new GitHub release. It can build and upload your package to [PyPI](https://pypi.org/).
-
-For this to work you need to create an account on PyPI and configure your new GitHub repository as a "trusted publisher".
-
-See [Publishing your library as a package to PyPI](https://github.com/simonw/python-lib#publishing-your-library-as-a-package-to-pypi) for details.
+To contribute to this library, first checkout the code. Then create a new virtual environment:
+```bash
+cd tdom
+python -m venv venv
+source venv/bin/activate
+```
+Now install the dependencies and test dependencies:
+```bash
+python -m pip install -e '.[test]'
+```
+To run the tests:
+```bash
+python -m pytest
+```
