@@ -3,7 +3,7 @@ name = "tdom"
 version = "0.1"
 description = "Placeholder for future library on PyPI using PEP 750 t-strings."
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 authors = [{ name = "t-strings" }]
 license = "MIT"
 classifiers = []
