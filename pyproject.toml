@@ -1,6 +1,26 @@
 [project]
-name = "placeholder"
+name = "tdom"
 version = "0.1"
+description = "Placeholder for future library on PyPI using PEP 750 t-strings."
+readme = "README.md"
+requires-python = ">=3.8"
+authors = [{name = "t-strings"}]
+license = "Apache-2.0"
+classifiers = []
+dependencies = [
+
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project.urls]
+Homepage = "https://github.com/t-strings/tdom"
+Changelog = "https://github.com/t-strings/tdom/releases"
+Issues = "https://github.com/t-strings/tdom/issues"
+CI = "https://github.com/t-strings/tdom/actions"
+
 
 [project.optional-dependencies]
 test = ["pytest"]
