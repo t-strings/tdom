@@ -1,0 +1,6 @@
+[project]
+name = "placeholder"
+version = "0.1"
+
+[project.optional-dependencies]
+test = ["pytest"]
