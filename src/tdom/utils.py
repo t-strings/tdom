@@ -3,12 +3,11 @@ from types import GeneratorType
 from .parser import _instrument, _prefix
 from .dom import Fragment, Node, Text
 from .dom import COMMENT, ELEMENT, FRAGMENT
-from .dom import _appendChildren, _replaceWith, parse as domify
-
-_IS_MICRO_PYTHON = "MicroPython" in sys.version
+from .dom import _IS_MICRO_PYTHON, _appendChildren, _replaceWith, parse as domify
 
 if not _IS_MICRO_PYTHON:
   import inspect
+
 
 def _as_comment(node):
   return lambda value: _replaceWith(node, _as_node(value))
