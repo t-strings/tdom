@@ -92,6 +92,25 @@ def test_component():
     assert "<p>Hello Components!</p>" in str(result)
 
 
+def test_component_without_children():
+    """Render a t-string that references a component."""
+
+    def Component(a:str, b:int):
+        return html(
+            t"""
+                <div a={a} b={b} />
+            """
+        )
+
+    result = html(
+        t"""
+            <{Component} a="1" b={2} />
+        """
+    )
+
+    assert '<div a="1" b="2"></div>' in str(result)
+
+
 def test_lists_within_layout():
     """A template in a template."""
 
