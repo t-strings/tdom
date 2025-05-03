@@ -36,3 +36,8 @@ markupsafe = { git = "https://github.com/pauleveritt/markupsafe.git", branch = "
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "examples"]
+
+[tool.pytest.ini_options]
+markers = [
+    "playwright: tests that run in CI under Python 3.13 with pytest-playwright",
+]
