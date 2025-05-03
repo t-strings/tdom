@@ -22,7 +22,6 @@ dev = [
     "black",
     "hatchling>=1.27.0",
     "pytest",
-    "pytest-playwright>=0.7.0",
 ]
 
 [tool.uv.sources]
