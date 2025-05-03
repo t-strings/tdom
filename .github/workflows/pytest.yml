@@ -1,28 +1,21 @@
-name: pytest Tests
+name: Playwright Tests
 on: [ push, pull_request ]
 
 jobs:
-  pytest:
+  playwright:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [ '3.14' ]
-    name: Python ${{ matrix.python-version }}
+    name: Setup Playwright
     steps:
       - uses: actions/checkout@v4
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6
         with:
           version: "latest"
-      - name: Install Python 3.14
-        if: matrix.python-version == '3.14'
+      - name: Setup environment for Python 3.13
         run: |
-          sudo add-apt-repository ppa:deadsnakes/nightly
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends python3.14-dev python3.14-venv
-          python3.14 -m pip install --upgrade pip setuptools
-          python3.14 -m venv $HOME/venv-python3.14
+          cp pyproject-playwright.toml pyproject.toml
           uv sync
       - name: Run tests
         run: |
-          uv run pytest -v -m "not playwright"
+          uv run playwright install
+          uv run pytest
