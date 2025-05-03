@@ -17,5 +17,4 @@ jobs:
           uv sync
       - name: Run tests
         run: |
-          uv run playwright install
           uv run pytest
