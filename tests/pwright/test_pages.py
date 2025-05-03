@@ -1,12 +1,8 @@
 from playwright.sync_api import Page
 
-
-# Use `PWDEBUG=1` to run "headful" in the Playwright test app
-
-def test_hello(fake_page: Page):
+def test_index(fake_page: Page):
     """Use Playwright to do a test on Hello World."""
-    url = "http://localhost:8000/hello/index.html"
+    # Use `PWDEBUG=1` to run "headful" in the Playwright test app
+    url = "http://fake/hello/index.html"
     fake_page.goto(url)
-    result = "Hello World"
-    output = fake_page.wait_for_selector(f"div:has-text('{result}')")
-    assert output.text_content().strip() == result
+    assert fake_page.title() == "tdom"
