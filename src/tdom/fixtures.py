@@ -11,7 +11,7 @@ import pytest
 from playwright.sync_api import Page
 from playwright.sync_api import Route
 
-STUBS = Path(__file__).parent.parent.parent / "tests" / "stubs"
+STUBS = Path(__file__).parent.parent.parent / "tests" / "pwright" / "stubs"
 
 
 @dataclass
