@@ -6,12 +6,18 @@ from .dom import Node, Comment, DocumentType, Text, Element, Fragment, parse, _c
 _parsed = {}
 _listeners = []
 
-T = (t'').__class__
-
+# T = (t'').__class__
+# Let's just use the imported class
+try:
+  # Temporary hack because pytest-playwright has to run under 3.13
+  # in CI due to greenlet not compiling there under 3.14.
+  from string.templatelib import Template
+except ImportError:
+  pass
 
 def _util(svg):
   def fn(t):
-    if not isinstance(t, T):
+    if not isinstance(t, Template):
       raise ValueError('Argument is not a Template instance')
 
     strings = t.strings
