@@ -20,7 +20,17 @@ dev = [
     "black",
     "hatchling>=1.27.0",
     "pytest",
+    "myst-parser",
+    "furo",
+    "sphinx",
+    "jinja2",
+    "markupsafe",
 ]
 
 [tool.uv.sources]
 black = { git = "https://github.com/davepeck/black", branch = "pep750-support" }
+sphinx = { git = "https://github.com/sphinx-doc/sphinx.git", branch = "master" }
+markupsafe = { git = "https://github.com/pauleveritt/markupsafe.git", branch = "main" }
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "examples"]
