@@ -17,7 +17,7 @@ start-at: def main
 
 ## Rendered Looping
 
-You could also move the generation of the items out of the "parent" template, then use that VDOM result in the next template:
+You could also move the generation of the items out of the "parent" template, then use that `Node` result in the next template:
 
 ```{literalinclude} ../../examples/looping/rendered_looping/__init__.py
 ---

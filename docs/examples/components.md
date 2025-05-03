@@ -6,45 +6,26 @@ Many existing templating systems have "macros" for this: units of templating tha
 The whole mechanism, though, is quite magical:
 
 - Where do the macros come from?
-  Multiple layers of context magic and specially-named directories provide the answer.
+  Multiple layers of context magic and specially named directories provide the answer.
 
-- What macros are avaiable at the cursor position I'm at in a template?
+- What macros are available at the cursor position I'm at in a template?
   It's hard for an editor or IDE to predict and provide autocomplete.
 
 - What are the macros arguments and what is this template's special syntax for providing them?
-  And can my editor help on autocomplete or telling me when I got it wrong (or the macro changed its signature)?
+  And can my editor help on autocomplete or tell me when I got it wrong (or the macro changed its signature)?
 
 - How does my current scope interact with the macro's scope, and where does it get other parts of its scope from?
 
-`tdom`, courtesy of `htm.py`, makes this more Pythonic through the use of "components".
-Instead of some sorta-callable, a component is a normal Python callable -- e.g. a function -- with normal Python arguments and return values.
+`tdom`, courtesy of `htm.py`, makes this more Pythonic through the use of "components."
+Instead of some sorta-callable, a component is a normal Python callable—e.g., a function—with normal Python arguments and return values.
 
 ## Simple Heading
 
-Here is a component callable -- a `Heading` function -- which returns a VDOM:
+Here is a component callable -- a `Heading` function -- which returns a `Node`:
 
 ```{literalinclude} ../../examples/components/simple_heading/__init__.py
 ---
 start-at: def Heading
----
-```
-
-## Component in VDOM
-
-The VDOM now has something special in it: a callable as the "tag", rather than a string such as `<div>`.
-
-```{literalinclude} ../../examples/components/in_vdom/__init__.py
----
-start-at: def Heading
----
-```
-
-What does that `vdom` node look like?
-This assertion shows that it is a `VDOMNode`:
-
-```{literalinclude} ../../examples/components/in_vdom/test_in_vdom.py
----
-start-at: assert
 ---
 ```
 
@@ -61,7 +42,7 @@ start-at: def Heading
 
 ## Children As Props
 
-If your template has children inside that tag, your component can ask for them as an argument, then place them as a variable:
+If your template has children inside the component element, your component can ask for them as an argument:
 
 ```{literalinclude} ../../examples/components/children_props/__init__.py
 ---
@@ -69,7 +50,7 @@ start-at: def Heading
 ---
 ```
 
-`children` is a keyword argument that is available to components.
+`children` is a keyword parameter that is available to components.
 Note how the component closes with `<//>` when it contains nested children, as opposed to the self-closing form in the first example.
 
 ## Expressions as Prop Values
@@ -97,17 +78,6 @@ start-at: def Heading
 Since this is typical function-argument stuff, you can have optional props through argument defaults:
 
 ```{literalinclude} ../../examples/components/optional_props/__init__.py
----
-start-at: def Heading
----
-```
-
-## Spread Props
-
-Sometimes you just want to pass everything in a dict as props.
-In JS, this is known as the "spread operator" and is supported:
-
-```{literalinclude} ../../examples/components/spread_props/__init__.py
 ---
 start-at: def Heading
 ---
@@ -148,7 +118,7 @@ start-at: def DefaultHeading
 
 You can combine different props and arguments.
 In this case, `title` is a prop.
-`children` is another argument, but is provided automatically by `render`.
+`children` is another argument, but is provided automatically by `tdom`.
 
 ```{literalinclude} ../../examples/components/children_props/__init__.py
 ---
@@ -170,32 +140,10 @@ start-at: def Todos
 
 ## Subcomponents
 
-Subcomponents are also feasible.
-They make up part of both the VDOM and the rendering:
+Subcomponents are also supported:
 
 ```{literalinclude} ../../examples/components/subcomponents/__init__.py
 ---
 start-at: def Todo
 ---
 ```
-
-## Architectural Note
-
-Components and subcomponents are a useful feature to users of some UI layer, as well as creators of that layer.
-They are also, though, an interesting architectural plug point.
-
-As `render` walks through a VDOM, a usage of a component pops up with the props and children.
-But it isn't yet the _rendered_ component.
-The callable...hasn't been called.
-
-It's the job of `render` to do so.
-If you look at the code for `render` and the utilities it uses, it's not a lot of code.
-It's reasonable to write your own, which is what some of the integrations have done.
-
-This becomes an interesting place to experiment with your own component policies.
-Want a cache layer?
-Want to log each call?
-Maybe type validation?
-Want to (like the `wired` integration) write a custom DI system that gets argument values from special locations (e.g. database queries)?
-
-Lots of possibilities, especially since the surface area is small enough and easy enough to play around.
