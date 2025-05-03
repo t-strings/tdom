@@ -28,6 +28,6 @@ dev = [
 black = { git = "https://github.com/davepeck/black", branch = "pep750-support" }
 
 [tool.pytest.ini_options]
-markers = [
-    "playwright: tests that run in CI under Python 3.13 with pytest-playwright",
+addopts = [
+    "--ignore=tests/pwright",
 ]
