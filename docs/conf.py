@@ -13,3 +13,5 @@ extensions = [
 autodoc_typehints = "description"
 html_theme = "furo"
 myst_enable_extensions = ["colon_fence"]
+linkcheck_allowed_redirects = {}
+html_title = "tdom"

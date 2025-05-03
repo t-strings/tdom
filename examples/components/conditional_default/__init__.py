@@ -13,9 +13,8 @@ def OtherHeading():
     return html(t"<h1>Other Heading</h1>")
 
 
-def Body(props, children):
+def Body(heading):
     """Render the body with a heading based on which is passed in."""
-    heading = props.get("heading")
     return html(t"<body>{heading if heading else DefaultHeading}</body>")
 
 

@@ -1,3 +1,5 @@
-```{include} ../LICENSE.md
+# License
+
+```{literalinclude} ../LICENSE
 
 ```

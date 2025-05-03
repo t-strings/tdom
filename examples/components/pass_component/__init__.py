@@ -3,14 +3,13 @@
 from tdom import html
 
 
-def DefaultHeading(props, children):
+def DefaultHeading():
     """The default heading."""
     return html(t"<h1>Default Heading</h1>")
 
 
-def Body(props, children):
+def Body(heading):
     """The body which renders the heading."""
-    heading = props["heading"]
     return html(t"<body><{heading} /></body>")
 
 
