@@ -1,20 +1,55 @@
 # tdom - WIP
 
-PEP750 based t strings for both SSR and FE
+PEP 750 based t-strings for both server-side rendering and frontend.
 
 [Live demo](https://webreflection.github.io/tdom/src/)
 
-## Python setup
+## Installation
 
-- Clone the main branch then `cd tdom`
-- Make a .venv (or just `. env.sh` once)
-- `uv sync` (or just `. env.sh` once)
+We don't yet have a package published on PyPI, so follow the instructions below. Once template strings are merged into
+a Python 3.14 beta, we'll publish a package, and you can install from `pip`, `uv`, etc.
 
-### Custom Python
+## Python 3.14 setup
 
-To test a custom Python build link the executable into the `./env/bin` folder, replacing the `python` reference in there.
+*Note: These instructions point at an old version of template strings. We need some Pyodide work to start using the new
+API. So we'll use the old API for the CPython by cloning an old commit.*
 
+First, clone CPython `main` then build it in some directory.
 
+```shell
+$ cd /tmp
+$ git clone https://github.com/python/cpython.git
+$ cd cpython
+$ ./configure  # Follow https://devguide.python.org
+$ make
+```
+
+On macOS/Windows, this will produce a file `python.exe` (on Linux, `python`) which you will use as your Python executable.
+
+## tdom development setup
+
+Let's get `tdom` setup for development. Clone this repo and make a virtual environment there, using the just-built
+CPython:
+
+```shell
+$ git clone https://github.com/WebReflection/tdom.git
+$ cd tdom
+$ /tmp/cpython/python.exe -m venv .venv  # Use your path to Python build
+$ .venv/bin/pip install --upgrade pip
+```
+
+Let's use `uv` from now on. Install it
+using [one of the uv install method](https://docs.astral.sh/uv/getting-started/installation/). Specifically,
+we will use `uv run pytest`, if you are using the command line as your test UI.
+
+```shell
+$ uv run pytest
+```
+
+And that's it!
+
+If you are using an IDE with testing support (PyCharm, VS Code) and it doesn't have `uv run` support, you'll need
+another step. Whenever you change dependencies, run `uv sync`, since the IDE is likely running `pytest` directly.
 
 ## Features + Quick walk through
 
@@ -183,3 +218,9 @@ where all `children` will be passed along already resolved and all `props` will 
 In these examples it is possible to note *self-closing tags*, such as `<div />` or others, but also a special *closing-tag* such as `</>` or `<//>` (these are the same).
 
 The `@` attribute for events is also not standard, but it helps explicitly distinguish between what could be an actual *JS* content for a real `onclick`, as opposite of being something "*magic*" that needs to be orchestrated @ the *Python* level.
+
+### Building docs
+
+```shell
+$ uv run sphinx-build docs docs/_build
+```
