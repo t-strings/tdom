@@ -2,7 +2,7 @@
 from tdom import html
 
 
-def Heading(props, children):
+def Heading():
     """The default heading."""
     return html(t"<h1>My Title</h1>")
 

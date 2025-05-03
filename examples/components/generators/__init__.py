@@ -3,7 +3,7 @@
 from tdom import html
 
 
-def Todos(props, children):
+def Todos():
     """A sequence of li items."""
     for todo in ["First", "Second"]:  # noqa B007
         # TODO Andrea need to add generator support

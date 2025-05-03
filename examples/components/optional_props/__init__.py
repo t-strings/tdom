@@ -2,12 +2,9 @@
 from tdom import html
 
 
-def Heading(props, children):
+def Heading(title="My Title"):
     """The default heading."""
 
-    # TODO This would be nicer if title was in function signature with
-    #    default, as in ViewDOM.
-    title = props.get("title", "My Title")
     return html(t"<h1>{title}</h1>")
 
 

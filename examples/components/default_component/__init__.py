@@ -8,14 +8,13 @@ def DefaultHeading():  # pragma: nocover
     return html(t"<h1>Default Heading</h1>")
 
 
-def OtherHeading(props, children):
+def OtherHeading():
     """Another heading used in another condition."""
     return html(t"<h1>Other Heading</h1>")
 
 
-def Body(props, children):
+def Body(heading):
     """Render the body with a heading based on which is passed in."""
-    heading = props["heading"]
     return html(t"<body><{heading} /></body>")
 
 
