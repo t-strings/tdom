@@ -11,8 +11,8 @@ import pytest
 from playwright.sync_api import Page
 from playwright.sync_api import Route
 
-ROOT = Path(__file__).parent.parent.parent
-STUBS = ROOT / "tests" / "pwright" / "stubs"
+STUBS = Path(__file__).parent.parent.parent / "tests" / "stubs"
+
 
 @dataclass
 class DummyResponse:
@@ -69,19 +69,14 @@ class DummyPage:
 
 
 def route_handler(page: Page, route: Route) -> None:
-    """Called from the interceptor to get the data off of the disk."""
+    """Called from the interceptor to get the data off disk."""
     this_url = urlparse(route.request.url)
-    is_fake = (this_url.hostname == "localhost") and (this_url.port == 8000)  # this_url.path.startswith("/fake/")
+    this_path = this_url.path[1:]
+    is_fake = this_url.hostname == "fake"
+    headers = dict()
     if is_fake:
         # We should read something from the filesystem
-        headers = dict()
-        this_path = this_url.path[1:]
-        if this_path.startswith("src"):
-            # Load relative to the src directory
-            this_fs_path = ROOT / this_path
-        else:
-            # This should be under tests/stubs
-            this_fs_path = STUBS / this_path
+        this_fs_path = STUBS / this_path
         if this_fs_path.exists():
             status = 200
             mime_type = guess_type(this_fs_path)[0]
