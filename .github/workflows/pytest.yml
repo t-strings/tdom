@@ -1,20 +1,24 @@
-name: Playwright Tests
+name: pytest Tests
 on: [ push, pull_request ]
 
 jobs:
-  playwright:
+  pytest:
     runs-on: ubuntu-latest
-    name: Setup Playwright
+    name: Setup pytest
     steps:
       - uses: actions/checkout@v4
       - name: Install the latest version of uv
         uses: astral-sh/setup-uv@v6
         with:
           version: "latest"
-      - name: Setup environment for Python 3.13
+      - name: Install Python 3.14
         run: |
-          cp pyproject-playwright.toml pyproject.toml
+          sudo add-apt-repository ppa:deadsnakes/nightly
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends python3.14-dev python3.14-venv
+          python3.14 -m pip install --upgrade pip setuptools
+          python3.14 -m venv $HOME/venv-python3.14
           uv sync
       - name: Run tests
         run: |
-          uv run pytest
+          uv run pytest tests
