@@ -10,9 +10,8 @@ def Todo(label):
     return html(t"<li>{label}</li>")
 
 
-def TodoList(props, children):
+def TodoList(todos):
     """A to do list component."""
-    todos = props["todos"]
     # Pass an argument, not the normal props style
     return html(t"<ul>{[Todo(label) for label in todos]}</ul>")
 
