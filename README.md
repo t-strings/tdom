@@ -1,55 +1,20 @@
 # tdom - WIP
 
-PEP 750 based t-strings for both server-side rendering and frontend.
+PEP750 based t strings for both SSR and FE
 
 [Live demo](https://webreflection.github.io/tdom/src/)
 
-## Installation
+## Python setup
 
-We don't yet have a package published on PyPI, so follow the instructions below. Once template strings are merged into
-a Python 3.14 beta, we'll publish a package, and you can install from `pip`, `uv`, etc.
+- Clone the main branch then `cd tdom`
+- Make a .venv (or just `. env.sh` once)
+- `uv sync` (or just `. env.sh` once)
 
-## Python 3.14 setup
+### Custom Python
 
-*Note: These instructions point at an old version of template strings. We need some Pyodide work to start using the new
-API. So we'll use the old API for the CPython by cloning an old commit.*
+To test a custom Python build link the executable into the `./env/bin` folder, replacing the `python` reference in there.
 
-First, clone CPython `main` then build it in some directory.
 
-```shell
-$ cd /tmp
-$ git clone https://github.com/python/cpython.git
-$ cd cpython
-$ ./configure  # Follow https://devguide.python.org
-$ make
-```
-
-On macOS/Windows, this will produce a file `python.exe` (on Linux, `python`) which you will use as your Python executable.
-
-## tdom development setup
-
-Let's get `tdom` setup for development. Clone this repo and make a virtual environment there, using the just-built
-CPython:
-
-```shell
-$ git clone https://github.com/WebReflection/tdom.git
-$ cd tdom
-$ /tmp/cpython/python.exe -m venv .venv  # Use your path to Python build
-$ .venv/bin/pip install --upgrade pip
-```
-
-Let's use `uv` from now on. Install it
-using [one of the uv install method](https://docs.astral.sh/uv/getting-started/installation/). Specifically,
-we will use `uv run pytest`, if you are using the command line as your test UI.
-
-```shell
-$ uv run pytest
-```
-
-And that's it!
-
-If you are using an IDE with testing support (PyCharm, VS Code) and it doesn't have `uv run` support, you'll need
-another step. Whenever you change dependencies, run `uv sync`, since the IDE is likely running `pytest` directly.
 
 ## Features + Quick walk through
 
@@ -219,12 +184,6 @@ In these examples it is possible to note *self-closing tags*, such as `<div />` 
 
 The `@` attribute for events is also not standard, but it helps explicitly distinguish between what could be an actual *JS* content for a real `onclick`, as opposite of being something "*magic*" that needs to be orchestrated @ the *Python* level.
 
-### Building docs
-
-```shell
-$ uv run sphinx-build docs docs/_build
-```
-
 ### Writing and running tests
 
 `tdom` uses `pytest` for tests. You can run the tests with `uv run pytest`. The pytest configuration is in `pyproject.toml` as well as the GitHub Actions workflows in `.github/workflows`.
@@ -232,7 +191,7 @@ $ uv run sphinx-build docs docs/_build
 The tests are in two directories: `examples` and `tests`. The `examples` directory has small snippets which serve three purposes: docs, testing, and standalone exploration.
 
 The `tests` directory has two kinds of tests: "native" and Playwright tests. The native tests execute in CPython. The Playwright tests load Pyodide and run in [pytest-playwright](https://pypi.org/project/pytest-playwright/) under a fake 
-server. Any requests to `http://localhost:8000/` are loaded from the filesystem: either under `tests/pwright/stubs` or `src/tdom`. (This is set in `src/tdom/fixtures.py`)
+server. Any requests to `http://fake/` are loaded from the directories at `tests/pwright/stubs`. (This is set in `src/tdom/fixtures.py`)
 
 Unfortunately, Playwright for Python depends on a package (greenlet) which doesn't compile yet for Python 3.14 on Ubuntu in 
 GitHub Actions (though it works locally under 3.14.) To solve this, the GHA workflow uses 3.13. This is the reason for the 
@@ -240,5 +199,3 @@ extra `pyproject-playwright.toml` file at the root: that file is copied to `pypr
 
 However, this has some consequences in the code: Pyodide tests must be under `tests/pwright` (to 
 get the correct pytest includes/excludes.)
-
-You can manually run the Playwright tests locally with `uv add --dev pytest-playwright` then `uv run pytest tests/pwright`.
