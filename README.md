@@ -249,7 +249,7 @@ You can manually run the Playwright tests locally with `uv add --dev pytest-play
 The tests are in two directories: `examples` and `tests`. The `examples` directory has small snippets which serve three purposes: docs, testing, and standalone exploration.
 
 The `tests` directory has two kinds of tests: "native" and Playwright tests. The native tests execute in CPython. The Playwright tests load Pyodide and run in [pytest-playwright](https://pypi.org/project/pytest-playwright/) under a fake 
-server. Any requests to `http://fake/` are loaded from the directories at `tests/pwright/stubs`. (This is set in `src/tdom/fixtures.py`)
+server. Any requests to `http://localhost:8000/` are loaded from the filesystem: either under `tests/pwright/stubs` or `src/tdom`. (This is set in `src/tdom/fixtures.py`)
 
 Unfortunately, Playwright for Python depends on a package (greenlet) which doesn't compile yet for Python 3.14 on Ubuntu in 
 GitHub Actions (though it works locally under 3.14.) To solve this, the GHA workflow uses 3.13. This is the reason for the 
@@ -257,3 +257,5 @@ extra `pyproject-playwright.toml` file at the root: that file is copied to `pypr
 
 However, this has some consequences in the code: Pyodide tests must be under `tests/pwright` (to 
 get the correct pytest includes/excludes.)
+
+You can manually run the Playwright tests locally with `uv add --dev pytest-playwright` then `uv run pytest tests/pwright`.
