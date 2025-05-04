@@ -41,7 +41,7 @@ def test_dummy_route() -> None:
 def test_route_handler_fake_good_path() -> None:
     """Fake points at a good path in ``examples``."""
     # We are testing the interceptor because the hostname is "fake".
-    dummy_request = DummyRequest(url="https://fake/static/vite.svg")
+    dummy_request = DummyRequest(url="http://localhost:8000/static/vite.svg")
     dummy_page = DummyPage(request=dummy_request)
     dummy_route = DummyRoute(request=dummy_request)
     route_handler(
@@ -57,7 +57,7 @@ def test_route_handler_fake_good_path() -> None:
 
 def test_route_handler_non_fake() -> None:
     """Not a fake, thus not interceptor, but simulating network request."""
-    dummy_request = DummyRequest(url="https://good/static/vite.svg")
+    dummy_request = DummyRequest(url="http://good/static/vite.svg")
     dummy_page = DummyPage(request=dummy_request)
     dummy_route = DummyRoute(request=dummy_request)
     route_handler(
@@ -69,7 +69,7 @@ def test_route_handler_non_fake() -> None:
 
 def test_route_handler_fake_bad_path() -> None:
     """Fake points at a bad path in ``examples``."""
-    dummy_request = DummyRequest(url="https://fake/staticxx")
+    dummy_request = DummyRequest(url="http://localhost:8000/staticxx")
     dummy_page = DummyPage(request=dummy_request)
     dummy_route = DummyRoute(request=dummy_request)
     route_handler(
