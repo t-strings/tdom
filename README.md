@@ -183,3 +183,19 @@ where all `children` will be passed along already resolved and all `props` will 
 In these examples it is possible to note *self-closing tags*, such as `<div />` or others, but also a special *closing-tag* such as `</>` or `<//>` (these are the same).
 
 The `@` attribute for events is also not standard, but it helps explicitly distinguish between what could be an actual *JS* content for a real `onclick`, as opposite of being something "*magic*" that needs to be orchestrated @ the *Python* level.
+
+### Writing and running tests
+
+`tdom` uses `pytest` for tests. You can run the tests with `uv run pytest`. The pytest configuration is in `pyproject.toml` as well as the GitHub Actions workflows in `.github/workflows`.
+
+The tests are in two directories: `examples` and `tests`. The `examples` directory has small snippets which serve three purposes: docs, testing, and standalone exploration.
+
+The `tests` directory has two kinds of tests: "native" and Playwright tests. The native tests execute in CPython. The Playwright tests load Pyodide and run in [pytest-playwright](https://pypi.org/project/pytest-playwright/) under a fake 
+server. Any requests to `http://fake/` are loaded from the directories at `tests/pwright/stubs`. (This is set in `src/tdom/fixtures.py`)
+
+Unfortunately, Playwright for Python depends on a package (greenlet) which doesn't compile yet for Python 3.14 on Ubuntu in 
+GitHub Actions (though it works locally under 3.14.) To solve this, the GHA workflow uses 3.13. This is the reason for the 
+extra `pyproject-playwright.toml` file at the root: that file is copied to `pyproject.toml` in the action.
+
+However, this has some consequences in the code: Pyodide tests must be under `tests/pwright` (to 
+get the correct pytest includes/excludes.)
