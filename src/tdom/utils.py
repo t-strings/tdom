@@ -25,15 +25,15 @@ def _as_component(node, components):
 
       if _IS_MICRO_PYTHON:
         try:  
-          result = _as_result(value, props)
+          result = value(**props)
         except TypeError as e:
           if "unexpected keyword argument" in str(e):
             del props['children']
-            result = _as_result(value, props)
+            result = value(**props)
           else:
             raise e
       else:
-        result = _as_result(value, props)
+        result = value(**props)
 
       _replaceWith(node, _as_node(result))
 
@@ -89,10 +89,6 @@ def _as_prop(node, name, listeners):
     return dataset
   else:
     return attribute
-
-
-def _as_result(value, props):
-  return next(value(**props)) if inspect.isgeneratorfunction(value) else value(**props)
 
 
 def _set_updates(node, updates, path):
