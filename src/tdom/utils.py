@@ -1,4 +1,4 @@
-import sys
+import inspect
 from types import GeneratorType
 from .parser import _instrument, _prefix
 from .dom import Fragment, Node, Text
@@ -25,15 +25,15 @@ def _as_component(node, components):
 
       if _IS_MICRO_PYTHON:
         try:  
-          result = value(**props)
+          result = _as_result(value, props)
         except TypeError as e:
           if "unexpected keyword argument" in str(e):
             del props['children']
-            result = value(**props)
+            result = _as_result(value, props)
           else:
             raise e
       else:
-        result = value(**props)
+        result = _as_result(value, props)
 
       _replaceWith(node, _as_node(result))
 
@@ -89,6 +89,10 @@ def _as_prop(node, name, listeners):
     return dataset
   else:
     return attribute
+
+
+def _as_result(value, props):
+  return next(value(**props)) if inspect.isgeneratorfunction(value) else value(**props)
 
 
 def _set_updates(node, updates, path):
