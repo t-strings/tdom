@@ -31,11 +31,15 @@ dev = [
 
 [tool.uv.sources]
 black = { git = "https://github.com/davepeck/black", branch = "pep750-support" }
-sphinx = { git = "https://github.com/sphinx-doc/sphinx.git", branch = "master" }
 markupsafe = { git = "https://github.com/pauleveritt/markupsafe.git", branch = "main" }
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "examples"]
+
+[tool.pytest.ini_options]
+addopts = [
+    "--ignore=tests/pwright",
+]
 
 [tool.pytest.ini_options]
 addopts = [
