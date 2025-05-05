@@ -346,7 +346,7 @@ wheels = [
 [[package]]
 name = "sphinx"
 version = "8.3.0"
-source = { git = "https://github.com/sphinx-doc/sphinx.git?branch=master#c4929d026c8d22ba229b39cfc2250a9eb1476282" }
+source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "alabaster" },
     { name = "babel" },
@@ -365,6 +365,10 @@ dependencies = [
     { name = "sphinxcontrib-jsmath" },
     { name = "sphinxcontrib-qthelp" },
     { name = "sphinxcontrib-serializinghtml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e5/8d/012c6d6f0e9a3e70ddf68dec54f08c51e36cb64e81d70c77ed2d096a042c/sphinx-8.3.0.tar.gz", hash = "sha256:3bad4314a7fa72ce92344eaaa14c42ddf3177ee6a79c227e4ff8ae07d416f584", size = 8322107, upload-time = "2025-03-02T20:56:40.861Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/2f/72/9a437a9dc5393c0eabba447bdb6233a7b02bb23e84975f17ad9a9ca86677/sphinx-8.3.0-py3-none-any.whl", hash = "sha256:bd8fcf35ab2c4240b01c74a411c948350a3aebd6aa175579363754ed380d350a", size = 3589734, upload-time = "2025-03-02T20:56:35.431Z" },
 ]
 
 [[package]]
@@ -465,7 +469,7 @@ dev = [
     { name = "markupsafe", git = "https://github.com/pauleveritt/markupsafe.git?branch=main" },
     { name = "myst-parser" },
     { name = "pytest" },
-    { name = "sphinx", git = "https://github.com/sphinx-doc/sphinx.git?branch=master" },
+    { name = "sphinx" },
 ]
 
 [[package]]
