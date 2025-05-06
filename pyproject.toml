@@ -35,6 +35,4 @@ markupsafe = { git = "https://github.com/pauleveritt/markupsafe.git", branch = "
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "examples"]
-addopts = [
-    "--ignore=tests/pwright",
-]
+
