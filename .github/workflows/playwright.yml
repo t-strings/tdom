@@ -1,0 +1,21 @@
+name: Playwright Tests
+on: [ push, pull_request ]
+
+jobs:
+  playwright:
+    runs-on: ubuntu-latest
+    name: Setup Playwright
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install the latest version of uv
+        uses: astral-sh/setup-uv@v6
+        with:
+          version: "latest"
+      - name: Setup environment for Python 3.13
+        run: |
+          cp pyproject-playwright.toml pyproject.toml
+          uv sync
+      - name: Run tests
+        run: |
+          uv run playwright install
+          uv run pytest

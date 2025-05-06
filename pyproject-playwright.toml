@@ -1,12 +1,12 @@
 [project]
 name = "tdom"
-version = "0.0.1"
+version = "0.1.0"
 description = "PEP750 based t strings for both SSR and FE"
 readme = "README.md"
 authors = [
     { name = "Andrea Giammarchi", email = "andrea.giammarchi@gmail.com" }
 ]
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
     "dill>=0.4.0",
 ]
@@ -22,19 +22,14 @@ dev = [
     "black",
     "hatchling>=1.27.0",
     "pytest",
-    "myst-parser",
-    "furo",
-    "sphinx",
-    "jinja2",
-    "markupsafe",
+    "pytest-playwright>=0.7.0",
 ]
 
 [tool.uv.sources]
 black = { git = "https://github.com/davepeck/black", branch = "pep750-support" }
-markupsafe = { git = "https://github.com/pauleveritt/markupsafe.git", branch = "main" }
+
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "examples"]
-addopts = [
-    "--ignore=tests/pwright",
+testpaths = [
+    "tests/pwright",
 ]

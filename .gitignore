@@ -1,11 +1,5 @@
-.venv
 __pycache__/
-*.py[cod]
-*$py.class
-venv
-.eggs
-.pytest_cache
-*.egg-info
-.DS_Store
-dist
-build
+env/
+test-results/
+node_modules/
+docs/_build
