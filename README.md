@@ -247,3 +247,9 @@ However, this has some consequences in the code: Pyodide tests must be under `te
 get the correct pytest includes/excludes.)
 
 You can manually run the Playwright tests locally with `uv add --dev pytest-playwright` then `uv run pytest tests/pwright`.
+
+## Supporters
+
+`tdom` is an independent open source project, started by Andrea Giammarchi. His time, though, has generously been 
+supported by his work at [Anaconda](https://www.anaconda.com). Thank you Anaconda for your continued support of this 
+project.
