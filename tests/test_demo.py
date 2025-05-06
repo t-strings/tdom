@@ -68,6 +68,12 @@ def test_svg():
     )
 
 
+def test_style():
+    """Style attribute."""
+    style = {"color": "red", "font-size": "12px"}
+    result = html(t"<div style={style} />")
+    assert str(result) == '<div style="color:red;font-size:12px"></div>'
+
 
 def test_component():
     """Render a t-string that references a component."""
