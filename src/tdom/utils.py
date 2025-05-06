@@ -77,11 +77,20 @@ def _as_prop(node, name, listeners):
     else:
       i = len(listeners)
       listeners.append(value)
+
     props[name] = f'self.python_listeners?.[{i}](event)'
+
+  def style(value):
+    if isinstance(value, dict):
+      props['style'] = ';'.join([f'{k}:{v}' for k,v in value.items()])
+    else:
+      props['style'] = value
 
   if name[0] == '@':
     name = 'on' + name[1:].lower()
     return listener
+  if name == 'style':
+    return style
   if name == 'aria':
     return aria
   # TODO: find which other node has a `data` attribute
