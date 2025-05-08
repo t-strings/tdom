@@ -1,6 +1,6 @@
 """Cover the examples in Andrea's demo."""
 
-from tdom import html, svg
+from tdom import html, svg, unsafe
 
 
 def test_automatic_quotes():
@@ -73,6 +73,12 @@ def test_style():
     style = {"color": "red", "font-size": "12px"}
     result = html(t"<div style={style} />")
     assert str(result) == '<div style="color:red;font-size:12px"></div>'
+
+
+def test_unsafe():
+    """Unsafe strings."""
+    result = html(t"<div>{unsafe('<hr>')}</div>")
+    assert str(result) == '<div><hr></div>'
 
 
 def test_component():
