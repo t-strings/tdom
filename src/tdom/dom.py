@@ -10,6 +10,7 @@ _prefix = 't🐍' + str(random())[2:5]
 _data = f'<!--{_prefix}-->'
 
 
+
 ELEMENT = 1
 # ATTRIBUTE = 2
 TEXT = 3
@@ -91,7 +92,8 @@ class Text(Node):
     super().__init__(data=data)
 
   def __str__(self):
-    return escape(str(self['data']))
+    data = self['data']
+    return data if isinstance(data, Unsafe) else escape(str(data))
 
 
 class Element(Node):
@@ -185,6 +187,12 @@ if _IS_MICRO_PYTHON:
   ATTRIBUTES = re.compile(r'([^\s=]+)(=(([\'"])[\s\S]*?\4|\S+))?')
   NAME_CHAR = re.compile(r'[^/>\s]')
 
+
+  class Unsafe(str):
+    def __init__(self, *args, **kwargs):
+      super().__init__(*args, **kwargs)
+
+
   def _attributes(props, attrs):
     while match := ATTRIBUTES.match(attrs.strip()):
       key = match.group(1)
@@ -267,6 +275,12 @@ if _IS_MICRO_PYTHON:
 else:
   from html.parser import HTMLParser
 
+
+  class Unsafe(str):
+    def __new__(cls, value, *args, **kwargs):   
+      return super(Unsafe, cls).__new__(cls, value)
+
+
   class DOMParser(HTMLParser):
     def __init__(self, xml=False):
       super().__init__()
@@ -319,3 +333,7 @@ else:
     parser = DOMParser(xml)
     parser.feed(content)
     return parser.node
+
+
+def unsafe(value):
+  return Unsafe(value)
