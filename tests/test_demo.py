@@ -66,6 +66,13 @@ def test_dev_comments():
     assert str(result) == "<!--#1--><!--3#-->"
 
 
+def test_template_as_interpolation():
+    """Template as interpolation."""
+    inner = t'<em>World</em>'
+    result = html(t"<div>Hello {inner}</div>")
+    assert str(result) == '<div>Hello <em>World</em></div>'
+
+
 def test_svg():
     """preseved XML/SVG self closing nature."""
     result = html(

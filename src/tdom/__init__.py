@@ -15,6 +15,7 @@ try:
 except ImportError:
   pass
 
+
 def _util(svg):
   def fn(t):
     if not isinstance(t, Template):
@@ -22,7 +23,7 @@ def _util(svg):
 
     strings = t.strings
 
-    values = [entry.value for entry in t.interpolations]
+    values = [_resolve(fn, entry) for entry in t.interpolations]
 
     length = len(values)
 
@@ -60,6 +61,11 @@ def _util(svg):
     return node
 
   return fn
+
+
+def _resolve(fn, entry):
+  value = entry.value
+  return fn(value) if isinstance(value, Template) else value
 
 
 def render(where, what):
