@@ -60,6 +60,12 @@ def test_void_siblings():
     assert str(result) == "<p></p><hr><p></p>"
 
 
+def test_dev_comments():
+    """Developer comments."""
+    result = html(t"<!--#1--><!--#2#--><!--##--><!--3#-->")
+    assert str(result) == "<!--#1--><!--3#-->"
+
+
 def test_svg():
     """preseved XML/SVG self closing nature."""
     result = html(
