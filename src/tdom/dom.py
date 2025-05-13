@@ -251,9 +251,14 @@ if _IS_MICRO_PYTHON:
 
         if i < j:
           _text(node, content, ts, te)
-          element = Element(content[i:j], xml)
+          name = content[i:j]
+          element = Element(name, xml)
           _append(node, element)
-          node = element
+
+          not_void = not xml and not name.lower() in VOID_ELEMENTS
+          if not_void:
+            node = element
+
           i = j
           j = content.index('>', i)
           closing = content[j - 1] == '/'
@@ -262,8 +267,9 @@ if _IS_MICRO_PYTHON:
           if i < j:
             _attributes(node['props'], content[i:j])
           if closing:
-            node = node.parent
             j += 1
+            if not_void:
+              node = node.parent
           ts = te = i = j + 1
           continue
 
@@ -290,15 +296,19 @@ else:
     def handle_starttag(self, tag, attrs):
       element = Element(tag, self.xml)
       _append(self.node, element)
-      self.node = element
+
+      if not self.xml and not tag.lower() in VOID_ELEMENTS:
+        self.node = element
+
       props = element['props']
       for name, value in attrs:
         props[name] = value
 
     def handle_endtag(self, tag):
-      parent = self.node.parent
-      if parent:
-        self.node = parent
+      if not self.xml and not tag.lower() in VOID_ELEMENTS:
+        parent = self.node.parent
+        if parent:
+          self.node = parent
 
     def handle_data(self, data):
       # this is needed to handle sparse interpolations
