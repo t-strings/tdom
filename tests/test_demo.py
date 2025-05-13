@@ -54,6 +54,12 @@ def test_ignore_voided():
     assert str(result) == "<hr>"
 
 
+def test_void_siblings():
+    """Voided elements' siblings."""
+    result = html(t"<p /><hr><p />")
+    assert str(result) == "<p></p><hr><p></p>"
+
+
 def test_svg():
     """preseved XML/SVG self closing nature."""
     result = html(
