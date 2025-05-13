@@ -236,7 +236,9 @@ if _IS_MICRO_PYTHON:
           _text(node, content, ts, te)
           if content[i+1:i+3] == '--':
             j = content.index('-->', i + 3)
-            _append(node, Comment(content[i+3:j]))
+            data = content[i+3:j]
+            if not (data.startswith('#') and data.endswith('#')):
+              _append(node, Comment(data))
             i = j + 3
           else:
             j = content.index('>', i + 1)
@@ -329,7 +331,7 @@ else:
     def handle_comment(self, data):
       if data == '/':
         self.handle_endtag(self.node['name'])
-      else:
+      elif not (data.startswith('#') and data.endswith('#')):
         _append(self.node, Comment(data))
 
     def handle_decl(self, data):
