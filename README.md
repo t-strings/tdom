@@ -189,8 +189,8 @@ Runtime content can be placed almost anywhere and it could represent a string, n
 Differently from functions found as interpolation value within the content, a component is a function, or a class, that will be invoked, or instiated with 2 arguments, `props` and `children`, but it requires to be present right after an opening `<` char, otherwise it won't receive any value:
 
 ```python
-def MyComponent(props, children):
-  # props['a'] == 1 and props.b == 2
+def MyComponent(a:int, b:int, children:list):
+  # a == 1 and b == 2
   # children == [<p />, <p />]
   return html(t'<div data={props}>{children}</div>')
 
