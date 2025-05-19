@@ -10,5 +10,5 @@ def Hello(name):
 
 def main():
     """Main entry point."""
-    result = Hello(name="viewdom")
+    result = Hello(name="tdom")
     return result

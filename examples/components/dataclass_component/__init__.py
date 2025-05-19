@@ -18,7 +18,7 @@ class Greeting:
 
 def main():
     """Render a template to a string."""
-    greeting = Greeting(name="viewdom")
+    greeting = Greeting(name="tdom")
     # TODO Teach the constructor to make dataclass components
     result = html(t"<div><{greeting} /></div>")
     return result
