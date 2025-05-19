@@ -1,16 +1,13 @@
 [project]
 name = "tdom"
-version = "0.0.1"
+version = "0.0.2"
 description = "PEP750 based t strings for both SSR and FE"
 readme = "README.md"
 authors = [
-    { name = "Andrea Giammarchi", email = "andrea.giammarchi@gmail.com" }
+    { name = "Andrea Giammarchi", email = "andrea.giammarchi@gmail.com" },
 ]
 requires-python = ">=3.14"
-dependencies = [
-    "dill>=0.4.0",
-]
-
+dependencies = ["dill>=0.4.0"]
 
 
 [build-system]
@@ -35,4 +32,3 @@ markupsafe = { git = "https://github.com/pauleveritt/markupsafe.git", branch = "
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "examples"]
-
