@@ -5,4 +5,4 @@ from . import main
 
 def test_main() -> None:
     """Ensure the demo matches expected."""
-    assert str(main()) == "<div>Hello viewdom</div>"
+    assert str(main()) == "<div>Hello World</div>"

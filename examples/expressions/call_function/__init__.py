@@ -10,6 +10,6 @@ def make_bigly(name: str) -> str:
 
 def main():
     """Main entry point."""
-    name = "viewdom"
+    name = "tdom"
     result = html(t"<div>Hello {make_bigly(name)}</div>")
     return result

@@ -5,6 +5,6 @@ from tdom import html
 
 def main():
     """Main entry point."""
-    name = "viewdom"
+    name = "tdom"
     result = html(t"<div>Hello {1 + 3}</div>")
     return result
