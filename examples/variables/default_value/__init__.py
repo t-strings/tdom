@@ -3,7 +3,7 @@
 from tdom import html
 
 
-def Hello(name="viewdom"):
+def Hello(name="World"):
     """A simple hello component."""
     return html(t"<div>Hello {name}</div>")
 
