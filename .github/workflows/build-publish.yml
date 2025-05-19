@@ -22,7 +22,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    name: Setup pytest
+    name: Build Sphinx documentation
     steps:
       - uses: actions/checkout@v4
       - name: Install the latest version of uv
