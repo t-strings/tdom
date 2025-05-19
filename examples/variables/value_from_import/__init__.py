@@ -1,7 +1,8 @@
 """Get a variable from an import."""
 
-from .. import name  # noqa F401
 from tdom import html
+
+name = "World"
 
 
 def Hello():
