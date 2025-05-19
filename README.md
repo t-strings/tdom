@@ -3,11 +3,11 @@
 A 🔥 t-string (aka PEP 750) HTML templating system for upcoming Python 3.14 for both server-side rendering and frontend.
 
 [![PyPI](https://img.shields.io/pypi/v/tdom.svg)](https://pypi.org/project/tdom/)
-[![Tests](https://github.com/t-strings/tdom/actions/workflows/test.yml/badge.svg)](https://github.com/t-strings/tdom/actions/workflows/test.yml)
+[![Tests](https://github.com/t-strings/tdom/actions/workflows/pytest.yml/badge.svg)](https://github.com/t-strings/tdom/actions/workflows/pytest.yml)
 [![Changelog](https://img.shields.io/github/v/release/t-strings/tdom?include_prereleases&label=changelog)](https://github.com/t-strings/tdom/releases)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/t-strings/tdom/blob/main/LICENSE)
 
-[Live demo](https://webreflection.github.io/tdom/src/)
+[Live demo](https://t-strings.help/playground.html)
 
 ## Installation
 
@@ -37,7 +37,7 @@ Let's get `tdom` setup for development. Clone this repo and make a virtual envir
 CPython:
 
 ```shell
-$ git clone https://github.com/WebReflection/tdom.git
+$ git clone https://github.com/t-strings/tdom.git
 $ cd tdom
 $ /tmp/cpython/python.exe -m venv .venv  # Use your path to Python build
 $ .venv/bin/pip install --upgrade pip
