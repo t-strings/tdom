@@ -1,7 +1,7 @@
 [project]
 name = "tdom"
-version = "0.0.5"
-description = "PEP750 based t strings for both SSR and FE"
+version = "0.0.6"
+description = "An html() implementation for t-strings that supports both SSR and FE rendering."
 readme = "README.md"
 authors = [
     { name = "Andrea Giammarchi", email = "andrea.giammarchi@gmail.com" },
@@ -32,3 +32,11 @@ markupsafe = { git = "https://github.com/pauleveritt/markupsafe.git", branch = "
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "examples"]
+
+[project.urls]
+Homepage = "https://t-strings.github.io/tdom/"
+Documentation = "https://t-strings.github.io/tdom/"
+Respository = "https://github.com/t-strings/tdom"
+Changelog = "https://github.com/t-strings/tdom/releases"
+Issues = "https://github.com/t-strings/tdom/issues"
+CI = "https://github.com/t-strings/tdom/actions"
