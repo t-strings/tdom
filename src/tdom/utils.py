@@ -1,4 +1,3 @@
-import inspect
 from types import GeneratorType
 from .parser import _instrument, _prefix
 from .dom import Fragment, Node, Text
