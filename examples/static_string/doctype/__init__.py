@@ -5,5 +5,5 @@ from tdom import html
 
 def main():
     """Main entry point."""
-    result = html(t"<!DOCTYPE html>\n<div>Hello World</div>")
+    result = html(t"<!DOCTYPE html><div>Hello World</div>")
     return result
