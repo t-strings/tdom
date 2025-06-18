@@ -2,6 +2,6 @@
 from . import main
 
 
-def test_main() -> None:
+def test_main():
     """Ensure the demo matches expected."""
-    assert main() == "<!DOCTYPE html>\n<div>Hello World</div>"
+    assert str(main()) == "<!DOCTYPE html><div>Hello World</div>"
