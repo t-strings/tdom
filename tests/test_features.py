@@ -89,8 +89,14 @@ def test_style():
 
 def test_unsafe():
     """Unsafe strings."""
-    result = html(t"<div>{unsafe('<hr>')}</div>")
-    assert str(result) == '<div><hr></div>'
+    # First, a usage without wrapping in unsafe
+    span = "<span>Hello World</span>"
+    result1 = html(t"<div>{span}</div>")
+    assert str(result1) == '<div>&lt;span&gt;Hello World&lt;/span&gt;</div>'
+
+    # Now wrap it in unsafe and it isn't escaped
+    result2 = html(t"<div>{unsafe(span)}</div>")
+    assert str(result2) == '<div><span>Hello World</span></div>'
 
 
 def test_component():
