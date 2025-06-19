@@ -13,8 +13,8 @@ start-at: from tdom import html
 ```
 
 We start by importing the `html` function from `tdom`.
-It takes a Python 3.14 t-string and returns a `Node` with an `__str__` that converts to HTML. In this case, the node is
-an instance of `tdom.dom.Text`, a subclass of `Node`.
+It takes a Python 3.14 t-string and returns a `Element` with an `__str__` that converts to HTML. In this case, the node is
+an instance of `tdom.dom.Text`, a subclass of `Element`.
 
 ## Simple Render
 
@@ -26,9 +26,9 @@ start-at: def main
 ---
 ```
 
-## Show the Node Itself
+## Show the `Element` Itself
 
-Let's take a look at that `Node` structure.
+Let's take a look at that `Element` structure.
 This time, we'll inspect the node rather than rendering it to a string:
 
 ```{literalinclude} ../../examples/static_string/show_vdom/__init__.py
@@ -107,6 +107,16 @@ start-at: assert
 ```
 
 It's a nested Python datastructure -- pretty simple to look at.
+
+## Expressing the Doctype
+
+One last point: the HTML doctype can be a tricky one to get into the template. In `tdom` this is straightforward:
+
+```{literalinclude} ../../examples/static_string/doctype/__init__.py
+---
+start-at: def main
+---
+```
 
 ## Reducing Boolean Attribute Values
 
