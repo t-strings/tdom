@@ -13,7 +13,10 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 requires-python = ">=3.14"
-dependencies = ["dill>=0.4.0"]
+dependencies = [
+    "dill>=0.4.0",
+    "venusian>=3.1.1",
+]
 
 
 [build-system]

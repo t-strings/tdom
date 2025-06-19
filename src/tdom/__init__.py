@@ -9,7 +9,7 @@ _listeners = []
 from string.templatelib import Template
 
 def _util(svg):
-  def fn(t):
+  def fn(t, context: dict = None):
     if not isinstance(t, Template):
       raise ValueError('Argument is not a Template instance')
 
