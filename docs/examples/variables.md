@@ -42,3 +42,16 @@ The function (i.e. the "component") could make passing the argument optional by 
 start-at: def Hello
 ---
 ```
+## Unsafe Values
+
+Sometimes you get content from an untrusted source, and you need to escape it. That's usually a job 
+for [MarkupSafe](https://markupsafe.palletsprojects.com/en/stable/). But `tdom` targets MicroPython 
+and wants to minimize dependencies, so it provides a small `unsafe` utility. Just use it 
+to wrap your values:
+
+```{literalinclude} ../../examples/variables/unsafe/__init__.py
+---
+start-at: def main
+---
+```
+

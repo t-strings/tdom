@@ -2,7 +2,7 @@
 from . import main
 from tdom import Element
 
-def test_main() -> None:
+def test_main():
     """Ensure the demo matches expected."""
     result: Element = main()
     assert result.props == {}
