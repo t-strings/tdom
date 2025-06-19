@@ -6,14 +6,7 @@ from .dom import Node, Comment, DocumentType, Text, Element, Fragment, parse, un
 _parsed = {}
 _listeners = []
 
-# T = (t'').__class__
-# Let's just use the imported class
-try:
-  # Temporary hack because pytest-playwright has to run under 3.13
-  # in CI due to greenlet not compiling there under 3.14.
-  from string.templatelib import Template
-except ImportError:
-  pass
+from string.templatelib import Template
 
 def _util(svg):
   def fn(t):
