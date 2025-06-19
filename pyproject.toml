@@ -1,6 +1,6 @@
 [project]
 name = "tdom"
-version = "0.0.6"
+version = "0.0.7"
 description = "An html() implementation for t-strings that supports both SSR and FE rendering."
 readme = "README.md"
 authors = [
