@@ -150,8 +150,8 @@ class _Comment:
 
 
 class _Component:
-  def __call__(self, node, updates):
-    return _as_component(node, updates)
+  def __call__(self, node, updates, container = None):
+    return _as_component(node, updates, container)
 
 
 class _Update:
