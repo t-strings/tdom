@@ -1,3 +1,13 @@
+"""A simple container based on dict.
+
+These examples show that adding a container to tdom can be non-intrusive.
+You can:
+
+- Ignore everything about containers and use tdom the "normal" way
+- Provide a simple dict to an `html()` call which is passed down, but
+  ignored by all the components
+- Or, provide a container then have a component that asks for it
+"""
 from tdom import html
 
 
