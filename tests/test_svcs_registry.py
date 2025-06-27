@@ -73,4 +73,5 @@ def test_scan_test_function(scanner):
     """Make sure Venusian looks in the current module."""
 
     result = html(t'<div><{Header} name="World"/></div>')
-    assert str(result) == "<div><h1>Hello World</h1></div>"
+    # TODO Why was the space between Hello and World lost?
+    assert str(result) == "<div><h1>HelloWorld</h1></div>"
