@@ -1,7 +1,7 @@
 """Use an actual svcs container.
 
-Switch from a simple dict as the container, to a svcs registry and container.
-This shows some patterns along the way:
+Switch from a simple dict as the container, to a global svcs registry
+and a per-request container. This shows some patterns along the way:
 
 - Just a global registry, close to the basic example, with a dict interface
 
@@ -22,59 +22,32 @@ This shows some patterns along the way:
 Note that none of this requires any changes to `tdom` beyond passing down
 a container.
 """
-import sys
 from dataclasses import dataclass
 
 import pytest
-from svcs import Registry, Container
-from venusian import Scanner
+from svcs import Container, Registry
 
 from tdom import html
 from tdom.decorators import injectable
 
 @dataclass
-class URL:
-    path: str
-
-
-@pytest.fixture
-def registry() -> Registry:
-    _registry = Registry()
-    _registry.register_factory(Greeting, Greeting)
-
-    return _registry
-
-@pytest.fixture
-def this_container(registry: Registry) -> Container:
-    """This runs on each request, gathering info from the outside."""
-    url = URL(path="/foo")
-    _container = Container(registry=registry)
-    _container.register_local_value(URL, url)
-
-    # Now make a Venusian scanner and do a scan, registering the
-    # container with the decorators.
-    s = Scanner(container=_container)
-    current_module = sys.modules[__name__]
-    s.scan(current_module)
-
-    return _container
-
-@dataclass
 class Greeting:
+    """A factory registered with this app at startup time."""
     salutation: str = "Hello"
 
+
 @injectable
-def Header(container: Container, name: str):
+def Header1(container: Container, name: str):
+    """Expect a container to be injected along with a prop from the usage."""
     greeting = container.get(Greeting)
     return html(t"<div>{greeting.salutation} {name}</div>")
 
-def test_make_container(this_container: Container):
-    """Mimic per-request processing."""
+@pytest.fixture
+def app_registry(registry: Registry) -> None:
+    """This app registers some factories at startup."""
+    registry.register_factory(Greeting, Greeting)
 
-    # The outside system hands us one of these, perhaps from "request"
-
-    # A view is passed this configured container and
-    # returns a result
-    result = html(t'<{Header} name="World"/>', container=this_container)
-    assert "<div>Hello World</div>" == str(result)
+def test_inject_container(app_registry: Registry, this_container: Container):
+    result = html(t'<{Header1} name="World"/>', container=this_container)
+    assert "<div>HelloWorld</div>" == str(result)
 
