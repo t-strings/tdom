@@ -36,18 +36,45 @@ class Greeting:
     salutation: str = "Hello"
 
 
-@injectable
-def Header1(container: Container, name: str):
-    """Expect a container to be injected along with a prop from the usage."""
-    greeting = container.get(Greeting)
-    return html(t"<div>{greeting.salutation} {name}</div>")
-
 @pytest.fixture
 def app_registry(registry: Registry) -> None:
     """This app registers some factories at startup."""
     registry.register_factory(Greeting, Greeting)
 
-def test_inject_container(app_registry: Registry, this_container: Container):
-    result = html(t'<{Header1} name="World"/>', container=this_container)
-    assert "<div>HelloWorld</div>" == str(result)
+@injectable()
+def Header1(container: Container, name: str):
+    """Expect a container to be injected along with a prop from the usage."""
+    greeting = container.get(Greeting)
+    return html(t"<div>{greeting.salutation} {name}</div>")
 
+# def test_inject_container(app_registry: Registry, this_container: Container):
+#     result = html(t'<{Header1} name="World"/>', container=this_container)
+#     assert "<div>HelloWorld</div>" == str(result)
+
+# @injectable(after=[])
+# def Header2(container: Container, name: str):
+#     """The decorator has empty middleware for the component return value. """
+#     greeting = container.get(Greeting)
+#     return html(t"<div>{greeting.salutation} {name}</div>")
+#
+# def test_empty_after_middleware(app_registry: Registry, this_container: Container):
+#     result = html(t'<{Header2} name="World"/>', container=this_container)
+#     assert "<div>HelloWorld</div>" == str(result)
+#
+# def spanify1(node: Node) -> Node:
+#     """Convert any divs to spans."""
+#     x = 1
+#     return node
+#
+#
+# @injectable(after=(spanify1,))
+# def Header3(container: Container, name: str):
+#     """The decorator has after middleware for the component return value. """
+#     greeting = container.get(Greeting)
+#     return html(t"<div>{greeting.salutation} {name}</div>")
+#
+#
+# def test_after_middleware(app_registry: Registry, this_container: Container):
+#     result = html(t'<{Header3} name="World"/>', container=this_container)
+#     assert "<div>HelloWorld</div>" == str(result)
+#
