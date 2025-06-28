@@ -281,7 +281,7 @@ if _IS_MICRO_PYTHON:
     return node
 
 else:
-  from html import HTMLParser
+  from html.parser import HTMLParser
 
 
   class Unsafe(str):

@@ -6,7 +6,7 @@ from .dom import _IS_MICRO_PYTHON, _appendChildren, _replaceWith, parse as domif
 
 if not _IS_MICRO_PYTHON:
   import inspect
-
+import inspect
 
 def _as_comment(node):
   return lambda value: _replaceWith(node, _as_node(value))
