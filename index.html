@@ -13,11 +13,10 @@
 </head>
 <body>
     <script type="mpy" config="./config.toml">
-    from tdom import render, html
     from js import document
+    from demo import main
 
-    t_strings = "t-strings"
-    result = str(html(t"<h1>Hello {t_strings} 🥳</h1>"))
+    result = main()
     document.body.innerHTML = result
   </script>
 </body>

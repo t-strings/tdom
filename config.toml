@@ -1,5 +1,7 @@
 [files]
+"demo.py" = "./demo.py"
 "html.py" = "./html.py"
+"inspect.py" = "./inspect.py"
 "types.py" = "./types.py"
 "./tdom/__init__.py" = "./tdom/__init__.py"
 "./tdom/dom.py" = "./tdom/dom.py"
