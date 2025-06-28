@@ -63,7 +63,6 @@ def render(where, what):
 html = _util(False)
 svg = _util(True)
 
-
 __all__ = [
   'render', 'html', 'svg', 'parse', 'unsafe',
   'Node', 'Comment', 'DocumentType', 'Text', 'Element', 'Fragment',

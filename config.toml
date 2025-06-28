@@ -1,0 +1,7 @@
+[files]
+"html.py" = "./html.py"
+"types.py" = "./types.py"
+"./tdom/__init__.py" = "./tdom/__init__.py"
+"./tdom/dom.py" = "./tdom/dom.py"
+"./tdom/parser.py" = "./tdom/parser.py"
+"./tdom/utils.py" = "./tdom/utils.py"
