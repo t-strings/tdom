@@ -2,10 +2,9 @@ from types import GeneratorType
 from .parser import _instrument, _prefix
 from .dom import Fragment, Node, Text
 from .dom import COMMENT, ELEMENT, FRAGMENT
-from .dom import _IS_MICRO_PYTHON, _appendChildren, _replaceWith, parse as domify
+from .dom import _appendChildren, _replaceWith, parse as domify
 
-if not _IS_MICRO_PYTHON:
-  import inspect
+import inspect
 
 def _as_comment(node):
   return lambda value: _replaceWith(node, _as_node(value))
@@ -14,25 +13,12 @@ def _as_comment(node):
 def _as_component(node, components):
   def component(value):
     def reveal():
-      if _IS_MICRO_PYTHON or ('children' in inspect.signature(value).parameters):
-        props = { 'children': node['children'] }
-        for k, v in node['props'].items():
-          props[k] = v
-      else:
-        props = node['props'].copy()
+      props = node['props'].copy()
+      params = inspect.signature(value).parameters
+      if 'children' in params:
+        props['children'] = node['children']
 
-      if _IS_MICRO_PYTHON:
-        try:  
-          result = value(**props)
-        except TypeError as e:
-          if "unexpected keyword argument" in str(e):
-            del props['children']
-            result = value(**props)
-          else:
-            raise e
-      else:
-        result = value(**props)
-
+      result = value(**props)
       _replaceWith(node, _as_node(result))
 
     components.append(reveal)
