@@ -5,7 +5,8 @@ from .dom import COMMENT, ELEMENT, FRAGMENT
 from .dom import _IS_MICRO_PYTHON, _appendChildren, _replaceWith, parse as domify
 
 if not _IS_MICRO_PYTHON:
-  import inspect
+  pass
+
 
 def _as_comment(node):
   return lambda value: _replaceWith(node, _as_node(value))
