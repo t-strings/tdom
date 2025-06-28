@@ -30,6 +30,7 @@ dev = [
     "sphinx",
     "jinja2",
     "markupsafe",
+    "pytest-playwright>=0.7.0",
 ]
 
 [tool.uv.sources]
