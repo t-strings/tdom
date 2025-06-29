@@ -1,6 +1,7 @@
 """Ensure the test fixtures work as expected."""
 from typing import cast
 
+import pytest
 from playwright.sync_api import Page
 from playwright.sync_api import Route
 
