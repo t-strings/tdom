@@ -1,0 +1,8 @@
+[files]
+"./static/demo.py" = "demo.py"
+"./static/html.py" = "html.py"
+"./static/types.py" = "types.py"
+"./src/tdom/__init__.py" = "tdom/__init__.py"
+"./src/tdom/dom.py" = "tdom/dom.py"
+"./src/tdom/parser.py" = "tdom/parser.py"
+"./src/tdom/utils.py" = "tdom/utils.py"

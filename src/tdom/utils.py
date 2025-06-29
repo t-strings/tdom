@@ -2,23 +2,48 @@ from types import GeneratorType
 from .parser import _instrument, _prefix
 from .dom import Fragment, Node, Text
 from .dom import COMMENT, ELEMENT, FRAGMENT
-from .dom import _appendChildren, _replaceWith, parse as domify
+from .dom import _IS_MICRO_PYTHON, _appendChildren, _replaceWith, parse as domify
 
-import inspect
+if not _IS_MICRO_PYTHON:
+  from inspect import signature
 
 def _as_comment(node):
   return lambda value: _replaceWith(node, _as_node(value))
 
+def get_component_value(props, target, children, imp = _IS_MICRO_PYTHON):
+    """Sniff out the args, call the target, return the value."""
+
+    e1 = "required positional argument: 'children'"
+    e2 = "function takes 1 positional arguments but 0 were given"
+
+    # Make a copy of the props. We might not need it, but it is a simpler flow.
+    _props = props.copy()
+
+    if not imp:
+        # The normal flow
+        params = signature(target).parameters
+        if 'children' in params:
+          _props['children'] = children
+        result = target(**_props)
+    else:
+        # Try without children, if it fails, try again with
+        try:
+            result = target(**props)
+        except TypeError as e:
+            # MicroPython seems to have different behavior for positional
+            # and keyword parameters, so try both. We keep the CPython
+            # approach so we can test from CPython.
+            if e1 in str(e) or e2 in str(e):
+                _props['children'] = children
+                result = target(**_props)
+            else:
+                raise e
+    return result
 
 def _as_component(node, components):
   def component(value):
     def reveal():
-      props = node['props'].copy()
-      params = inspect.signature(value).parameters
-      if 'children' in params:
-        props['children'] = node['children']
-
-      result = value(**props)
+      result = get_component_value(node.props, value, node['children'])
       _replaceWith(node, _as_node(result))
 
     components.append(reveal)
