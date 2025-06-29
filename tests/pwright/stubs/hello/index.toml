@@ -1,0 +1,10 @@
+interpreter = "https://koxudaxi.github.io/pyodide/tstrings/micropython.mjs"
+
+packages = ["pytest"]
+
+[files]
+"../../../../src/tdom/__init__.py" = "./tdom/__init__.py"
+"../../../../src/tdom/dom.py" = "./tdom/dom.py"
+"../../../../src/tdom/parser.py" = "./tdom/parser.py"
+"../../../../src/tdom/utils.py" = "./tdom/utils.py"
+"./index.py" = "./index.py"
