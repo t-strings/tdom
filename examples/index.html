@@ -7,12 +7,12 @@
   <script type="module">
     import 'https://esm.run/polyscript';
     const mpy = document.querySelector('script[type="mpy"]');
-    mpy.setAttribute('version', new URL('./micropython.mjs', location));
+    mpy.setAttribute('version', new URL('./static/micropython.mjs', location));
     mpy.type = 'micropython';
   </script>
 </head>
 <body>
-    <script type="mpy" config="./config.toml">
+    <script type="mpy" config="./static/config.toml">
     from js import document
     from demo import main
 
