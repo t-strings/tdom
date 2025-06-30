@@ -12,8 +12,7 @@ from playwright.sync_api import Page
 from playwright.sync_api import Route
 
 ROOT = Path(__file__).parent.parent.parent
-MICROPYTHON_ROOT = ROOT / "public"
-STUBS = ROOT / "tests" / "pwright" / "stubs"
+# STUBS = ROOT / "tests" / "pwright" / "stubs"
 
 @dataclass
 class DummyResponse:
@@ -77,16 +76,7 @@ def route_handler(page: Page, route: Route) -> None:
         # We should read something from the filesystem
         headers = dict()
         this_path = this_url.path[1:]
-        if this_path.startswith("src"):
-            # Load relative to the src directory
-            this_fs_path = ROOT / this_path
-        elif this_path.endswith("micropython.mjs"):
-            this_fs_path = MICROPYTHON_ROOT / "micropython.mjs"
-        elif this_path.endswith("micropython.wasm"):
-            this_fs_path = MICROPYTHON_ROOT / "micropython.wasm"
-        else:
-            # This should be under tests/stubs
-            this_fs_path = STUBS / this_path
+        this_fs_path = ROOT / this_path
         if this_fs_path.exists():
             status = 200
             mime_type = guess_type(this_fs_path)[0]
@@ -119,5 +109,5 @@ def fake_page(page: Page) -> Page:  # pragma: no cover
     page.route("**", _route_handler)
 
     # Don't spend 30 seconds on timeout
-    page.set_default_timeout(35000)
+    page.set_default_timeout(5000)
     return page

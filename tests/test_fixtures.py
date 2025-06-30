@@ -1,11 +1,9 @@
 """Ensure the test fixtures work as expected."""
 from typing import cast
 
-import pytest
 from playwright.sync_api import Page
 from playwright.sync_api import Route
 
-from tdom.fixtures import STUBS
 from tdom.fixtures import DummyPage
 from tdom.fixtures import DummyRequest
 from tdom.fixtures import DummyResponse
@@ -37,23 +35,6 @@ def test_dummy_route() -> None:
     )
     assert dummy_route.body == b"dummy body"
     assert dummy_route.headers["Content-Type"] == "text/html"  # type: ignore
-
-
-def test_route_handler_fake_good_path() -> None:
-    """Fake points at a good path in ``examples``."""
-    # We are testing the interceptor because the hostname is "fake".
-    dummy_request = DummyRequest(url="http://localhost:8000/static/vite.svg")
-    dummy_page = DummyPage(request=dummy_request)
-    dummy_route = DummyRoute(request=dummy_request)
-    route_handler(
-        cast(Page, dummy_page),
-        cast(Route, dummy_route),
-    )
-    if dummy_route.body:
-        assert dummy_route.status == "200"
-        with open(STUBS / "vite.svg", "rb") as f:
-            body = f.read()
-            assert dummy_route.body == body
 
 
 def test_route_handler_non_fake() -> None:

@@ -6,3 +6,5 @@
 "./src/tdom/dom.py" = "tdom/dom.py"
 "./src/tdom/parser.py" = "tdom/parser.py"
 "./src/tdom/utils.py" = "tdom/utils.py"
+
+"./examples/__init__.py" = "examples/__init__.py"
