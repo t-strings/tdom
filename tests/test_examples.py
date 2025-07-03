@@ -1,5 +1,4 @@
 """Confirm the MicroPython example builder works."""
-import pytest
 
 from examples.webapp import main, get_story_data
 from examples.static_string import string_literal

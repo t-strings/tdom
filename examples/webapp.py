@@ -56,7 +56,7 @@ def render_story(example):
     heading = html(t'<h2>{example["docstring"]}</h2>')
     docstring = html(t'<p><em>{example["docstring"]}</em></p>')
     editor = html(t'<div class="editor"></div>')
-    result = html(t'<div class="column"><h2>Result</h2><div class="result">{example["result"]}</div></div>')
+    result = html(t'<div class="column"><h2>Result</h2><div class="result" title="Result">{example["result"]}</div></div>')
     onclick = f'runCode("{module_path}")'
     re_run = html(t'<div class="row"><button class="run-code">Re-run</button></div>')
     return html(t'<section id="{module_path}" title="{module_path}">{heading}{docstring}<div class="row">{editor}{result}</div>{re_run}</section>')
