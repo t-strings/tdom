@@ -248,6 +248,16 @@ get the correct pytest includes/excludes.)
 
 You can manually run the Playwright tests locally with `uv add --dev pytest-playwright` then `uv run pytest tests/pwright`.
 
+## The Examples Web App and MicroPython
+
+
+- A local copy of MicroPython and libraries
+- Purposes
+  - A useful public playground
+  - Smooth local dev experience, especially for MicroPython
+  - Comprehensive automated tests, especially for MicroPython
+  - Good examples for documentation
+
 ## Supporters
 
 `tdom` is an independent open source project, started by Andrea Giammarchi. His time, though, has generously been 
