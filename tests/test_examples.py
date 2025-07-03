@@ -1,11 +1,13 @@
 """Confirm the MicroPython example builder works."""
+import pytest
 
-from examples import main, get_story_data, Story
+from examples.webapp import main, get_story_data
 from examples.static_string import string_literal
 
 def test_get_story_data():
     story = get_story_data(string_literal)
-    assert story["path"].endswith("__init__.py")
+    assert story["module_path"] == "examples.static_string.string_literal"
+    assert story["file_path"].endswith("__init__.py")
     assert story["docstring"] == string_literal.__doc__
     assert "def main" in story["code"]
     assert story["result"] == "Hello World"

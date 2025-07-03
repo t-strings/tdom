@@ -5,61 +5,84 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MicroPython t-string</title>
     <link rel="icon" type="image/x-icon" href="static/favicon.ico">
-    <script type="module">
-        import './static/polyscript/index.js';
-
-        const mpy = document.querySelector('script[type="mpy"]');
-        mpy.setAttribute('version', new URL('./static/micropython.mjs', location));
-        mpy.type = 'micropython';
-    </script>
     <style>
-.row {
-  display: flex;
-}
+        .row {
+            display: flex;
+        }
 
-.column, .editor {
-  flex: 50%;
-}
+        .column, .editor {
+            flex: 50%;
+        }
     </style>
 </head>
 <body>
 <div>Status: <span id="loader">Starting</span></div>
 <div id="output" title="Example Output"></div>
-<script type="mpy" config="./config.toml">
+<script type="mpy" config="./config.toml" async>
     from js import document, cm6, DOMParser
-    from examples import main
+
+    from examples.webapp import main
 
     loader = document.getElementById("loader")
     output = document.getElementById("output")
     loader.textContent = "Loading"
     try:
         stories = main()
+        loader.textContent = "Loaded"
+
         for story in stories:
-            loader.textContent = "Loaded"
-            story_path = story["path"]
-            new_example = document.createElement("div", {"id": story_path})
+            module_path = story["module_path"]
+            new_example = document.createElement("div")
             new_example.innerHTML = story["rendered"]
             output.append(new_example)
 
-            # Grab the newly inserted example and initialize it as an editor
+            # Make the node into an editor
+            div_editor = new_example.querySelector(".editor")
             initialState = cm6.createEditorState(story["code"])
-            target_query = f"section[title='{story_path}'] div.editor"
-            target = document.querySelector(target_query)
-            view = cm6.createEditorView(initialState, target);
+            view = cm6.createEditorView(initialState, div_editor);
+
+            # Attach an event handler with closure information
+            def runThisCode():
+                # Use a closure to get these variables into an event handler
+                this_story = story
+                this_example = new_example
+                this_editor = view
+                this_module_path = story["module_path"]
+                # Get a selector pointing to the correct result output
+                selector = f'section[title="{module_path}"] div.result'
+                def _runThisCode(event):
+                    this_code = this_editor.state.doc.toString()
+                    this_addendum = f'''\
+from js import document
+result = str(main())
+target = document.querySelector('{selector}')
+target.innerHTML = result;
+    '''
+                    exec(this_code + this_addendum)
+
+                return _runThisCode
+
+            new_example.querySelector("button").addEventListener("click", runThisCode(), False);
+
     except IndexError as e:
         loader.textContent = str(e)
 </script>
-<script src="./static/cmd6.bundle.js"></script>
 <script>
-    // Create an initial state for the view
-
-    // const initialState = cm6.createEditorState("function foo() {\n    console.log(123);\n}");
-    // const view = cm6.createEditorView(initialState, document.getElementById("editor"));
-    //
-    // // Programmatically change editor contents
-    // console.log("Before:\n", view.state.doc.toString())
-    // view.dispatch({changes: {from: 0, insert: "// Programmatically add a comment to the first line\n"}})
-    // console.log("After:\n", view.state.doc.toString())
+    // This shouldn't be needed, but the "addendum" part above claims to update
+    // the div.result innerHTML but the browser doesn't show it.
+    window.updateResult = (selector, result) => {
+        const target = document.querySelector(selector);
+        target.innerHTML = result;
+    }
 </script>
+<script type="module">
+    import './static/polyscript/index.js';
+
+    const mpy = document.querySelector('script[type="mpy"]');
+    mpy.setAttribute('version', new URL('./static/micropython.mjs', location));
+    mpy.type = 'micropython';
+</script>
+<script src="./static/cmd6.bundle.js"></script>
+<script type="module" src="./main.js"></script>
 </body>
 </html>

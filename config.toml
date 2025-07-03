@@ -6,6 +6,7 @@
 "./src/tdom/parser.py" = "tdom/parser.py"
 "./src/tdom/utils.py" = "tdom/utils.py"
 
+"./examples/webapp.py" = "examples/webapp.py"
 "./examples/__init__.py" = "examples/__init__.py"
 "./examples/static_string/string_literal/__init__.py" = "static_string/string_literal/__init__.py"
 "./examples/static_string/simple_render/__init__.py" = "static_string/simple_render/__init__.py"
