@@ -1,6 +1,5 @@
 """Use Playwright to test examples in MicroPython in a browser."""
 
-import pytest
 from playwright.sync_api import Page
 
 

@@ -1,18 +1,18 @@
 """Automate some testing."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from dataclasses import field
+from dataclasses import dataclass, field
 from mimetypes import guess_type
 from pathlib import Path
 from urllib.parse import urlparse
 
 import pytest
-from playwright.sync_api import Page
-from playwright.sync_api import Route
+from playwright.sync_api import Page, Route
 
 ROOT = Path(__file__).parent.parent.parent
 # STUBS = ROOT / "tests" / "pwright" / "stubs"
+
 
 @dataclass
 class DummyResponse:
@@ -71,7 +71,9 @@ class DummyPage:
 def route_handler(page: Page, route: Route) -> None:
     """Called from the interceptor to get the data off of the disk."""
     this_url = urlparse(route.request.url)
-    is_fake = (this_url.hostname == "localhost") and (this_url.port == 8000)  # this_url.path.startswith("/fake/")
+    is_fake = (this_url.hostname == "localhost") and (
+        this_url.port == 8000
+    )  # this_url.path.startswith("/fake/")
     if is_fake:
         # We should read something from the filesystem
         headers = dict()
@@ -96,6 +98,7 @@ def route_handler(page: Page, route: Route) -> None:
 
     route.fulfill(body=body, headers=headers, status=status)
 
+
 @pytest.fixture
 def fake_page(page: Page) -> Page:  # pragma: no cover
     """On the fake server, intercept and return from fs."""
@@ -111,3 +114,40 @@ def fake_page(page: Page) -> Page:  # pragma: no cover
     # Don't spend 30 seconds on timeout
     page.set_default_timeout(5000)
     return page
+
+
+@pytest.fixture
+def assert_no_console_errors(page):
+    """If Chromium/Playwright has a console error, throw a pytest failure."""
+    errors = []
+
+    def on_console(msg):
+        # ConsoleMessage methods: type(), text(), location(), args(), etc.
+        # We only collect console messages of type "error"
+        if msg.type == "error":
+            errors.append(("console", msg.text, msg.location))
+
+    def on_page_error(exc):
+        # JS exceptions surfaced via "pageerror"
+        errors.append(("pageerror", str(exc), None))
+
+    page.on("console", on_console)
+    page.on("pageerror", on_page_error)
+    try:
+        yield
+    finally:
+        page.remove_listener("console", on_console)
+        page.remove_listener("pageerror", on_page_error)
+        if errors:
+            formatted = []
+            for kind, text, loc in errors:
+                loc_str = ""
+                if loc and isinstance(loc, dict):
+                    file = loc.get("url") or loc.get("source", "")
+                    line = loc.get("lineNumber")
+                    col = loc.get("columnNumber")
+                    loc_str = f" at {file}:{line}:{col}"
+                formatted.append(f"[{kind}] {text}{loc_str}")
+            import pytest as _pytest
+
+            _pytest.fail("Console errors detected:\n" + "\n".join(formatted))
