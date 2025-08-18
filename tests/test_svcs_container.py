@@ -22,59 +22,46 @@ and a per-request container. This shows some patterns along the way:
 Note that none of this requires any changes to `tdom` beyond passing down
 a container.
 """
+
 from dataclasses import dataclass
 
-import pytest
 from svcs import Container, Registry
 
-from tdom import html
-from tdom.decorators import injectable
+from conftest import URL, Greeting
+
 
 @dataclass
-class Greeting:
-    """A factory registered with this app at startup time."""
-    salutation: str = "Hello"
+class Welcome:
+    """A factory to say hello to a URL path."""
+
+    container: Container
+
+    def __call__(self) -> str:
+        greeting = self.container.get(Greeting)
+        url = self.container.get(URL)
+        result = f"{greeting.salutation}, {url.path} !!"
+        return result
 
 
-@pytest.fixture
-def app_registry(registry: Registry) -> None:
-    """This app registers some factories at startup."""
-    registry.register_factory(Greeting, Greeting)
+def test_get_welcome(registry: Registry, container: Container) -> None:
+    registry.register_factory(Welcome, Welcome)
+    _welcome = container.get(Welcome)
+    result = _welcome()
+    assert result == "Hello, /foo !!"
 
-@injectable()
-def Header1(container: Container, name: str):
-    """Expect a container to be injected along with a prop from the usage."""
-    greeting = container.get(Greeting)
-    return html(t"<div>{greeting.salutation} {name}</div>")
 
-# def test_inject_container(app_registry: Registry, this_container: Container):
-#     result = html(t'<{Header1} name="World"/>', container=this_container)
-#     assert "<div>HelloWorld</div>" == str(result)
+def test_override_greeting(registry: Registry, container: Container) -> None:
+    """This site has a different Greeting."""
 
-# @injectable(after=[])
-# def Header2(container: Container, name: str):
-#     """The decorator has empty middleware for the component return value. """
-#     greeting = container.get(Greeting)
-#     return html(t"<div>{greeting.salutation} {name}</div>")
-#
-# def test_empty_after_middleware(app_registry: Registry, this_container: Container):
-#     result = html(t'<{Header2} name="World"/>', container=this_container)
-#     assert "<div>HelloWorld</div>" == str(result)
-#
-# def spanify1(node: Node) -> Node:
-#     """Convert any divs to spans."""
-#     x = 1
-#     return node
-#
-#
-# @injectable(after=(spanify1,))
-# def Header3(container: Container, name: str):
-#     """The decorator has after middleware for the component return value. """
-#     greeting = container.get(Greeting)
-#     return html(t"<div>{greeting.salutation} {name}</div>")
-#
-#
-# def test_after_middleware(app_registry: Registry, this_container: Container):
-#     result = html(t'<{Header3} name="World"/>', container=this_container)
-#     assert "<div>HelloWorld</div>" == str(result)
-#
+    @dataclass
+    class FrenchGreeting(Greeting):
+        salutation: str = "Bonjour"
+
+    # Supply a different implementation of Greeting
+    registry.register_factory(Greeting, FrenchGreeting)
+
+    # Now get the welcome
+    registry.register_factory(Welcome, Welcome)
+    _welcome = container.get(Welcome)
+    result = _welcome()
+    assert result == "Bonjour, /foo !!"
