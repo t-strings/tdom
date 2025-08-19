@@ -28,7 +28,14 @@ def get_component_value(props, target, children, container, imp=_IS_MICRO_PYTHON
             _props["children"] = children
         if "container" in params:
             _props["container"] = container
-        result = target(**_props)
+            # Use the container to get the target if appropriate
+            _target = container.get(target, None)
+            if _target is not None:
+                result = _target(**props)
+            else:
+                result = target(**props)
+        else:
+            result = target(**_props)
     else:
         # Try without children, if it fails, try again with
         try:

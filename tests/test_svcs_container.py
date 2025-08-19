@@ -23,11 +23,18 @@ Note that none of this requires any changes to `tdom` beyond passing down
 a container.
 """
 
+import sys
 from dataclasses import dataclass
 
+import pytest
 from svcs import Container, Registry
 
 from conftest import URL, Greeting
+
+
+@pytest.fixture
+def current_module():
+    return sys.modules[__name__]
 
 
 @dataclass
