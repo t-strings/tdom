@@ -29,9 +29,8 @@ def registry() -> Registry:
 
 
 @pytest.fixture
-def scanner(registry: Registry) -> Scanner:
+def scanner(registry: Registry, current_module) -> Scanner:
     _scanner = Scanner(registry=registry)
-    current_module = sys.modules[__name__]
     _scanner.scan(current_module)
     return _scanner
 

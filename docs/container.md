@@ -50,6 +50,7 @@ This container support currently has only a few places for pluggability.
   - Later these could all come from the container, which is even easier/more flexible than having to override
 - This implementation shows passing in middleware to affect the output
 - Access to the registry and then container
+- Use of optional "for_" to allow replaceability
 
 TODO
 - A site can override a system component via the registry (see `get_component_value` for the lookup)

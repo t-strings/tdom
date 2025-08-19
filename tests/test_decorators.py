@@ -1,6 +1,10 @@
 """Ensure all the decorator policies work as advertised."""
 
+import sys
 from dataclasses import dataclass
+
+import pytest
+from venusian import Scanner
 
 from conftest import Greeting
 from tdom import html
@@ -8,8 +12,13 @@ from tdom.decorators import injectable
 from svcs import Registry, Container
 
 
+@pytest.fixture
+def current_module():
+    return sys.modules[__name__]
+
+
 @injectable()
-def Header01(container: Container, name: str):
+def FunctionHeader(container: Container, name: str):
     """Expect a container to be injected along with a prop from the usage."""
     greeting = container.get(Greeting)
     salutation = greeting.salutation
@@ -19,13 +28,13 @@ def Header01(container: Container, name: str):
 def test_scan_test_function(container: Container):
     """Make sure Venusian looks in the current module."""
 
-    result = html(t'<div><{Header01} name="World"/></div>', container=container)
+    result = html(t'<div><{FunctionHeader} name="World"/></div>', container=container)
     assert str(result) == "<div><span>Hello</span>: World</div>"
 
 
 @injectable()
 @dataclass
-class Header02:
+class ClassHeader:
     container: Container
     name: str
 
@@ -35,30 +44,56 @@ class Header02:
         return html(t"<span>{salutation}</span>: {self.name}")
 
 
-def test_scan_test_dataclass(container: Container):
+def test_scan_test_dataclass(scanner: Scanner, container: Container):
     """Make sure Venusian can make a class as well as a function."""
 
-    result = html(t'<div><{Header02} name="World"/></div>', container=container)
+    result = html(t'<div><{ClassHeader} name="World"/></div>', container=container)
     assert str(result) == "<div><span>Hello</span>: World</div>"
 
 
-def test_override_registered_components(registry: Registry, container: Container):
-    """Header02 ships with "the system" but this site has a new one."""
+@injectable()
+@dataclass
+class ClassFooter:
+    container: Container
+    name: str
 
-    @dataclass
-    class FrenchHeader02:
-        container: Container
-        name: str
+    def __call__(self):
+        return html(t"<footer>Bonjour</footer>: {self.name}")
 
-        def __call__(self):
-            return html(t"<span>Bonjour</span>: {self.name}")
+
+# @injectable(for_=ClassFooter)
+@dataclass
+class FrenchClassFooter:
+    container: Container
+    name: str
+
+    def __call__(self):
+        return html(t"<footer>Bonjour</span>: {self.name}")
+
+
+def test_override_registered_components(container: Container):
+    """ClassFooter ships with "the system" but this site has a new one."""
 
     # This is where the "site" would have registered some overrides, for
     # example, in a Sphinx conf.py
-    registry.register_factory(Header02, FrenchHeader02)
+    x = 1
 
-    result = html(t'<div><{Header02} name="World"/></div>', container=container)
-    assert str(result) == "<div><span>Bonjour</span>: World</div>"
+    #
+    # I keep getting a registry without the registrations in this module.
+    # Need to make the current_module and scan explicit. Possibly look at
+    # Hopscotch to see how to register stuff local to each test *function*.
+    result = html(t"<div><{ClassFooter}/></div>", container=container)
+    # assert str(result) == "<div><footer>Bonjour</footer>: World</div>"
+
+
+# def test_import_construction(scanner: Scanner):
+#     import_time = injectable(after=tuple())
+#     assert import_time.__class__ is injectable
+#     assert import_time.after == tuple()
+#     import_time.venusian_callback(scanner, "ClassHeader", ClassHeader)
+#     assert import_time.param_names == ["container", "name"]
+#     wrapped = import_time(ClassHeader)
+#     assert wrapped
 
 
 # def test_inject_container(app_registry: Registry, this_container: Container):
