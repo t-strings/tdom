@@ -20,7 +20,7 @@ try:
         # Make the node into an editor
         div_editor = new_example.querySelector(".editor")
         initialState = cm6.createEditorState(story["code"])
-        view = cm6.createEditorView(initialState, div_editor);
+        view = cm6.createEditorView(initialState, div_editor)
 
         # Attach an event handler with closure information
         def runThisCode():
@@ -31,19 +31,21 @@ try:
             this_module_path = story["module_path"]
             # Get a selector pointing to the correct result output
             selector = f'section[title="{module_path}"] div.result'
+
             def _runThisCode(event):
                 this_code = this_editor.state.doc.toString()
-                this_addendum = f'''\
+                this_addendum = f"""\
 from js import document
 result = str(main())
 target = document.querySelector('{selector}')
 target.innerHTML = result;
-'''
+"""
                 exec(this_code + this_addendum)
 
             return _runThisCode
 
-        new_example.querySelector("button").addEventListener("click", runThisCode(), False);
-
+        new_example.querySelector("button").addEventListener(
+            "click", runThisCode(), False
+        )
 except IndexError as e:
     loader.textContent = str(e)

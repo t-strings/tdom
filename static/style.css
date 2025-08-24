@@ -1,0 +1,7 @@
+.row {
+    display: flex;
+}
+
+.column, .editor {
+    flex: 50%;
+}

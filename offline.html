@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PyScript Offline</title>
+    <link rel="icon" type="image/x-icon" href="static/favicon.ico">
+  <script type="module" src="static/pyscript/core.js"></script>
+    <style>
+        .row {
+            display: flex;
+        }
+
+        .column, .editor {
+            flex: 50%;
+        }
+    </style>
+</head>
+<body>
+  <mpy-config>
+    interpreter = "static/micropython.mjs"
+  </mpy-config>
+  <script type="mpy">
+    from pyscript import document
+
+    document.body.append("Hello from PyScript")
+  </script>
+</body>
+</html>
