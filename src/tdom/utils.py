@@ -31,9 +31,9 @@ def get_component_value(props, target, children, container, imp=_IS_MICRO_PYTHON
             # Use the container to get the target if appropriate
             _target = container.get(target, None)
             if _target is not None:
-                result = _target(**props)
+                result = _target(**_props)
             else:
-                result = target(**props)
+                result = target(**_props)
         else:
             result = target(**_props)
     else:
