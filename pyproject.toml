@@ -44,6 +44,9 @@ markupsafe = { git = "https://github.com/pauleveritt/markupsafe.git", branch = "
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "examples"]
+markers = [
+    "integration: mark tests as integration tests"
+]
 
 [project.urls]
 Homepage = "https://t-strings.github.io/tdom/"

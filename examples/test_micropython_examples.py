@@ -1,9 +1,11 @@
 """Use Playwright to test examples in MicroPython in a browser."""
 
+import pytest
 from playwright.sync_api import Page
 
 
 # Use `PWDEBUG=1` to run "headful" in the Playwright test app
+@pytest.mark.integration
 def test_static_string(fake_page: Page, assert_no_console_errors):
     url = "http://localhost:8000/index.html"
     fake_page.goto(url)
