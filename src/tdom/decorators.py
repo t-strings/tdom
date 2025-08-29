@@ -98,6 +98,6 @@ class injectable:
             """Basically a lambda."""
             self.venusian_callback(scanner, name, ob)
 
-        attach(_wrapped, _venusian_callback)
+        attach(wrapped, _venusian_callback)
 
         return wrapped

@@ -1,8 +1,18 @@
 from types import GeneratorType
+
+from .dom import (
+    _IS_MICRO_PYTHON,
+    COMMENT,
+    ELEMENT,
+    FRAGMENT,
+    Fragment,
+    Node,
+    Text,
+    _appendChildren,
+    _replaceWith,
+)
+from .dom import parse as domify
 from .parser import _instrument, _prefix
-from .dom import Fragment, Node, Text
-from .dom import COMMENT, ELEMENT, FRAGMENT
-from .dom import _IS_MICRO_PYTHON, _appendChildren, _replaceWith, parse as domify
 
 if not _IS_MICRO_PYTHON:
     from inspect import signature
@@ -18,26 +28,34 @@ def get_component_value(props, target, children, container, imp=_IS_MICRO_PYTHON
     e1 = "required positional argument: 'children'"
     e2 = "function takes 1 positional arguments but 0 were given"
 
-    # Make a copy of the props. We might not need it, but it is a simpler flow.
+    # Make a copy of the props.
     _props = props.copy()
 
     if not imp:
-        # The normal flow
+        # We aren't in MicroPython so let's do the full sniffing
         params = signature(target).parameters
         if "children" in params:
             _props["children"] = children
         if "container" in params:
             _props["container"] = container
             # Use the container to get the target if appropriate
-            _target = container.get(target, None)
-            if _target is not None:
-                result = _target(**_props)
-            else:
-                result = target(**_props)
-        else:
-            result = target(**_props)
+            # try:
+            #     _target = container.get(signature)
+            #     result = _target(container=container, **_props)
+            # except ServiceNotFoundError:
+            #     # Let's just use the original, it wasn't replaced in the
+            #     # container.
+        # if isinstance(container, Container):
+        #     result = target(container=container, **_props)
+        # else:
+        if hasattr(target, "__wrapped__"):
+            x = 1
+
+        result = target(**_props)
+        # else:
+        #     result = target(container=container, **_props)
     else:
-        # Try without children, if it fails, try again with
+        # We're in MicroPython. Try without children, if it fails, try again with
         try:
             result = target(**props)
         except TypeError as e:

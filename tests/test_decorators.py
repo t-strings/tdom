@@ -61,7 +61,7 @@ class ClassFooter:
         return html(t"<footer>Bonjour</footer>: {self.name}")
 
 
-# @injectable(for_=ClassFooter)
+@injectable(for_=ClassFooter)
 @dataclass
 class FrenchClassFooter:
     container: Container
@@ -71,19 +71,17 @@ class FrenchClassFooter:
         return html(t"<footer>Bonjour</span>: {self.name}")
 
 
-def test_override_registered_components(container: Container):
+def test_override_registered_components(scanner: Scanner, container: Container):
     """ClassFooter ships with "the system" but this site has a new one."""
 
     # This is where the "site" would have registered some overrides, for
     # example, in a Sphinx conf.py
-    x = 1
 
-    #
     # I keep getting a registry without the registrations in this module.
     # Need to make the current_module and scan explicit. Possibly look at
     # Hopscotch to see how to register stuff local to each test *function*.
-    result = html(t"<div><{ClassFooter}/></div>", container=container)
-    # assert str(result) == "<div><footer>Bonjour</footer>: World</div>"
+    result = html(t'<div><{ClassFooter} name="World"/></div>', container=container)
+    assert str(result) == "<div><footer>Bonjour</footer>: World</div>"
 
 
 # def test_import_construction(scanner: Scanner):
@@ -127,3 +125,13 @@ def test_override_registered_components(container: Container):
 #     result = html(t'<{Header3} name="World"/>', container=this_container)
 #     assert "<div>HelloWorld</div>" == str(result)
 #
+
+
+# def test_injectable_factory():
+#     registry = Registry()
+#     registry.register_factory(ClassFooter, FrenchClassFooter)
+#     container = Container(registry=registry)
+#     injectable_factory = InjectableFactory(container=container)
+#     props = {"name": "World"}
+#     result = injectable_factory(ClassFooter, **props)
+#     assert result == 99
