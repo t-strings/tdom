@@ -38,22 +38,7 @@ def get_component_value(props, target, children, container, imp=_IS_MICRO_PYTHON
             _props["children"] = children
         if "container" in params:
             _props["container"] = container
-            # Use the container to get the target if appropriate
-            # try:
-            #     _target = container.get(signature)
-            #     result = _target(container=container, **_props)
-            # except ServiceNotFoundError:
-            #     # Let's just use the original, it wasn't replaced in the
-            #     # container.
-        # if isinstance(container, Container):
-        #     result = target(container=container, **_props)
-        # else:
-        if hasattr(target, "__wrapped__"):
-            x = 1
-
         result = target(**_props)
-        # else:
-        #     result = target(container=container, **_props)
     else:
         # We're in MicroPython. Try without children, if it fails, try again with
         try:
