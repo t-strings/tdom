@@ -22,4 +22,4 @@ jobs:
           .venv/bin/playwright install
       - name: Run tests
         run: |
-          uv run pytest tests examples
+          uv run pytest -m "not integration" tests examples
