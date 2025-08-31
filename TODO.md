@@ -1,10 +1,13 @@
 # TODO
 
-Some items Paul leaves lying around as a faster (and less committed) version of tickets.
+Some items Paul leaves lying around as a faster (and less committed) version of
+tickets.
 
 ## Now
 
 - Beef up documentation (Why, CDD, interop)
+  - Unsafe
+  - MicroPython
 
 ## Next
 
@@ -23,5 +26,6 @@ Some items Paul leaves lying around as a faster (and less committed) version of 
 - Convert to single-file, no dependency to support vendor import
 - Example: middleware
 - Example: replacement
+- tdom-based Sphinx theme
 
 ## Done
