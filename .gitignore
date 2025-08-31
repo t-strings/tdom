@@ -4,4 +4,5 @@ test-results/
 node_modules/
 docs/_build
 public/tdom
-micropython
+package.json
+package-lock.json
