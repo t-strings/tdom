@@ -11,7 +11,6 @@ import pytest
 from playwright.sync_api import Page, Route
 
 ROOT = Path(__file__).parent.parent.parent
-# STUBS = ROOT / "tests" / "pwright" / "stubs"
 
 
 @dataclass
