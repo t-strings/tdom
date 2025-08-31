@@ -248,6 +248,61 @@ get the correct pytest includes/excludes.)
 
 You can manually run the Playwright tests locally with `uv add --dev pytest-playwright` then `uv run pytest tests/pwright`.
 
+## The Examples Web App and MicroPython
+
+`tdom` targets MicroPython. This makes it easy to deploy examples -- just run them in the browser!
+
+Since this repo has a bunch of examples in `examples/*`, we are providing a serverless web app that can browse 
+the examples. To use it, just fire up a server in the root `tdom` directory:
+
+```shell
+$ python -m http.server 8099
+```
+
+...and go to `http://localhost:8099/index.html`. Or in PyCharm, right-click the `index.html` and choose `Run` to 
+get a reloading server.
+
+You can then edit the example, click `Run`, and see the output.
+
+### Uses
+
+- Public in-browser playground for `tdom` use cases
+- Smooth local development experience for `tdom` itself to target MicroPython first
+- Pre-configured, local-only, serverless `pytest-playwright` web app to ensure `tdom` works with 
+the examples, in MicroPython
+
+### How it works
+
+First, everything that is needed for the web app -- `micropython.mjs`, Polyscript, CodeMirror -- is 
+copied locally into the `static` directory. We do this primarily for test-execution speed.
+
+The `index.html` is at the root because the Polyscript `config.toml` needs to copy all the example 
+files into to WASM FS. It can't copy files from the outside of its root, such as `src/tdom/*`. 
+This HTML page also loads in static assets, pulls in MicroPython, then executes `webapp.py`. This 
+grabs all the examples, extracts what's needed, and executes the results. This Python file knows 
+nothing about a browser or MicroPython: it can be tested under normal pytest.
+
+The `webapp_browser.py` file glues the results into the webpage. First, by making a new `<section>` 
+for each example, with a CodeMirror editor created and a `Run` button configured. When you click 
+`Run`, an event handler grabs the new code, uses `exec` to get a result, and updates the result 
+output.
+
+In general, you can fire up a server, load the browser, and start editing examples or original 
+source. A reload will show you if the examples succeeded. Over time we can add in conveniences, 
+for example to show errors.
+
+Note: If you make a new example or change any paths, you have a number of places to update; Sphinx, 
+`config.toml`, `examples/webapp.py`, etc.
+
+### MicroPython tests
+
+This web app also serves as the basis for a fast test suite using `pytest-playwright`. Thanks to 
+`src/tdom/fixtures.py`, a server isn't needed. Instead, a network interceptor is used to get the 
+files off the disk directly.
+
+At the moment the tests are somewhat brittle. When something goes wrong, it can be confusing to 
+find the answer. Over time we can make this more resilient and less magical.
+
 ## Supporters
 
 `tdom` is an independent open source project, started by Andrea Giammarchi. His time, though, has generously been 

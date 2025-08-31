@@ -13,7 +13,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 requires-python = ">=3.14"
-dependencies = ["dill>=0.4.0"]
+dependencies = []
 
 
 [build-system]
@@ -30,6 +30,8 @@ dev = [
     "sphinx",
     "jinja2",
     "markupsafe",
+    "pytest-playwright>=0.7.0",
+    "ruff>=0.12.0",
 ]
 
 [tool.uv.sources]
@@ -38,6 +40,9 @@ markupsafe = { git = "https://github.com/pauleveritt/markupsafe.git", branch = "
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "examples"]
+markers = [
+    "integration: mark tests as integration tests"
+]
 
 [project.urls]
 Homepage = "https://t-strings.github.io/tdom/"

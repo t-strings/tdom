@@ -1,4 +1,4 @@
-"""Cover the examples in Andrea's demo."""
+"""Test some of the HTML processing features."""
 
 from tdom import html, svg, unsafe
 
@@ -92,17 +92,17 @@ def test_unsafe():
     # First, a usage without wrapping in unsafe
     span = "<span>Hello World</span>"
     result1 = html(t"<div>{span}</div>")
-    assert str(result1) == '<div>&lt;span&gt;Hello World&lt;/span&gt;</div>'
+    assert str(result1) == "<div>&lt;span&gt;Hello World&lt;/span&gt;</div>"
 
     # Now wrap it in unsafe and it isn't escaped
     result2 = html(t"<div>{unsafe(span)}</div>")
-    assert str(result2) == '<div><span>Hello World</span></div>'
+    assert str(result2) == "<div><span>Hello World</span></div>"
 
 
 def test_component():
     """Render a t-string that references a component."""
 
-    def Component(a:str, b:int, children:list):
+    def Component(a: str, b: int, children: list):
         return html(
             t"""
                 <div a={a} b={b}>
@@ -125,7 +125,7 @@ def test_component():
 def test_component_without_children():
     """Render a t-string that references a component."""
 
-    def Component(a:str, b:int):
+    def Component(a: str, b: int):
         return html(
             t"""
                 <div a={a} b={b} />
@@ -156,3 +156,49 @@ def test_lists_within_layout():
     assert "<li>John</li>" in str(result)
     assert "<li>Jane</li>" in str(result)
     assert "<li>Jill</li>" in str(result)
+
+
+def test_no_context():
+    """Default behavior when no context is provided."""
+    result = html(t"Hello World")
+    assert "Hello World" == str(result)
+
+
+def test_empty_context():
+    """Default behavior when no context is provided but None."""
+    request_context = {}
+    result = html(t"Hello World", context=request_context)
+    assert "Hello World" == str(result)
+
+
+def test_component_no_context():
+    """A component that does not ask for a context."""
+
+    def Header():
+        return html(t"Hello World")
+
+    result = html(t"<{Header}/>")
+    assert "Hello World" == str(result)
+
+
+def test_component_not_ask_context():
+    """A component does not ask for a context."""
+
+    def Header():
+        return html(t"Hello World")
+
+    request_context = {}
+    result = html(t"<{Header}/>", context=request_context)
+    assert "Hello World" == str(result)
+
+
+def test_component_asks_context():
+    """A component asks for a context."""
+
+    def Header(context):
+        label = context["label"]
+        return html(t"Hello {label}")
+
+    request_context = {"label": "World"}
+    result = html(t"<{Header}/>", context=request_context)
+    assert "Hello World" == str(result)

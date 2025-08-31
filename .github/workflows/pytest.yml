@@ -19,6 +19,7 @@ jobs:
           python3.14 -m pip install --upgrade pip setuptools
           python3.14 -m venv $HOME/venv-python3.14
           uv sync
+          .venv/bin/playwright install
       - name: Run tests
         run: |
-          uv run pytest tests examples
+          uv run pytest -m "not integration" tests examples
