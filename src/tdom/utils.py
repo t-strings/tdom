@@ -22,7 +22,7 @@ def _as_comment(node):
     return lambda value: _replaceWith(node, _as_node(value))
 
 
-def get_component_value(props, target, children, container, imp=_IS_MICRO_PYTHON):
+def get_component_value(props, target, children, context, imp=_IS_MICRO_PYTHON):
     """Sniff out the args, call the target, return the value."""
 
     e1 = "required positional argument: 'children'"
@@ -36,8 +36,8 @@ def get_component_value(props, target, children, container, imp=_IS_MICRO_PYTHON
         params = signature(target).parameters
         if "children" in params:
             _props["children"] = children
-        if "container" in params:
-            _props["container"] = container
+        if "context" in params:
+            _props["context"] = context
         result = target(**_props)
     else:
         # We're in MicroPython. Try without children, if it fails, try again with
@@ -55,10 +55,10 @@ def get_component_value(props, target, children, container, imp=_IS_MICRO_PYTHON
     return result
 
 
-def _as_component(node, components, container):
+def _as_component(node, components, context):
     def component(value):
         def reveal():
-            result = get_component_value(node.props, value, node["children"], container)
+            result = get_component_value(node.props, value, node["children"], context)
             _replaceWith(node, _as_node(result))
 
         components.append(reveal)
@@ -164,8 +164,8 @@ class _Comment:
 
 
 class _Component:
-    def __call__(self, node, updates, container=None):
-        return _as_component(node, updates, container)
+    def __call__(self, node, updates, context=None):
+        return _as_component(node, updates, context)
 
 
 class _Update:

@@ -19,7 +19,7 @@ _listeners = []
 
 
 def _util(svg):
-    def fn(t, container: dict = None):
+    def fn(t, context: dict = None):
         if not isinstance(t, Template):
             raise ValueError("Argument is not a Template instance")
 
@@ -52,7 +52,7 @@ def _util(svg):
             elif isinstance(update.value, _Comment):
                 changes.append(update.value(child))
             else:
-                changes.append(update.value(child, changes, container))
+                changes.append(update.value(child, changes, context))
 
         for i in range(length):
             changes[i](values[i])
