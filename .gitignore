@@ -3,3 +3,6 @@ env/
 test-results/
 node_modules/
 docs/_build
+public/tdom
+package.json
+package-lock.json

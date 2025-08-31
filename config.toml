@@ -1,0 +1,20 @@
+[files]
+"./static/html.py" = "html.py"
+"./static/types.py" = "types.py"
+"./src/tdom/__init__.py" = "tdom/__init__.py"
+"./src/tdom/dom.py" = "tdom/dom.py"
+"./src/tdom/parser.py" = "tdom/parser.py"
+"./src/tdom/utils.py" = "tdom/utils.py"
+
+"./examples/webapp.py" = "examples/webapp.py"
+"./examples/__init__.py" = "examples/__init__.py"
+"./examples/static_string/string_literal/__init__.py" = "examples/static_string/string_literal/__init__.py"
+"./examples/static_string/simple_render/__init__.py" = "examples/static_string/simple_render/__init__.py"
+"./examples/static_string/show_vdom/__init__.py" = "examples/static_string/show_vdom/__init__.py"
+"./examples/static_string/expressions_as_values/__init__.py" = "examples/static_string/expressions_as_values/__init__.py"
+"./examples/static_string/shorthand_syntax/__init__.py" = "examples/static_string/shorthand_syntax/__init__.py"
+"./examples/static_string/child_nodes/__init__.py" = "examples/static_string/child_nodes/__init__.py"
+"./examples/static_string/doctype/__init__.py" = "examples/static_string/doctype/__init__.py"
+"./examples/static_string/boolean_attribute_value/__init__.py" = "examples/static_string/boolean_attribute_value/__init__.py"
+
+
