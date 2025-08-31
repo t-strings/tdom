@@ -1,6 +1,5 @@
 """Test an example."""
 
-import pytest
 
 from . import main
 
