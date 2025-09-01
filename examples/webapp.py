@@ -14,8 +14,8 @@ from examples.static_string import (
     boolean_attribute_value,
 )
 
-from tdom import html, unsafe
-from tdom import _IS_MICRO_PYTHON
+from tdom.micropython import html, unsafe
+from tdom.micropython import _IS_MICRO_PYTHON
 
 if _IS_MICRO_PYTHON:
     TypedDict = dict
