@@ -110,27 +110,20 @@ class Element(Node):
     def __str__(self):
         xml = self["xml"]
         name = self["name"]
-        html = f"<{name}"
-        for key, value in self["props"].items():
-            if value is not None:
-                if isinstance(value, bool):
-                    if value:
-                        html += f' {key}=""' if xml else f" {key}"
-                else:
-                    html += f' {key}="{escape(str(value))}"'
-        if len(self["children"]) > 0:
-            html += ">"
+        props = self["props"]
+        children = self["children"]
+        attrs = _serialize_attributes(props, xml)
+        if len(children) > 0:
+            html = f"<{name}{attrs}>"
             just_text = not xml and name.lower() in TEXT_ELEMENTS
-            for child in self["children"]:
+            for child in children:
                 html += child["data"] if just_text else str(child)
             html += f"</{name}>"
-        elif xml:
-            html += " />"
-        else:
-            html += ">"
-            if name.lower() not in VOID_ELEMENTS:
-                html += "</" + name + ">"
-        return html
+            return html
+        # empty element rendering
+        if xml:
+            return _render_empty_xml_tag(name, attrs)
+        return _render_empty_html_tag(name, attrs)
 
 
 class Fragment(Node):
@@ -355,6 +348,36 @@ def unsafe(value):
 
 
 # DOM: End
+
+# Serialization helpers
+
+
+def _serialize_attributes(props: dict, xml: bool) -> str:
+    attrs = ""
+    for key, value in props.items():
+        if value is None or value is False:
+            continue
+        if isinstance(value, bool):
+            # boolean attributes: empty value only for XML, collapsed for HTML
+            attrs += f' {key}=""' if xml else f" {key}"
+        else:
+            if isinstance(value, Unsafe):
+                attrs += f' {key}="{value}"'
+            else:
+                attrs += f' {key}="{escape(str(value))}"'
+    return attrs
+
+
+def _render_empty_xml_tag(name: str, attrs: str) -> str:
+    return f"<{name}{attrs} />"
+
+
+def _render_empty_html_tag(name: str, attrs: str) -> str:
+    # For HTML, void elements do not include a closing slash; non-void have explicit closing tag
+    if name.lower() in VOID_ELEMENTS:
+        return f"<{name}{attrs}>"
+    return f"<{name}{attrs}></{name}>"
+
 
 ## Parser: Start
 
@@ -598,7 +621,7 @@ _listeners = []
 
 
 def _util(svg):
-    def fn(t, context: dict = None):
+    def fn(t, context: dict | None = None):
         if not isinstance(t, Template):
             raise ValueError("Argument is not a Template instance")
 
