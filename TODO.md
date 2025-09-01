@@ -8,6 +8,8 @@ tickets.
 - Beef up documentation (Why, CDD, interop)
   - Unsafe
   - MicroPython
+  - Context
+  - Type hinting
 
 ## Next
 
@@ -17,7 +19,6 @@ tickets.
 
 ## Soon
 
-- Wire up middleware as in test_basic_middleware
 - Redo examples to single-file with tests in tests
 - Put the component factory as the one possibly expected item in context
 
@@ -25,7 +26,9 @@ tickets.
 
 - Convert to single-file, no dependency to support vendor import
 - Example: middleware
-- Example: replacement
+  - a Helmet-style example
+  - Responsive-style image updating
+- Example: replacement and container-style ChainMap
 - tdom-based Sphinx theme
 
 ## Done

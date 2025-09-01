@@ -1,4 +1,4 @@
-# tdom - WIP
+# tdom
 
 A 🔥 t-string (aka PEP 750) HTML templating system for upcoming Python 3.14 for
 both server-side rendering and frontend.
@@ -82,15 +82,14 @@ the examples serve several uses:
 - Pre-configured, local-only, serverless `pytest-playwright` web app to ensure
   `tdom` works with the examples, in MicroPython
 
-## Features + Quick walk through
+## Features + quick walk through
 
-The current _SSR_ implementation offers three major features that can be split
-into these categories:
+The HTML and SVG support in `tdom` can be split into these categories:
 
-- **[attributes](#attributes)**, meant as HTML/SVG nodes attributes
-- **[content](content)**, meant as HTML/SVG elements or fragments possibilities
-- **[components](components)**, meant as classes or functions that return some
-  _content_ after being instantiated/invoked
+- **attributes**, meant as HTML/SVG nodes attributes
+- **content**, meant as HTML/SVG elements or fragments possibilities
+- **components**, meant as classes or functions that return some _content_ after
+  being instantiated/invoked
 
 ### Attributes
 
@@ -143,7 +142,7 @@ example:
 <div class={some_class(runtime)}></div>
 ```
 
-#### Special Attributes
+### Special Attributes
 
 Some HTML attributes might not need a value to be significant, and for these
 special cases a **boolean** hint would be enough to see it rendered or not. The
@@ -234,10 +233,22 @@ contains any previously mentioned value, or a component.
 
 ### Components
 
-Differently from functions found as interpolation value within the content, a
-component is a function, or a class, that will be invoked, or instantiated with
-two arguments, `props` and `children`, but it requires to be present right after
-an opening `<` char, otherwise it won't receive any value:
+`tdom` provides a JSX-like, HTML-oriented syntax for reusable components. On the
+calling side, it looks like this:
+
+```html
+<body>
+    <{Header} name={this_name}><span>Children</span></>
+</body>
+```
+
+- The component _symbol_ appears after the leading `<` and is wrapped in `{}` as
+  a t-string interpolation
+- The HTML attributes (static and dynamic) are passed as "props"
+- Children are available for use as the variable `children`
+
+The "component" is a callable: a function or a class (or dataclass.) Here is an
+example of a function-based component:
 
 ```python
 def MyComponent(a:int, b:int, children:list):
@@ -266,10 +277,47 @@ The output that will result is:
 </div>
 ```
 
-where all `children` will be passed along already resolved and all `props` will
-contain every "_attribute_" defined at the component level: _props_ is just a
-special _dictionary_ that allows both `props.x` and `props['x']` ways to read
-its own values.
+The function is provided the HTML attributes as `**kwargs`. Also, the `html()`
+function, when calling, checks the component to see if its signature wants any
+"special" props from the system:
+
+- `children` is the list of `Node` objects provided inside the element
+- `context` is the optional dict passed into the HTML constructor, down the
+  calling chain (discussed below)
+
+Components can also be defined as classes:
+
+```python
+@dataclass
+class Component:
+    a: str
+    b: int
+    children: list
+
+    def __call__(self):
+        return html(
+            t"""
+                <div a={self.a} b={self.b}>
+                    {self.children}
+                </div>
+            """
+        )
+```
+
+Nothing changes in the usage. Behind the scenes, the `html()` function first
+creates an instance with the requested props. It then calls and returns
+`__call__`.
+
+Class-based components can be useful when you want different/custom HTML
+representations with the same usage contract.
+
+Components can use `**kwargs` with the special `data` and `aria` syntax
+described above:
+
+```python
+def MyComponent(**kwargs):
+    return html(t"<div data={kwargs}></div>")
+```
 
 ### A note about special syntax
 
@@ -281,6 +329,41 @@ The `@` attribute for events is also not standard, but it helps explicitly
 distinguish between what could be an actual _JS_ content for a real `onclick`,
 as opposite of being something "_magic_" that needs to be orchestrated @ the
 _Python_ level.
+
+### Context
+
+We'd like an extensible system. In fact, we'd like the extensibility to be
+extensible, allowing the core to be simple and basic. We'd also like to avoid
+"prop-drilling", where basic data such as configuration has to be passed down
+the component tree.
+
+As such, `tdom` supports calling the `html` function with an optional dict-like
+`context` argument. For example:
+
+```python
+def Header(context):
+    label = context["label"]
+    return html(t"Hello {label}")
+
+
+request = {"label": "World"}
+result = html(t"<{Header}/>", context=request)
+assert "Hello World" == str(result)
+```
+
+This `context` is passed down the entire calling tree, including into components
+whose signature asks for it. It is unopinionated: add-on frameworks can
+introduce their own things to go in the context. In fact, frameworks can make
+the extra `html` argument hidden behind their own conventions.
+
+Because it is per-render, you can write into objects in the context. For
+example, subcomponents can add stylesheets that should ultimately go into the
+`<head>` at final render time.
+
+This context support currently has only a few places for pluggability of the
+`html()` function itself:
+
+- Components can ask for the `context` in their arguments (like `children`)
 
 ## Supporters
 
