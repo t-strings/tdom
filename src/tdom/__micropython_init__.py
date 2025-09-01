@@ -1,7 +1,6 @@
 """Used by MicroPython to remap imports from tdom.py to micropython.py"""
 
 from .micropython import (
-    _IS_MICRO_PYTHON,
     COMMENT,
     DOCUMENT_TYPE,
     ELEMENT,
@@ -32,7 +31,6 @@ __all__ = [
     "Node",
     "TEXT",
     "Text",
-    "_IS_MICRO_PYTHON",
     "html",
     "parse",
     "render",

@@ -3,6 +3,8 @@
 This is run in the browser, in MicroPython.
 """
 
+import sys
+
 from examples.static_string import (
     string_literal,
     simple_render,
@@ -15,7 +17,8 @@ from examples.static_string import (
 )
 
 from tdom.micropython import html, unsafe
-from tdom.micropython import _IS_MICRO_PYTHON
+
+_IS_MICRO_PYTHON = "MicroPython" in sys.version
 
 if _IS_MICRO_PYTHON:
     TypedDict = dict
