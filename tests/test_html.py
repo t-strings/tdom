@@ -60,6 +60,27 @@ def test_void_siblings():
     assert str(result) == "<p></p><hr><p></p>"
 
 
+def test_boolean_true():
+    """Collapse boolean attributes for true."""
+    is_hidden = True
+    result = html(t"<div hidden={is_hidden} />")
+    assert str(result) == "<div hidden></div>"
+
+
+def test_boolean_false():
+    """Collapse boolean attributes for false and remove the attribute."""
+    is_hidden = False
+    result = html(t"<div hidden={is_hidden} />")
+    assert str(result) == "<div></div>"
+
+
+def test_fstring_attribute_value():
+    """Allow an interpolation to have an f-string attribute value."""
+    name = "World"
+    result = html(t"<div class={f'Hello {name}'}></div>")
+    assert str(result) == '<div class="Hello World"></div>'
+
+
 def test_dev_comments():
     """Developer comments."""
     result = html(t"<!--#1--><!--#2#--><!--##--><!--3#-->")
@@ -99,8 +120,25 @@ def test_unsafe():
     assert str(result2) == "<div><span>Hello World</span></div>"
 
 
-def test_component():
-    """Render a t-string that references a component."""
+def test_lists_within_layout():
+    """A template in a template."""
+
+    names = ["John", "Jane", "Jill"]
+    result = html(
+        t"""
+            <ul>
+                {[html(t"<li>{name}</li>") for name in names]}
+            </ul>
+        """
+    )
+
+    assert "<li>John</li>" in str(result)
+    assert "<li>Jane</li>" in str(result)
+    assert "<li>Jill</li>" in str(result)
+
+
+def test_function_component():
+    """Render a t-string that references a component defined as a function."""
 
     def Component(a: str, b: int, children: list):
         return html(
@@ -110,6 +148,37 @@ def test_component():
                 </div>
             """
         )
+
+    result = html(
+        t"""
+            <{Component} a="1" b={2}>
+                <p>Hello Components!</p>
+            <//>
+        """
+    )
+
+    assert "<p>Hello Components!</p>" in str(result)
+
+
+def test_class_component():
+    """Render a t-string that references a component as a class."""
+
+    from dataclasses import dataclass
+
+    @dataclass
+    class Component:
+        a: str
+        b: int
+        children: list
+
+        def __call__(self):
+            return html(
+                t"""
+                    <div a={self.a} b={self.b}>
+                        {self.children}
+                    </div>
+                """
+            )
 
     result = html(
         t"""
@@ -139,23 +208,6 @@ def test_component_without_children():
     )
 
     assert '<div a="1" b="2"></div>' in str(result)
-
-
-def test_lists_within_layout():
-    """A template in a template."""
-
-    names = ["John", "Jane", "Jill"]
-    result = html(
-        t"""
-            <ul>
-                {[html(t"<li>{name}</li>") for name in names]}
-            </ul>
-        """
-    )
-
-    assert "<li>John</li>" in str(result)
-    assert "<li>Jane</li>" in str(result)
-    assert "<li>Jill</li>" in str(result)
 
 
 def test_no_context():
@@ -202,3 +254,18 @@ def test_component_asks_context():
     request_context = {"label": "World"}
     result = html(t"<{Header}/>", context=request_context)
     assert "Hello World" == str(result)
+
+
+def test_data_spread():
+    """Ask for kwargs and allow special spread syntax."""
+
+    def MyComponent(**kwargs):
+        return html(t"<div data={kwargs}></div>")
+
+    result = html(t"""
+      <{MyComponent} a="1" b={2}>
+        <p>first element {"child"}</p>
+        <p c={3}>second element child</p>
+      </>
+    """)
+    assert '<div data-a="1" data-b="2"></div>' == str(result)
