@@ -142,7 +142,7 @@ example:
 <div class={some_class(runtime)}></div>
 ```
 
-### Special Attributes
+### Special attributes
 
 Some HTML attributes might not need a value to be significant, and for these
 special cases a **boolean** hint would be enough to see it rendered or not. The
@@ -364,6 +364,27 @@ This context support currently has only a few places for pluggability of the
 `html()` function itself:
 
 - Components can ask for the `context` in their arguments (like `children`)
+
+### Unsafe
+
+Templates need a way to escape HTML from untrusted sources to mitigate injection
+attacks. [MarkupSafe](https://markupsafe.palletsprojects.com/en/stable/) is a
+popular choice for this. But `tdom` has a goal to run in the browser, under
+MicroPython, and possibly as a single-file package with no dependencies.
+
+For this, `tdom` supplies a helper function to flag unsafe processing of text:
+
+```python
+from tdom import html, unsafe
+# First, a usage without wrapping in unsafe
+span = "<span>Hello World</span>"
+result1 = html(t"<div>{span}</div>")
+assert str(result1) == "<div>&lt;span&gt;Hello World&lt;/span&gt;</div>"
+
+# Now wrap it in unsafe and it isn't escaped
+result2 = html(t"<div>{unsafe(span)}</div>")
+assert str(result2) == "<div><span>Hello World</span></div>"
+```
 
 ## Supporters
 
