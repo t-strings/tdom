@@ -5,17 +5,12 @@ tickets.
 
 ## Now
 
-- Beef up documentation (Why, CDD, interop)
-  - Unsafe
-  - MicroPython
-  - Context
-  - Type hinting
+- Make a new implementation for MicroPython
 
 ## Next
 
-- Fix the micropython render problem
 - Context examples
-- Make a new implementation for MicroPython
+- Fix the micropython render problem
 
 ## Soon
 
@@ -32,3 +27,8 @@ tickets.
 - tdom-based Sphinx theme
 
 ## Done
+
+- Beef up documentation (Why, CDD, interop)
+  - Unsafe
+  - MicroPython
+  - Context
