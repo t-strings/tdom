@@ -1,20 +1,12 @@
 """A single-file implementation of tdom that targets MicroPython."""
 
 import re
-import sys
 from html import escape
 from random import random
 from string.templatelib import Template
 from types import GeneratorType
 
-
 # DOM: Start
-
-_IS_MICRO_PYTHON = "MicroPython" in sys.version
-if not _IS_MICRO_PYTHON:
-    from inspect import signature  # noqa: F401
-
-
 _prefix = "t🐍" + str(random())[2:5]
 _data = f"<!--{_prefix}-->"
 
@@ -188,168 +180,102 @@ def _replaceWith(current, node):
     current.parent = None
 
 
-if _IS_MICRO_PYTHON:
-    import re
+ATTRIBUTES = re.compile(r'([^\s=]+)(=(([\'"])[\s\S]*?\4|\S+))?')
+NAME_CHAR = re.compile(r"[^/>\s]")
 
-    ATTRIBUTES = re.compile(r'([^\s=]+)(=(([\'"])[\s\S]*?\4|\S+))?')
-    NAME_CHAR = re.compile(r"[^/>\s]")
 
-    class Unsafe(str):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
+class Unsafe(str):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
 
-    def _attributes(props, attrs):
-        while match := ATTRIBUTES.match(attrs.strip()):
-            key = match.group(1)
-            equal = match.group(2)
-            if equal:
-                value = match.group(3)
-                # somehow MicroPython doesn't support match.group(4) for quoted values
-                if (
-                    value
-                    and value[0] == value[-1]
-                    and (value[0] == '"' or value[0] == "'")
-                ):
-                    value = value[1:-1]
-                props[key] = value
-                i = attrs.index(equal) + len(equal)
-            else:
-                props[key] = True
-                i = attrs.index(key) + len(key)
 
-            attrs = attrs[i:]
+def _attributes(props, attrs):
+    while match := ATTRIBUTES.match(attrs.strip()):
+        key = match.group(1)
+        equal = match.group(2)
+        if equal:
+            value = match.group(3)
+            # somehow MicroPython doesn't support match.group(4) for quoted values
+            if value and value[0] == value[-1] and (value[0] == '"' or value[0] == "'"):
+                value = value[1:-1]
+            props[key] = value
+            i = attrs.index(equal) + len(equal)
+        else:
+            props[key] = True
+            i = attrs.index(key) + len(key)
 
-    def _text(node, content, ts, te):
-        if ts < te:
-            data = content[ts:te]
-            if data.strip():
-                _append(node, Text(data))
+        attrs = attrs[i:]
 
-    def parse(content, xml=False):
-        node = Fragment()
-        length = len(content)
-        i = 0
-        ts = 0
-        te = 0
-        while i < length:
-            i += 1
-            if content[i - 1] == "<":
-                if content[i] == "/":
-                    _text(node, content, ts, te)
-                    ts = te = i = content.index(">", i + 1) + 1
-                    node = node.parent
-                    continue
 
-                if content[i] == "!":
-                    _text(node, content, ts, te)
-                    if content[i + 1 : i + 3] == "--":
-                        j = content.index("-->", i + 3)
-                        data = content[i + 3 : j]
-                        if not (data.startswith("#") and data.endswith("#")):
-                            _append(node, Comment(data))
-                        i = j + 3
-                    else:
-                        j = content.index(">", i + 1)
-                        _append(node, DocumentType(content[i + 1 : j]))
-                        i = j + 1
-                    ts = te = i
-                    continue
+def _text(node, content, ts, te):
+    if ts < te:
+        data = content[ts:te]
+        if data.strip():
+            _append(node, Text(data))
 
-                j = i
-                while j < length and NAME_CHAR.match(content[j]):
-                    j += 1
 
+def parse(content, xml=False):
+    node = Fragment()
+    length = len(content)
+    i = 0
+    ts = 0
+    te = 0
+    while i < length:
+        i += 1
+        if content[i - 1] == "<":
+            if content[i] == "/":
+                _text(node, content, ts, te)
+                ts = te = i = content.index(">", i + 1) + 1
+                node = node.parent
+                continue
+
+            if content[i] == "!":
+                _text(node, content, ts, te)
+                if content[i + 1 : i + 3] == "--":
+                    j = content.index("-->", i + 3)
+                    data = content[i + 3 : j]
+                    if not (data.startswith("#") and data.endswith("#")):
+                        _append(node, Comment(data))
+                    i = j + 3
+                else:
+                    j = content.index(">", i + 1)
+                    _append(node, DocumentType(content[i + 1 : j]))
+                    i = j + 1
+                ts = te = i
+                continue
+
+            j = i
+            while j < length and NAME_CHAR.match(content[j]):
+                j += 1
+
+            if i < j:
+                _text(node, content, ts, te)
+                name = content[i:j]
+                element = Element(name, xml)
+                _append(node, element)
+
+                not_void = not xml and name.lower() not in VOID_ELEMENTS
+                if not_void:
+                    node = element
+
+                i = j
+                j = content.index(">", i)
+                closing = content[j - 1] == "/"
+                if closing:
+                    j -= 1
                 if i < j:
-                    _text(node, content, ts, te)
-                    name = content[i:j]
-                    element = Element(name, xml)
-                    _append(node, element)
-
-                    not_void = not xml and name.lower() not in VOID_ELEMENTS
+                    _attributes(node["props"], content[i:j])
+                if closing:
+                    j += 1
                     if not_void:
-                        node = element
+                        node = node.parent
+                ts = te = i = j + 1
+                continue
 
-                    i = j
-                    j = content.index(">", i)
-                    closing = content[j - 1] == "/"
-                    if closing:
-                        j -= 1
-                    if i < j:
-                        _attributes(node["props"], content[i:j])
-                    if closing:
-                        j += 1
-                        if not_void:
-                            node = node.parent
-                    ts = te = i = j + 1
-                    continue
+        te += 1
 
-            te += 1
-
-        _text(node, content, ts, te)
-        return node
-
-else:
-    from html.parser import HTMLParser
-
-    class Unsafe(str):
-        def __new__(cls, value, *args, **kwargs):
-            return super().__new__(cls, value)
-
-    class DOMParser(HTMLParser):
-        def __init__(self, xml=False):
-            super().__init__()
-            self.xml = xml
-            self.node = Fragment()
-
-        def handle_starttag(self, tag, attrs):
-            element = Element(tag, self.xml)
-            _append(self.node, element)
-
-            if not self.xml and tag.lower() not in VOID_ELEMENTS:
-                self.node = element
-
-            props = element["props"]
-            for name, value in attrs:
-                props[name] = value
-
-        def handle_endtag(self, tag):
-            if not self.xml and tag.lower() not in VOID_ELEMENTS:
-                parent = self.node.parent
-                if parent:
-                    self.node = parent
-
-        def handle_data(self, data):
-            # this is needed to handle sparse interpolations
-            # within <style> or <script> tags where this parser
-            # won't allow children nodes and it passes all as data
-            text = data.split(_data)
-            for i in range(len(text) - 1):
-                # empty nodes are ignored
-                if len(text[i].strip()) > 0:
-                    _append(self.node, Text(text[i]))
-                # the comment node though is needed to handle updates
-                _append(self.node, Comment(_prefix))
-
-            # same applies for the last node
-            if len(text[-1].strip()) > 0:
-                _append(self.node, Text(text[-1]))
-
-        def handle_comment(self, data):
-            if data == "/":
-                self.handle_endtag(self.node["name"])
-            elif not (data.startswith("#") and data.endswith("#")):
-                _append(self.node, Comment(data))
-
-        def handle_decl(self, data):
-            _append(self.node, DocumentType(data))
-
-        def unknown_decl(self, data):
-            raise Exception(f"Unknown declaration: {data}")
-
-    def parse(content, xml=False):
-        parser = DOMParser(xml)
-        parser.feed(content)
-        return parser.node
+    _text(node, content, ts, te)
+    return node
 
 
 def unsafe(value):
@@ -423,36 +349,27 @@ def _as_comment(node):
     return lambda value: _replaceWith(node, _as_node(value))
 
 
-def get_component_value(props, target, children, context, imp=_IS_MICRO_PYTHON):
+def get_component_value(props, target, children, context):
     """Sniff out the args, call the target, return the value."""
 
     e1 = "required positional argument: 'children'"
     e2 = "function takes 1 positional arguments but 0 were given"
+    # TODO Add MicroPython support for children, context, or children AND context
+    # e3 = "required positional argument: 'context'"
 
     # Make a copy of the props.
     _props = props.copy()
-
-    if not imp:
-        # We aren't in MicroPython so let's do the full sniffing
-        params = signature(target).parameters
-        if "children" in params:
+    try:
+        result = target(**props)
+    except TypeError as e:
+        # MicroPython seems to have different behavior for positional
+        # and keyword parameters, so try both. We keep the CPython
+        # approach so we can test from CPython.
+        if e1 in str(e) or e2 in str(e):
             _props["children"] = children
-        if "context" in params:
-            _props["context"] = context
-        result = target(**_props)
-    else:
-        # We're in MicroPython. Try without children, if it fails, try again with
-        try:
-            result = target(**props)
-        except TypeError as e:
-            # MicroPython seems to have different behavior for positional
-            # and keyword parameters, so try both. We keep the CPython
-            # approach so we can test from CPython.
-            if e1 in str(e) or e2 in str(e):
-                _props["children"] = children
-                result = target(**_props)
-            else:
-                raise e
+            result = target(**_props)
+        else:
+            raise e
     return result
 
 
@@ -475,7 +392,7 @@ def _as_node(value):
         _appendChildren(node, value)
         return node
     if callable(value):
-        # TODO: this could be a hook pleace for asyncio
+        # TODO: this could be a hook place for asyncio
         #       and run to completion before continuing
         return _as_node(value())
     return Text(value)

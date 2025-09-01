@@ -1,5 +1,4 @@
 from .tdom import (
-    _IS_MICRO_PYTHON,
     COMMENT,
     DOCUMENT_TYPE,
     ELEMENT,
@@ -30,7 +29,6 @@ __all__ = [
     "Node",
     "TEXT",
     "Text",
-    "_IS_MICRO_PYTHON",
     "html",
     "parse",
     "render",
