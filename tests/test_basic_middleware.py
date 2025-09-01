@@ -9,6 +9,7 @@ transformations:
 - Stashing extra props and processing in middleware
 - Post-processing middleware at the end
 """
+
 import pytest
 
 from tdom import html, Text, Node, Element
@@ -18,6 +19,7 @@ def test_no_middleware():
     """Default behavior, no changes."""
     result = html(t"<div>Hello World</div>")
     assert "<div>Hello World</div>" == str(result)
+
 
 def test_change_text_case():
     """Middleware that finds all text values and changes to uppercase."""
@@ -40,6 +42,7 @@ def test_change_text_case():
 
 def test_simple_prefix_href():
     """Find all nodes with any href and add a prefix."""
+
     def prefix_href(node: Node) -> Node:
         prefix = "/public"
         for child in node.children:
@@ -54,8 +57,10 @@ def test_simple_prefix_href():
     result = prefix_href(result_node)
     assert '<div><a href="/public/posts/1.html">First Post</a></div>' == str(result)
 
+
 def test_enforce_auth():
     """Find all image nodes without an auth and raise an exception."""
+
     def prefix_href(node: Node) -> Node:
         for child in node.children:
             if isinstance(child, Element) and child.name == "img":
@@ -68,9 +73,11 @@ def test_enforce_auth():
     with pytest.raises(ValueError):
         prefix_href(result_node)
 
+
 def test_custom_props():
     """Components can stash data for use by middleware."""
     from datetime import datetime
+
     def render_time(node: Node) -> Node:
         """Stash the datetime when a node was rendered."""
         now = datetime.now()
@@ -79,10 +86,12 @@ def test_custom_props():
             node.props["tc"] = {}
         node.props["tc"]["render_time"] = now
         return node
+
     before = datetime.now()
-    result_node = html(t'<div>Hello World</div>')
+    result_node = html(t"<div>Hello World</div>")
     result = render_time(result_node)
     assert before < result.props["tc"]["render_time"]
+
 
 def test_defer_str():
     """Perhaps some middleware should run as late as possible."""
@@ -101,8 +110,9 @@ def test_defer_str():
 
     # Now monkey-patch the __str__ with a lambda that will be
     # called later. It applies the final middleware.
-    # NOTE: This is a dumb way to do it, would be better in dom.py
+    # NOTE: This is a dumb way to do it, would be better in tdom.py
     final_middlewares = (remove_tc,)
+
     def process_final_middlewares(node: Node) -> Node:
         """Run all the after-processing middleware"""
         [this_middleware(node) for this_middleware in final_middlewares]
@@ -118,6 +128,7 @@ def test_defer_str():
 
     # Some component middleware, same as before.
     from datetime import datetime
+
     def render_time(node: Node) -> Node:
         """Stash the datetime when a node was rendered."""
         now = datetime.now()
@@ -126,7 +137,8 @@ def test_defer_str():
             node.props["tc"] = {}
         node.props["tc"]["render_time"] = now
         return node
-    result_node = html(t'<div>Hello World</div>')
+
+    result_node = html(t"<div>Hello World</div>")
     result = render_time(result_node)
 
     # It's time to stringify the response. Process all the final
@@ -137,4 +149,3 @@ def test_defer_str():
 
     # un-monkey-patch Element
     Element.__str__ = original_str
-

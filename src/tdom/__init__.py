@@ -1,94 +1,39 @@
-from .utils import _Attribute, _Comment, _parse
-from .dom import COMMENT, DOCUMENT_TYPE, TEXT, ELEMENT, FRAGMENT
-from .dom import (
-    Node,
+from .tdom import (
+    _IS_MICRO_PYTHON,
+    COMMENT,
+    DOCUMENT_TYPE,
+    ELEMENT,
+    FRAGMENT,
+    TEXT,
     Comment,
     DocumentType,
-    Text,
     Element,
     Fragment,
+    Node,
+    Text,
+    html,
     parse,
+    render,
+    svg,
     unsafe,
-    _clone,
 )
 
-from string.templatelib import Template
-
-_parsed = {}
-_listeners = []
-
-
-def _util(svg):
-    def fn(t, context: dict = None):
-        if not isinstance(t, Template):
-            raise ValueError("Argument is not a Template instance")
-
-        strings = t.strings
-
-        values = [entry.value for entry in t.interpolations]
-
-        length = len(values)
-
-        if strings not in _parsed:
-            _parsed[strings] = _parse(strings, length, svg)
-
-        content, updates = _parsed[strings]
-
-        node = _clone(content)
-        changes = []
-        path = None
-        child = None
-        i = 0
-
-        for update in updates:
-            if path != update.path:
-                path = update.path
-                child = node
-                for index in path:
-                    child = child["children"][index]
-
-            if isinstance(update.value, _Attribute):
-                changes.append(update.value(child, _listeners))
-            elif isinstance(update.value, _Comment):
-                changes.append(update.value(child))
-            else:
-                changes.append(update.value(child, changes, context))
-
-        for i in range(length):
-            changes[i](values[i])
-
-        for i in range(len(changes) - 1, length - 1, -1):
-            changes[i]()
-
-        return node
-
-    return fn
-
-
-def render(where, what):
-    result = where(what() if callable(what) else what, _listeners)
-    _listeners.clear()
-    return result
-
-
-html = _util(False)
-svg = _util(True)
-
 __all__ = [
-    "render",
-    "html",
-    "svg",
-    "parse",
-    "unsafe",
-    "Node",
-    "Comment",
-    "DocumentType",
-    "Text",
-    "Element",
-    "Fragment",
     "COMMENT",
+    "Comment",
     "DOCUMENT_TYPE",
-    "TEXT",
+    "DocumentType",
     "ELEMENT",
+    "Element",
     "FRAGMENT",
+    "Fragment",
+    "Node",
+    "TEXT",
+    "Text",
+    "_IS_MICRO_PYTHON",
+    "html",
+    "parse",
+    "render",
+    "svg",
+    "unsafe",
 ]

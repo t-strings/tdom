@@ -15,7 +15,7 @@ from examples.static_string import (
 )
 
 from tdom import html, unsafe
-from tdom.dom import _IS_MICRO_PYTHON
+from tdom import _IS_MICRO_PYTHON
 
 if _IS_MICRO_PYTHON:
     TypedDict = dict
