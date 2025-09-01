@@ -5,8 +5,6 @@ tickets.
 
 ## Now
 
-- Make a new implementation for MicroPython
-
 ## Next
 
 - Context examples
@@ -32,3 +30,4 @@ tickets.
   - Unsafe
   - MicroPython
   - Context
+- Make a new implementation for MicroPython
