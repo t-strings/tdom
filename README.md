@@ -1,7 +1,7 @@
 # tdom
 
 A 🔥 t-string (aka PEP 750) HTML templating system for upcoming Python 3.14 for
-both server-side rendering and frontend.
+both server-side rendering and frontend. No dependencies.
 
 [![PyPI](https://img.shields.io/pypi/v/tdom.svg)](https://pypi.org/project/tdom/)
 [![Tests](https://github.com/t-strings/tdom/actions/workflows/pytest.yml/badge.svg)](https://github.com/t-strings/tdom/actions/workflows/pytest.yml)
@@ -21,6 +21,12 @@ such as `uv`.
 $ pip install tdom
 ```
 
+## Single-file distribution
+
+Want a lightweight HTML templating engine without adding a dependency? `tdom`
+has no dependencies. But perhaps you don't want a dependency on `tdom`? Just
+copy `src/tdom/tdom.py` to your project, like a vendor import.
+
 ## MicroPython
 
 This project intends to provide good support for MicroPython. It doesn't yet
@@ -28,6 +34,11 @@ support t-strings directly, but Koudai has a
 [MicroPython fork](https://github.com/koxudaxi/micropython/tree/feature/pep750-template-strings)
 to build the `webassembly` variant. As a convenience, we have checked in the two
 build artifacts in this repo, under `static`.
+
+As such, we have the "main" implementation for CPython and Pyodide. But we also
+have `tdom.micropython` as a second implementation, also as a single-file
+distribution. The MicroPython version can't be as "fancy" as the main version.
+But we hope to keep most of the public interface.
 
 ## tdom development setup
 
@@ -165,13 +176,14 @@ because it allows automatically creating all related attributes with ease,
 without needing to repeat `aria-` prefix all over the place:
 
 ```html
+
 <div aria={{"role": "button", "describedby": uid}}>
-  <!-- some content -->
+<!-- some content -->
 </div>
 
 <!-- will result into -->
 <div role="button" aria-describedby="unique-id">
-  <!-- some content -->
+    <!-- some content -->
 </div>
 ```
 
@@ -180,13 +192,14 @@ Similarly, the **data** attribute helps add
 attributes to any node, without needing to repeat the `data-` prefix.
 
 ```html
+
 <div data={{"a": 1, "b": 2, "c": 3}}>
-  <!-- some content -->
+<!-- some content -->
 </div>
 
 <!-- will result into -->
 <div data-a="1" data-b="2" data-c="3">
-  <!-- some content -->
+    <!-- some content -->
 </div>
 ```
 
@@ -237,8 +250,9 @@ contains any previously mentioned value, or a component.
 calling side, it looks like this:
 
 ```html
+
 <body>
-    <{Header} name={this_name}><span>Children</span></>
+<{Header} name={this_name}><span>Children</span></>
 </body>
 ```
 
@@ -251,20 +265,21 @@ The "component" is a callable: a function or a class (or dataclass.) Here is an
 example of a function-based component:
 
 ```python
-def MyComponent(a:int, b:int, children:list):
-  # a == 1 and b == 2
-  # children == [<p />, <p />]
-  return html(t'<div data={props}>{children}</div>')
+def MyComponent(a: int, b: int, children: list):
+    # a == 1 and b == 2
+    # children == [<p />, <p />]
+    return html(t'<div data={props}>{children}</div>')
+
 
 print(
-  str(
-    html(t'''
+    str(
+        html(t'''
       <{MyComponent} a="1" b={2}>
         <p>first element {'child'}</p>
         <p c={3}>second element child</p>
       </>
     ''')
-  )
+    )
 )
 ```
 
@@ -376,6 +391,7 @@ For this, `tdom` supplies a helper function to flag unsafe processing of text:
 
 ```python
 from tdom import html, unsafe
+
 # First, a usage without wrapping in unsafe
 span = "<span>Hello World</span>"
 result1 = html(t"<div>{span}</div>")
