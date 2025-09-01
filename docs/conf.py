@@ -1,4 +1,5 @@
 """Sphinx configuration."""
+
 from datetime import datetime
 
 
@@ -15,3 +16,4 @@ html_theme = "furo"
 myst_enable_extensions = ["colon_fence"]
 linkcheck_allowed_redirects = {}
 html_title = "tdom"
+suppress_warnings = ["misc.highlighting_failure"]
