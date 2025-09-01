@@ -1,4 +1,6 @@
-from .tdom import (
+"""Used by MicroPython to remap imports from tdom.py to micropython.py"""
+
+from .micropython import (
     COMMENT,
     DOCUMENT_TYPE,
     ELEMENT,
