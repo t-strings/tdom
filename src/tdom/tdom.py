@@ -1,9 +1,16 @@
+import re
 import sys
 from html import escape
 from random import random
+from string.templatelib import Template
+from types import GeneratorType
 
+
+# DOM: Start
 
 _IS_MICRO_PYTHON = "MicroPython" in sys.version
+if not _IS_MICRO_PYTHON:
+    from inspect import signature  # noqa: F401
 
 
 _prefix = "t🐍" + str(random())[2:5]
@@ -345,3 +352,303 @@ else:
 
 def unsafe(value):
     return Unsafe(value)
+
+
+# DOM: End
+
+## Parser: Start
+
+_elements_pattern = re.compile(
+    "<(\x01|[a-zA-Z0-9]+[a-zA-Z0-9:._-]*)([^>]*?)(/?)>",
+)
+
+_attributes_pattern = re.compile(
+    r'([^\s\\>\'"=]+)\s*=\s*([\'"]?)' + "\x01",
+)
+
+_holes_pattern = re.compile(
+    "[\x01\x02]",
+)
+
+
+def _as_attribute(match):
+    return f"\x02={match.group(2)}{match.group(1)}"
+
+
+def _as_closing(name, xml, self_closing):
+    if len(self_closing) > 0:
+        if xml or name.lower() in VOID_ELEMENTS:
+            return " /"
+        else:
+            return f"></{name}"
+    return ""
+
+
+# \x01 Node.ELEMENT_NODE
+# \x02 Node.ATTRIBUTE_NODE
+
+
+def _instrument(template, xml):
+    def pin(match):
+        name = match.group(1)
+        if name == "\x01":
+            name = _prefix
+        attrs = match.group(2)
+        self_closing = match.group(3)
+        return f"<{name}{re.sub(_attributes_pattern, _as_attribute, attrs).rstrip()}{
+            _as_closing(name, xml, self_closing)
+        }>"
+
+    def point():
+        nonlocal i
+        i += 1
+        return _prefix + str(i - 1)
+
+    i = 0
+    return re.sub(
+        _holes_pattern,
+        lambda match: f"<!--{_prefix}-->" if match.group(0) == "\x01" else point(),
+        re.sub(
+            _elements_pattern, pin, "\x01".join(template).strip().replace("</>", "<//>")
+        ),
+    )
+
+
+## Parser: End
+
+
+def _as_comment(node):
+    return lambda value: _replaceWith(node, _as_node(value))
+
+
+def get_component_value(props, target, children, context, imp=_IS_MICRO_PYTHON):
+    """Sniff out the args, call the target, return the value."""
+
+    e1 = "required positional argument: 'children'"
+    e2 = "function takes 1 positional arguments but 0 were given"
+
+    # Make a copy of the props.
+    _props = props.copy()
+
+    if not imp:
+        # We aren't in MicroPython so let's do the full sniffing
+        params = signature(target).parameters
+        if "children" in params:
+            _props["children"] = children
+        if "context" in params:
+            _props["context"] = context
+        result = target(**_props)
+    else:
+        # We're in MicroPython. Try without children, if it fails, try again with
+        try:
+            result = target(**props)
+        except TypeError as e:
+            # MicroPython seems to have different behavior for positional
+            # and keyword parameters, so try both. We keep the CPython
+            # approach so we can test from CPython.
+            if e1 in str(e) or e2 in str(e):
+                _props["children"] = children
+                result = target(**_props)
+            else:
+                raise e
+    return result
+
+
+def _as_component(node, components, context):
+    def component(value):
+        def reveal():
+            result = get_component_value(node.props, value, node["children"], context)
+            _replaceWith(node, _as_node(result))
+
+        components.append(reveal)
+
+    return component
+
+
+def _as_node(value):
+    if isinstance(value, Node):
+        return value
+    if isinstance(value, (list, tuple, GeneratorType)):
+        node = Fragment()
+        _appendChildren(node, value)
+        return node
+    if callable(value):
+        # TODO: this could be a hook pleace for asyncio
+        #       and run to completion before continuing
+        return _as_node(value())
+    return Text(value)
+
+
+def _as_prop(node, name, listeners):
+    props = node["props"]
+
+    def aria(value):
+        for k, v in value.items():
+            lower = k.lower()
+            props[lower if lower == "role" else f"aria-{lower}"] = v
+
+    def attribute(value):
+        props[name] = value
+
+    def dataset(value):
+        for k, v in value.items():
+            props[f"data-{k.replace('_', '-')}"] = v
+
+    def listener(value):
+        if value in listeners:
+            i = listeners.index(value)
+        else:
+            i = len(listeners)
+            listeners.append(value)
+
+        props[name] = f"self.python_listeners?.[{i}](event)"
+
+    def style(value):
+        if isinstance(value, dict):
+            props["style"] = ";".join([f"{k}:{v}" for k, v in value.items()])
+        else:
+            props["style"] = value
+
+    if name[0] == "@":
+        name = "on" + name[1:].lower()
+        return listener
+    if name == "style":
+        return style
+    if name == "aria":
+        return aria
+    # TODO: find which other node has a `data` attribute
+    elif name == "data" and node["name"].lower() != "object":
+        return dataset
+    else:
+        return attribute
+
+
+def _set_updates(node, updates, path):
+    type = node["type"]
+    if type == ELEMENT:
+        if node["name"] == _prefix:
+            updates.append(_Update(path, _Component()))
+
+        remove = []
+        props = node["props"]
+        for key, name in props.items():
+            if key.startswith(_prefix):
+                remove.append(key)
+                updates.append(_Update(path, _Attribute(name)))
+
+        for key in remove:
+            del props[key]
+
+    if type == ELEMENT or type == FRAGMENT:
+        i = 0
+        for child in node["children"]:
+            _set_updates(child, updates, path + [i])
+            i += 1
+
+    elif type == COMMENT and node["data"] == _prefix:
+        updates.append(_Update(path, _Comment()))
+
+
+class _Attribute:
+    def __init__(self, name):
+        self.name = name
+
+    def __call__(self, node, listeners):
+        return _as_prop(node, self.name, listeners)
+
+
+class _Comment:
+    def __call__(self, node):
+        return _as_comment(node)
+
+
+class _Component:
+    def __call__(self, node, updates, context=None):
+        return _as_component(node, updates, context)
+
+
+class _Update:
+    def __init__(self, path, update):
+        self.path = path
+        self.value = update
+
+
+def _parse(template, length, svg):
+    updates = []
+    content = _instrument(template, svg)
+    fragment = parse(content, svg)
+
+    if len(fragment["children"]) == 1:
+        node = fragment["children"][0]
+        if node["type"] != ELEMENT or node["name"] != _prefix:
+            fragment = node
+
+    _set_updates(fragment, updates, [])
+
+    if len(updates) != length:
+        raise ValueError(f"{len(updates)} updates found, expected {length}")
+
+    return [fragment, updates]
+
+
+# Entry point: Start (this was in __init__.py)
+
+_parsed = {}
+_listeners = []
+
+
+def _util(svg):
+    def fn(t, context: dict = None):
+        if not isinstance(t, Template):
+            raise ValueError("Argument is not a Template instance")
+
+        strings = t.strings
+
+        values = [entry.value for entry in t.interpolations]
+
+        length = len(values)
+
+        if strings not in _parsed:
+            _parsed[strings] = _parse(strings, length, svg)
+
+        content, updates = _parsed[strings]
+
+        node = _clone(content)
+        changes = []
+        path = None
+        child = None
+        i = 0
+
+        for update in updates:
+            if path != update.path:
+                path = update.path
+                child = node
+                for index in path:
+                    child = child["children"][index]
+
+            if isinstance(update.value, _Attribute):
+                changes.append(update.value(child, _listeners))
+            elif isinstance(update.value, _Comment):
+                changes.append(update.value(child))
+            else:
+                changes.append(update.value(child, changes, context))
+
+        for i in range(length):
+            changes[i](values[i])
+
+        for i in range(len(changes) - 1, length - 1, -1):
+            changes[i]()
+
+        return node
+
+    return fn
+
+
+def render(where, what):
+    result = where(what() if callable(what) else what, _listeners)
+    _listeners.clear()
+    return result
+
+
+html = _util(False)
+svg = _util(True)

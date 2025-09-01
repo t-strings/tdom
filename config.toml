@@ -1,10 +1,7 @@
 [files]
 "./static/html.py" = "html.py"
 "./static/types.py" = "types.py"
-"./src/tdom/__init__.py" = "tdom/__init__.py"
-"./src/tdom/dom.py" = "tdom/dom.py"
-"./src/tdom/parser.py" = "tdom/parser.py"
-"./src/tdom/utils.py" = "tdom/utils.py"
+"./src/tdom/tdom.py" = "tdom.py"
 
 "./examples/webapp.py" = "examples/webapp.py"
 "./examples/__init__.py" = "examples/__init__.py"

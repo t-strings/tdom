@@ -1,6 +1,6 @@
 from typing import Sequence
 
-from tdom.utils import get_component_value
+from tdom.tdom import get_component_value
 
 
 def test_props_and_target_no_children():
