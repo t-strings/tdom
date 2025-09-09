@@ -71,7 +71,7 @@ TODO: describe all the many many ways to express attribute values, including
 
 Let's look at what more nesting would look like:
 
-````python
+```python
 from tdom import Element, Text
 result = html(t"<div>Hello <span>World<em>!</em></span></div>")
 assert result == Element(
@@ -111,4 +111,7 @@ without a _value_:
 result = html(t"<div editable={True}>Hello World</div>")
 # <div editable>Hello World</div>
 ```
-````
+
+```
+
+```
