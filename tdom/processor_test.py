@@ -561,3 +561,13 @@ def test_component_passed_as_attr_value():
         str(node)
         == '<div id="comp1" data-first="1" data-second="99" class="wrapped">Component: <p>Inside wrapper</p></div>'
     )
+
+
+def test_nested_component_gh23():
+    # See https://github.com/t-strings/tdom/issues/23 for context
+    def Header():
+        return html(t"{'Hello World'}")
+
+    node = html(t"<{Header} />")
+    assert node == Text("Hello World")
+    assert str(node) == "Hello World"
