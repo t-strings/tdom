@@ -111,7 +111,3 @@ without a _value_:
 result = html(t"<div editable={True}>Hello World</div>")
 # <div editable>Hello World</div>
 ```
-
-```
-
-```
