@@ -4,33 +4,36 @@ In Python f-strings, the curly brackets can take not just variable names, but al
 
 The same is true in `tdom`.
 
-## Python Operation
-
-Let's use an expression which adds two numbers together:
-
-```{literalinclude} ../../examples/expressions/python_operation/__init__.py
----
-start-at: def main
----
-```
-
 ## Simple Arithmetic
 
 Let's use an expression which adds two numbers together:
 
-```{literalinclude} ../../examples/expressions/simple_arithmetic/__init__.py
----
-start-at: def main
----
+```python
+result = html(t"<div>{1 + 3}</div>")
+# <div>4</div>
+```
+
+## Python Operation
+
+Just like with f-strings, you can use any valid Python expression inside the
+curly braces:
+
+```python
+result = html(t"<div>{','.join(['a', 'b', 'c'])}</div>")
+# <div>a,b,c</div>
 ```
 
 ## Call a Function
 
 But it's Python and f-strings-ish, so you can do even more.
-For example, call an in-scope function with an argument, which does some work, and insert the result:
 
-```{literalinclude} ../../examples/expressions/call_function/__init__.py
----
-start-at: def
----
+For example, call an in-scope function with an argument, which does some work,
+and insert the result:
+
+```python
+def make_big(s: str) -> str:
+    return f"SO VERY BIG: {s.upper()}"
+
+result = html(t"<div>{make_big('hello')}</div>")
+# <div>SO VERY BIG: HELLO</div>
 ```

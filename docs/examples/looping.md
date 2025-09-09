@@ -5,22 +5,33 @@ Many Python template languages invent a Python-like grammar to do `for` loops an
 
 ## Simple Looping
 
-You know what's more Python-like?
-Python.
-f-strings can do looping in a Python expression using list comprehensions and so can `tdom`:
+You know what's more Python-like? Python.
 
-```{literalinclude} ../../examples/looping/simple_looping/__init__.py
----
-start-at: def main
----
+f-strings can do looping in a Python expression using list comprehensions and
+so can `tdom`:
+
+```python
+message = "Hello"
+names = ["World", "Universe"]
+result = html(
+    t"""
+        <ul title="{message}">
+            {[t'<li>{name}</li>' for name in names]}
+        </ul>
+    """
+)
+# <ul title="Hello"><li>World</li><li>Universe</li></ul>
 ```
 
 ## Rendered Looping
 
-You could also move the generation of the items out of the "parent" template, then use that `Node` result in the next template:
+You could also move the generation of the items out of the "parent" template,
+then use that `Node` result in the next template:
 
-```{literalinclude} ../../examples/looping/rendered_looping/__init__.py
----
-start-at: def main
----
+```python
+message = "Hello"
+names = ["World", "Universe"]
+items = [html(t"<li>{label}</li>") for label in names]
+result = html(t"<ul title={message}>{items}</ul>")
+# <ul title="Hello"><li>World</li><li>Universe</li></ul>
 ```

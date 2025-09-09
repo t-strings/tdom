@@ -2,9 +2,8 @@
 
 from datetime import datetime
 
-
 project = "tdom"
-author = "Andrea Giammarchi"
+author = "Dave Peck, Andrea Giammarchi, and Paul Everitt"
 copyright = f"{datetime.now().year}, {author}"
 extensions = [
     "myst_parser",

@@ -1,7 +1,6 @@
 # tdom
 
-A 🔥 t-string (aka PEP 750) HTML templating system for upcoming Python 3.14 for
-both server-side rendering and frontend.
+A 🤘 rockin' t-string HTML templating system for Python 3.14.
 
 ```{toctree}
 ---

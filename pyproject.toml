@@ -1,53 +1,72 @@
-[project]
-name = "tdom"
-version = "0.0.7"
-description = "An html() implementation for t-strings that supports both SSR and FE rendering."
-readme = "README.md"
-authors = [
-    { name = "Andrea Giammarchi", email = "andrea.giammarchi@gmail.com" },
-]
-license = { text = "Apache-2.0" }
-classifiers = [
-    "License :: OSI Approved :: Apache Software License",
-    "Programming Language :: Python :: 3 :: Only",
-    "Programming Language :: Python :: 3.14",
-]
-requires-python = ">=3.14"
-dependencies = []
-
-
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[dependency-groups]
-dev = [
-    "black",
-    "hatchling>=1.27.0",
-    "pytest",
-    "myst-parser",
-    "furo",
-    "sphinx",
-    "jinja2",
-    "markupsafe",
-    "pytest-playwright>=0.7.0",
-    "ruff>=0.12.0",
+[project]
+name = "tdom"
+version = "0.1.5"
+description = "A 🤘 rockin' t-string HTML templating system for Python 3.14."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = ["markupsafe>=3.0.2"]
+authors = [
+  { name = "Dave Peck", email = "davepeck@davepeck.org" },
+  { name = "Andrea Giammarchi", email = "andrea.giammarchi@gmail.com" },
+  { name = "Paul Everitt", email = "pauleveritt@me.com" },
 ]
-
-[tool.uv.sources]
-black = { git = "https://github.com/davepeck/black", branch = "pep750-support" }
-markupsafe = { git = "https://github.com/pauleveritt/markupsafe.git", branch = "main" }
-
-[tool.pytest.ini_options]
-testpaths = ["tests", "examples"]
-markers = [
-    "integration: mark tests as integration tests"
+license = { text = "MIT" }
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Environment :: Web Environment",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.14",
+  "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
+  "Topic :: Text Processing :: Markup :: HTML",
+  "Typing :: Typed",
 ]
 
 [project.urls]
-Homepage = "https://t-strings.github.io/tdom/"
-Documentation = "https://t-strings.github.io/tdom/"
-Respository = "https://github.com/t-strings/tdom"
+Homepage = "https://github.com/t-strings/tdom"
 Changelog = "https://github.com/t-strings/tdom/releases"
 Issues = "https://github.com/t-strings/tdom/issues"
 CI = "https://github.com/t-strings/tdom/actions"
+
+[dependency-groups]
+dev = [
+  "furo>=2025.7.19",
+  "myst-parser>=4.0.1",
+  "pyright>=1.1.404",
+  "pytest>=8.4.1",
+  "pytest-cov>=6.3.0",
+  "pytest-watcher>=0.4.3",
+  "ruff>=0.12.11",
+  "sphinx>=8.2.3",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tdom"]
+python_files = ["*_test.py"]
+
+[tool.pyright]
+include = ["tdom"]
+exclude = [".venv", ".git", ".github"]
+
+[tool.ruff.lint]
+preview = true
+
+[tool.hatch.build]
+exclude = [
+  "*_test.py",
+  ".github",
+  ".gitignore",
+  ".vscode",
+  ".aiassistant",
+  ".junie",
+  ".editorconfig",
+  "docs",
+  "uv.lock",
+  "justfile",
+]

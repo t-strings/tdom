@@ -1,9 +1,16 @@
+# Python-generated files
 __pycache__/
-env/
-test-results/
-node_modules/
-docs/_build
-public/tdom
-package.json
-package-lock.json
-.prettierrc
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Coverage
+.coverage
+
+# Sphinx build output
+docs/_build/

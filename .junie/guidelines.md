@@ -31,7 +31,7 @@ First, read `.junie/pep-0750.rst` to learn more about t-strings.
 ## Project scope
 
 - tdom is an HTML/SVG templating/runtime for Python t-strings (PEP 750),
-  targeting Python 3.14+, SSR and frontend (MicroPython/WebAssembly).
+  targeting Python 3.14+ SSR
 - Public artifacts: PyPI package, Sphinx docs (GitHub Pages), examples
   playground, and browser-based tests via pytest-playwright.
 
@@ -39,8 +39,6 @@ First, read `.junie/pep-0750.rst` to learn more about t-strings.
 
 - Python: 3.14 only (see requires-python in pyproject.toml). Use uv for env
   management.
-- Frontend: MicroPython WASM artifacts are vendored under static/ and used by
-  Playwright tests and the examples web app.
 
 ## Code style and quality
 
@@ -95,8 +93,7 @@ First, read `.junie/pep-0750.rst` to learn more about t-strings.
 - Branch: feature/<short-description>, fix/<short-description>, docs/<topic>.
 - Commits: concise, imperative subject; include context when touching runtime
   performance or caching behavior.
-- PRs: include rationale, tests, and docs updates; indicate if change impacts
-  MicroPython/browser behavior.
+- PRs: include rationale, tests, and docs updates
 
 ## Versioning and release
 
@@ -117,11 +114,6 @@ First, read `.junie/pep-0750.rst` to learn more about t-strings.
   cloning and update application must be efficient.
 - Maintain listener lifecycle: \_listeners cleared once per render; avoid leaks.
 - Keep DOM node shapes and constants stable; update **all** if adding/removing.
-
-## MicroPython notes
-
-- The vendored WASM artifacts in static/ are test fixtures. If updating sources,
-  ensure examples and integration tests still run without external downloads.
 
 ## Contributing checklist (PR ready)
 
