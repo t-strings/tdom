@@ -99,7 +99,7 @@ In `tdom` this is straightforward:
 ```python
 result = html(t"<!DOCTYPE html><div>Hello World</div>")
 # <!DOCTYPE html><div>Hello World</div>
-````
+```
 
 ## Reducing Boolean Attribute Values
 
@@ -111,3 +111,4 @@ without a _value_:
 result = html(t"<div editable={True}>Hello World</div>")
 # <div editable>Hello World</div>
 ```
+````
