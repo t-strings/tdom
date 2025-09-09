@@ -1,410 +1,322 @@
 # tdom
 
-A 🔥 t-string (aka PEP 750) HTML templating system for upcoming Python 3.14 for
-both server-side rendering and frontend. No dependencies.
+A 🤘 rockin' t-string HTML templating system for Python 3.14.
 
 [![PyPI](https://img.shields.io/pypi/v/tdom.svg)](https://pypi.org/project/tdom/)
-[![Tests](https://github.com/t-strings/tdom/actions/workflows/pytest.yml/badge.svg)](https://github.com/t-strings/tdom/actions/workflows/pytest.yml)
+[![Tests](https://github.com/t-strings/tdom/actions/workflows/ci.yml/badge.svg)](https://github.com/t-strings/tdom/actions/workflows/pytest.yml)
 [![Changelog](https://img.shields.io/github/v/release/t-strings/tdom?include_prereleases&label=changelog)](https://github.com/t-strings/tdom/releases)
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](https://github.com/t-strings/tdom/blob/main/LICENSE)
-
-[Live demo](https://t-strings.help/playground.html)
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/t-strings/tdom/blob/main/LICENSE)
 
 ## Installation
 
-`tdom` uses Python 3.14. At the time of this writing, Python 3.14.0rc2 was the
-latest version. You can get this from
-[python.org](https://www.python.org/download/pre-releases/) or use an installer
-such as `uv`.
+Just run:
 
-```shell
-$ pip install tdom
+```bash
+pip install tdom
 ```
 
-## Single-file distribution
+Python 3.14 isn't out yet, but you can use [Astral's `uv`](https://docs.astral.sh/uv/) to easily try `tdom` in a Python 3.14 environment:
 
-Want a lightweight HTML templating engine without adding a dependency? `tdom`
-has no dependencies. But perhaps you don't want a dependency on `tdom`? Just
-copy `src/tdom/tdom.py` to your project, like a vendor import.
-
-## MicroPython
-
-This project intends to provide good support for MicroPython. It doesn't yet
-support t-strings directly, but Koudai has a
-[MicroPython fork](https://github.com/koxudaxi/micropython/tree/feature/pep750-template-strings)
-to build the `webassembly` variant. As a convenience, we have checked in the two
-build artifacts in this repo, under `static`.
-
-As such, we have the "main" implementation for CPython and Pyodide. But we also
-have `tdom.micropython` as a second implementation, also as a single-file
-distribution. The MicroPython version can't be as "fancy" as the main version.
-But we hope to keep most of the public interface.
-
-## tdom development setup
-
-Ths project uses `uv` for environment management. Clone this repo have `uv`
-create a virtual environment:
-
-```shell
-$ git clone https://github.com/t-strings/tdom.git
-$ cd tdom
-$ uv sync
+```bash
+uv run --with tdom --python 3.14 python
 ```
 
-The repo has its own `.python-version` but you can override it if you need a
-different Python version.
+## Usage
 
-## Testing
+`tdom` leverages Python 3.14's [new t-strings feature](https://t-strings.help/introduction.html) to provide a powerful HTML templating system that feels familiar if you've used JSX, Jinja2, or Django templates.
 
-The `tdom` project has a decent set of tests. The pytest configuration is in
-`pyproject.toml` as well as the GitHub Actions workflows in `.github/workflows`.
-To run them:
+T-strings work just like f-strings but use a `t` prefix and [create `Template` objects](https://docs.python.org/3.14/library/string.templatelib.html#template-strings) instead of strings.
 
-```shell
-$ uv run pytest
-```
+Once you have a `Template`, you can call this package's `html()` function to convert it into a tree of `Node` objects that represent your HTML structure. From there, you can render it to a string, manipulate it programmatically, or compose it with other templates for maximum flexibility.
 
-Some useful notes about the testing:
+### Getting Started
 
-- The `examples` are used for development and documentation but each example is
-  also part of the test suite.
-- `tdom.fixtures` has Playwright setup fixtures to serve assets from disk. These
-  work by registering a network interceptor for `http://localhost:8000`.
-- Thus, we also have tests based on browser execution, using a local in-repo
-  version of MicroPython.
-- A custom `integration` marker is defined and used in `pyproject.toml`. This
-  mark is used on Playwright tests to allow running just the fast tests.
-
-## Building docs
-
-```shell
-$ uv run sphinx-build docs docs/_build
-```
-
-## Examples web app
-
-The file at `index.html` provides a static web page that loads all the examples
-into a web page. You can execute them or edit and re-execute. This web app and
-the examples serve several uses:
-
-- Public in-browser playground for `tdom` use cases
-- Smooth local development experience for `tdom` itself to target MicroPython
-  first
-- Pre-configured, local-only, serverless `pytest-playwright` web app to ensure
-  `tdom` works with the examples, in MicroPython
-
-## Features + quick walk through
-
-The HTML and SVG support in `tdom` can be split into these categories:
-
-- **attributes**, meant as HTML/SVG nodes attributes
-- **content**, meant as HTML/SVG elements or fragments possibilities
-- **components**, meant as classes or functions that return some _content_ after
-  being instantiated/invoked
-
-### Attributes
-
-An element attribute is nothing more than a _name/value_ pair definition, where
-the `name` must be unique, and it might have a special meaning, accordingly with
-the element where such an attribute is defined.
-
-```html
-<!-- HTML -->
-<div class="class-attribute">
-  <!-- some content -->
-</div>
-<textarea placeholder="Your comment"></textarea>
-
-<!-- SVG -->
-<rect width="200" height="100" rx="20" ry="20" fill="blue" />
-```
-
-Thanks to `t` strings, attributes in here can be _dynamic_ or even _mixed_,
-example:
-
-```html
-<div class="{''.join(['special', 'container'])}">
-  <!-- some content -->
-</div>
-<textarea placeholder="{placeholder}"></textarea>
-
-<rect width="{width}" height="{height}" rx="20" ry="20" fill="{color}" />
-```
-
-**Note**
-
-- it doesn't matter if dynamic attributes have single or double quotes around,
-  the logic is smart enough to understand and ultimately sanitize those quotes
-  around, even if omitted
-- it doesn't matter if the value is an integer, float, or something else, once
-  stringified the output will use `str(value)` and it will safely `escape` those
-  values automatically
-- attributes **must** be a single value, when dynamic, so that the following
-  would break:
-
-```html
-<!-- ⚠️ this is not possible -->
-<div class="a {runtime} b"></div>
-
-
-<!-- 👍 this works perfectly fine -->
-<div class={f"a {runtime} b"}></div>
-<div class={callback}></div>
-<div class={some_class(runtime)}></div>
-```
-
-### Special attributes
-
-Some HTML attributes might not need a value to be significant, and for these
-special cases a **boolean** hint would be enough to see it rendered or not. The
-[hidden](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Global_attributes/hidden)
-attribute is one of those special cases:
-
-```html
-<div hidden="{condition}">
-  <!-- some content -->
-</div>
-```
-
-When that `condition` is `True`, `<div hidden>` will be produced once the
-template will get stringified, while if `False` it won't be part of the output
-at all, it's just `<div>`.
-
-The **aria** attribute is
-[also special](https://developer.mozilla.org/en-US/docs/Web/Accessibility/ARIA/Reference/Attributes)
-because it allows automatically creating all related attributes with ease,
-without needing to repeat `aria-` prefix all over the place:
-
-```html
-
-<div aria={{"role": "button", "describedby": uid}}>
-<!-- some content -->
-</div>
-
-<!-- will result into -->
-<div role="button" aria-describedby="unique-id">
-    <!-- some content -->
-</div>
-```
-
-Similarly, the **data** attribute helps add
-[dataset](https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/dataset)
-attributes to any node, without needing to repeat the `data-` prefix.
-
-```html
-
-<div data={{"a": 1, "b": 2, "c": 3}}>
-<!-- some content -->
-</div>
-
-<!-- will result into -->
-<div data-a="1" data-b="2" data-c="3">
-    <!-- some content -->
-</div>
-```
-
-Last, but not least, `@events` are currently specially handled as well, such as
-`@click`, `@pointerover` and every other standard _event_ will be translated
-into a specialized listener that will either work or silently do nothing unless
-instrumented/orchestrated explicitly.
-
-```html
-<button @click="{my_click_handler}">click me</button>
-
-<!-- will result into -->
-<button onclick="self.python_listeners?.[0](event)">click me</button>
-```
-
-Currently experimental, we've already managed to bring real Python listeners to
-the browser via `dill` module and [PyScript](https://pyscript.net/) ability to
-bootstrap [pyodide](https://pyodide.org/en/stable/) on the front end, but any
-custom logic able to map listeners to actual actions on the page could work
-similarly, if not better.
-
-### Content
-
-Runtime content can be placed almost anywhere. It could represent a string,
-number, node returned by `html` or `svg` utility, or a callback that will be
-invoked to return any of these values or, ultimately, a `list` or a `tuple` that
-contains any previously mentioned value, or a component.
-
-```html
-<div>
-  Some {'text'}. Some {lambda_or_function}
-  <ul>
-    {[ html(t'
-    <li>{'a'}</li>
-    '), html(t'
-    <li>b</li>
-    '), html(t'
-    <li>c {sep} d</li>
-    '), ]}
-  </ul>
-  <{MyComponent} a='1' b={2} />
-</div>
-```
-
-### Components
-
-`tdom` provides a JSX-like, HTML-oriented syntax for reusable components. On the
-calling side, it looks like this:
-
-```html
-
-<body>
-<{Header} name={this_name}><span>Children</span></>
-</body>
-```
-
-- The component _symbol_ appears after the leading `<` and is wrapped in `{}` as
-  a t-string interpolation
-- The HTML attributes (static and dynamic) are passed as "props"
-- Children are available for use as the variable `children`
-
-The "component" is a callable: a function or a class (or dataclass.) Here is an
-example of a function-based component:
+Import the `html` function and start creating templates:
 
 ```python
-def MyComponent(a: int, b: int, children: list):
-    # a == 1 and b == 2
-    # children == [<p />, <p />]
-    return html(t'<div data={props}>{children}</div>')
-
-
-print(
-    str(
-        html(t'''
-      <{MyComponent} a="1" b={2}>
-        <p>first element {'child'}</p>
-        <p c={3}>second element child</p>
-      </>
-    ''')
-    )
-)
+from tdom import html
+greeting = html(t"<h1>Hello, World!</h1>")
+print(type(greeting))  # <class 'tdom.nodes.Element'>
+print(greeting)  # <h1>Hello, World!</h1>
 ```
 
-The output that will result is:
+### Variable Interpolation
 
-```html
-<div data-a="1" data-b="2">
-  <p>first element 'child'</p>
-  <p c="3">second element child</p>
-</div>
-```
-
-The function is provided the HTML attributes as `**kwargs`. Also, the `html()`
-function, when calling, checks the component to see if its signature wants any
-"special" props from the system:
-
-- `children` is the list of `Node` objects provided inside the element
-- `context` is the optional dict passed into the HTML constructor, down the
-  calling chain (discussed below)
-
-Components can also be defined as classes:
+Just like f-strings, you can interpolate (substitute) variables directly into your templates:
 
 ```python
-@dataclass
-class Component:
-    a: str
-    b: int
-    children: list
-
-    def __call__(self):
-        return html(
-            t"""
-                <div a={self.a} b={self.b}>
-                    {self.children}
-                </div>
-            """
-        )
+name = "Alice"
+age = 30
+user_info = html(t"<p>Hello, {name}! You are {age} years old.</p>")
+print(user_info)  # <p>Hello, Alice! You are 30 years old.</p>
 ```
 
-Nothing changes in the usage. Behind the scenes, the `html()` function first
-creates an instance with the requested props. It then calls and returns
-`__call__`.
-
-Class-based components can be useful when you want different/custom HTML
-representations with the same usage contract.
-
-Components can use `**kwargs` with the special `data` and `aria` syntax
-described above:
+The `html()` function ensures that interpolated values are automatically escaped to prevent XSS attacks:
 
 ```python
-def MyComponent(**kwargs):
-    return html(t"<div data={kwargs}></div>")
+user_name = "<script>alert('owned')</script>"
+safe_output = html(t"<p>Hello, {user_name}!</p>")
+print(safe_output)  # <p>Hello, &lt;script&gt;alert('owned')&lt;/script&gt;!</p>
 ```
 
-### A note about special syntax
+### Attribute Substitution
 
-In these examples it is possible to note _self-closing tags_, such as `<div />`
-or others, but also a special _closing-tag_ such as `</>` or `<//>` (these are
-the same).
+The `html()` function provides a number of convenient ways to define HTML attributes.
 
-The `@` attribute for events is also not standard, but it helps explicitly
-distinguish between what could be an actual _JS_ content for a real `onclick`,
-as opposite of being something "_magic_" that needs to be orchestrated @ the
-_Python_ level.
+#### Direct Attribute Values
 
-### Context
-
-We'd like an extensible system. In fact, we'd like the extensibility to be
-extensible, allowing the core to be simple and basic. We'd also like to avoid
-"prop-drilling", where basic data such as configuration has to be passed down
-the component tree.
-
-As such, `tdom` supports calling the `html` function with an optional dict-like
-`context` argument. For example:
+You can place values directly in attribute positions:
 
 ```python
-def Header(context):
-    label = context["label"]
-    return html(t"Hello {label}")
-
-
-request = {"label": "World"}
-result = html(t"<{Header}/>", context=request)
-assert "Hello World" == str(result)
+url = "https://example.com"
+link = html(t'<a href="{url}">Visit our site</a>')
+# <a href="https://example.com">Visit our site</a>
 ```
 
-This `context` is passed down the entire calling tree, including into components
-whose signature asks for it. It is unopinionated: add-on frameworks can
-introduce their own things to go in the context. In fact, frameworks can make
-the extra `html` argument hidden behind their own conventions.
-
-Because it is per-render, you can write into objects in the context. For
-example, subcomponents can add stylesheets that should ultimately go into the
-`<head>` at final render time.
-
-This context support currently has only a few places for pluggability of the
-`html()` function itself:
-
-- Components can ask for the `context` in their arguments (like `children`)
-
-### Unsafe
-
-Templates need a way to escape HTML from untrusted sources to mitigate injection
-attacks. [MarkupSafe](https://markupsafe.palletsprojects.com/en/stable/) is a
-popular choice for this. But `tdom` has a goal to run in the browser, under
-MicroPython, and possibly as a single-file package with no dependencies.
-
-For this, `tdom` supplies a helper function to flag unsafe processing of text:
+You don't _have_ to wrap your attribute values in quotes:
 
 ```python
-from tdom import html, unsafe
-
-# First, a usage without wrapping in unsafe
-span = "<span>Hello World</span>"
-result1 = html(t"<div>{span}</div>")
-assert str(result1) == "<div>&lt;span&gt;Hello World&lt;/span&gt;</div>"
-
-# Now wrap it in unsafe and it isn't escaped
-result2 = html(t"<div>{unsafe(span)}</div>")
-assert str(result2) == "<div><span>Hello World</span></div>"
+element_id = "my-button"
+button = html(t"<button id={element_id}>Click me</button>")
+# <button id="my-button">Click me</button>
 ```
+
+Boolean attributes are supported too. Just use a boolean value in the attribute position:
+
+```python
+form_button = html(t"<button disabled={True} hidden={False}>Submit</button>")
+# <button disabled>Submit</button>
+```
+
+#### The `class` Attribute
+
+The `class` attribute has special handling to make it easy to combine multiple classes from different sources. The simplest way is to provide a list of class names:
+
+```python
+classes = ["btn", "btn-primary", "active"]
+button = html(t'<button class="{classes}">Click me</button>')
+# <button class="btn btn-primary active">Click me</button>
+```
+
+For flexibility, you can also provide a list of strings, dictionaries, or a mix of both:
+
+```python
+classes = ["btn", "btn-primary", {"active": True}, None, False and "disabled"]
+button = html(t'<button class="{classes}">Click me</button>')
+# <button class="btn btn-primary active">Click me</button>
+```
+
+See the [`classnames()`](https://github.com/t-strings/tdom/blob/main/tdom/classnames_test.py) helper function for more information on how class names are combined.
+
+#### The `style` Attribute
+
+In addition to strings, you can also provide a dictionary of CSS properties and values for the `style` attribute:
+
+```python
+# Style attributes from dictionaries
+styles = {"color": "red", "font-weight": "bold", "margin": "10px"}
+styled = html(t"<p style={styles}>Important text</p>")
+# <p style="color: red; font-weight: bold; margin: 10px">Important text</p>
+```
+
+#### The `data` and `aria` Attributes
+
+The `data` and `aria` attributes also have special handling to convert dictionary keys to the appropriate attribute names:
+
+```python
+data_attrs = {"user-id": 123, "role": "admin"}
+aria_attrs = {"label": "Close dialog", "hidden": True}
+element = html(t"<div data={data_attrs} aria={aria_attrs}>Content</div>")
+# <div data-user-id="123" data-role="admin" aria-label="Close dialog"
+# aria-hidden="true">Content</div>
+```
+
+Note that boolean values in `aria` attributes are converted to `"true"` or `"false"` as per [the ARIA specification](https://www.w3.org/TR/wai-aria-1.2/).
+
+#### Attribute Spreading
+
+It's possible to specify multiple attributes at once by using a dictionary and spreading it into an element using curly braces:
+
+```python
+attrs = {"href": "https://example.com", "target": "_blank"}
+link = html(t"<a {attrs}>External link</a>")
+# <a href="https://example.com" target="_blank">External link</a>
+```
+
+You can also combine spreading with individual attributes:
+
+```python
+base_attrs = {"id": "my-link"}
+target = "_blank"
+link = html(t'<a {base_attrs} target="{target}">Link</a>')
+# <a id="my-link" target="_blank">Link</a>
+```
+
+Special attributes likes `class` behave as expected when combined with spreading:
+
+```python
+classes = ["btn", {"active": True}]
+attrs = {"class": classes, "id": "act_now", "data": {"wow": "such-attr"}}
+button = html(t'<button {attrs}>Click me</button>')
+# <button class="btn active" id="act_now" data-wow="such-attr">Click me</button>
+```
+
+### Conditional Rendering
+
+You can use Python's conditional expressions for dynamic content:
+
+```python
+is_logged_in = True
+user_content = t"<span>Welcome back!</span>"
+guest_content = t"<a href='/login'>Please log in</a>"
+header = html(t"<div>{user_content if is_logged_in else guest_content}</div>")
+# <div><span>Welcome back!</span></div>
+```
+
+Short-circuit evaluation is also supported for conditionally including elements:
+
+```python
+show_warning = False
+warning = t'<div class="alert">Warning message</div>'
+page = html(t"<main>{show_warning and warning}</main>")
+# <main></main>
+```
+
+### Lists and Iteration
+
+Generate repeated elements using list comprehensions:
+
+```python
+fruits = ["Apple", "Banana", "Cherry"]
+fruit_list = html(t"<ul>{[t'<li>{fruit}</li>' for fruit in fruits]}</ul>")
+# <ul><li>Apple</li><li>Banana</li><li>Cherry</li></ul>
+```
+
+### Raw HTML Injection
+
+The `tdom` package provides several ways to include trusted raw HTML content in your templates. This is useful when you have HTML content that you _know_ is safe and do not wish to escape.
+
+Under the hood, `tdom` builds on top of the familiar [MarkupSafe](https://pypi.org/project/MarkupSafe/) library to handle trusted HTML content. If you've used Flask, Jinja2, or similar libraries, this will feel very familiar.
+
+The `Markup` class from MarkupSafe is available for use:
+
+```python
+from tdom import html, Markup
+
+trusted_html = Markup("<strong>This is safe HTML</strong>")
+content = html(t"<div>{trusted_html}</div>")
+# <div><strong>This is safe HTML</strong></div>
+```
+
+As a convenience, `tdom` also supports a `:safe` format specifier that marks a string as safe HTML:
+
+```python
+trusted_html = "<em>Emphasized text</em>"
+page = html(t"<p>Here is some {trusted_html:safe} content.</p>")
+# <p>Here is some <em>Emphasized text</em> content.</p>
+```
+
+For interoperability with other templating libraries, any object that implements a `__html__` method will be treated as safe HTML. Many popular libraries (including MarkupSafe and Django) use this convention:
+
+```python
+class SafeWidget:
+    def __html__(self):
+        return "<button>Custom Widget</button>"
+
+page = html(t"<div>My widget: {SafeWidget()}</div>")
+# <div>My widget: <button>Custom Widget</button></div>
+```
+
+You can also explicitly mark a string as "unsafe" using the `:unsafe` format specifier. This forces the string to be escaped, even if it would normally be treated as safe:
+
+```python
+from tdom import html, Markup
+trusted_html = Markup("<strong>This is safe HTML</strong>")
+page = html(t"<div>{trusted_html:unsafe}</div>")
+# <div>&lt;strong&gt;This is safe HTML&lt;/strong&gt;</div>
+```
+
+### Template Composition
+
+You can easily combine multiple templates and create reusable components.
+
+Template nesting is straightforward:
+
+```python
+content = t"<h1>My Site</h1>"
+page = html(t"<div>{content}</div>")
+# <div><h1>My Site</h1></div>
+```
+
+In the example above, `content` is a `Template` object that gets correctly parsed and embedded within the outer template. You can also explicitly call `html()` on nested templates if you prefer:
+
+```python
+content = html(t"<h1>My Site</h1>")
+page = html(t"<div>{content}</div>")
+# <div><h1>My Site</h1></div>
+```
+
+The result is the same either way.
+
+#### Component Functions
+
+You can create reusable component functions that generate templates with dynamic content and attributes. Use these like custom HTML elements in your templates.
+
+The basic form of all component functions is:
+
+```python
+from typing import Any
+
+def MyComponent(*children: Node, **attrs: Any) -> Template:
+    # Build your template using the provided props
+    return t"<div {attrs}>{children}</div>"
+```
+
+To _invoke_ your component within an HTML template, use the special `<{ComponentName} ... />` syntax:
+
+```python
+result = html(t"<{MyComponent} id='comp1'>Hello, Component!</{MyComponent}>")
+# <div id="comp1">Hello, Component!</div>
+```
+
+Because attributes are passed as keyword arguments, you can explicitly provide type hints for better editor support:
+
+```python
+from typing import Any
+
+def Link(*, href: str, text: str, data_value: int, **attrs: Any) -> Template:
+    return t'<a href="{href}" {attrs}>{text}: {data_value}</a>'
+
+result = html(t'<{Link} href="https://example.com" text="Example" data-value={42} target="_blank" />')
+# <a href="https://example.com" target="_blank">Example: 42</a>
+```
+
+Note that attributes with hyphens (like `data-value`) are converted to underscores (`data_value`) in the function signature.
+
+In addition to returning a `Template` directly, component functions may also return any `Node` type found in [`tdom.nodes`](https://github.com/t-strings/tdom/blob/main/tdom/nodes.py). This allows you to build more complex components that manipulate the HTML structure programmatically.
+
+#### SVG Support
+
+TODO: say more about SVG support
+
+#### Context
+
+TODO: implement context feature
+
+### The `tdom` Module
+
+#### Working with `Node` Objects
+
+TODO: say more about working with them directly
+
+#### The `classnames()` Helper
+
+TODO: say more about it
+
+#### Utilities
+
+TODO: say more about them
 
 ## Supporters
 
-`tdom` is an independent open source project, started by Andrea Giammarchi. His
-time, though, has generously been supported by his work at
-[Anaconda](https://www.anaconda.com). Thank you Anaconda for your continued
-support of this project.
+TODO: add supporters

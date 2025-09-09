@@ -1,57 +1,42 @@
 # Variables
 
-Inserting a variable into a template mimics what you would expect from a Python f-string.
+Inserting a variable into a template mimics what you would expect from a
+Python f-string.
 
 ## Insert Value Into Template
 
-In this case, the template is in a function, and `name` comes from that scope:
+In this case, `name` comes from the immediate scope:
 
-```{literalinclude} ../../examples/variables/insert_value/__init__.py
----
-start-at: def main
----
+```python
+name = "tdom"
+result = html(t"<div>Hello {name}</div>")
+# <div>Hello tdom</div>
 ```
 
 ## Value From Import
 
-In this third case, `name` symbol is imported from another module:
+Here, `name` is imported from another module:
 
-```{literalinclude} ../../examples/variables/value_from_import/__init__.py
----
-start-at: def Hello
----
+```python
+from .elsewhere import name
+result = html(t"<div>Hello {name}</div>")
+# <div>Hello tdom</div>
 ```
 
 ## Passed-In Prop
 
-Of course, the function could get the symbol as an argument.
-This style is known as "props":
+Here, `name` is passed into a function:
 
-```{literalinclude} ../../examples/variables/passed_in_prop/__init__.py
----
-start-at: def Hello
----
+```python
+def hello(name: str) -> Template:
+    return html(t"<div>Hello {name}</div>")
+
+result = hello("tdom")
+# <div>Hello tdom</div>
 ```
 
-## Default Value
-
-The function (i.e. the "component") could make passing the argument optional by providing a default:
-
-```{literalinclude} ../../examples/variables/default_value/__init__.py
----
-start-at: def Hello
----
-```
 ## Unsafe Values
 
-Sometimes you get content from an untrusted source, and you need to escape it. That's usually a job 
-for [MarkupSafe](https://markupsafe.palletsprojects.com/en/stable/). But `tdom` targets MicroPython 
-and wants to minimize dependencies, so it provides a small `unsafe` utility. Just use it 
-to wrap your values:
+TODO: write this section
 
-```{literalinclude} ../../examples/variables/unsafe/__init__.py
----
-start-at: def main
----
-```
-
+`tdom` now builds on top of [MarkupSafe](https://markupsafe.palletsprojects.com/en/stable/).

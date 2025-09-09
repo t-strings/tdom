@@ -4,7 +4,7 @@ The `tdom` package has special support for HTML and SVG templating.
 
 ```{include} ../README.md
 ---
-start-after: "examples, in MicroPython"
+start-at: "## Installation"
 end-before: "## Supporters"
 ---
 ```

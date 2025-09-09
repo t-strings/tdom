@@ -1,149 +1,172 @@
 # Components
 
 You often have a snippet of templating that you'd like to re-use.
-Many existing templating systems have "macros" for this: units of templating that can be re-used and called from other templates.
+
+Many existing templating systems have "macros" for this: units of templating
+that can be re-used and called from other templates.
 
 The whole mechanism, though, is quite magical:
 
-- Where do the macros come from?
-  Multiple layers of context magic and specially named directories provide the answer.
-
-- What macros are available at the cursor position I'm at in a template?
-  It's hard for an editor or IDE to predict and provide autocomplete.
-
-- What are the macros arguments and what is this template's special syntax for providing them?
-  And can my editor help on autocomplete or tell me when I got it wrong (or the macro changed its signature)?
-
+- Where do the macros come from? Multiple layers of context magic and specially named directories provide the answer.
+- What macros are available at the cursor position I'm at in a template? It's hard for an editor or IDE to predict and provide autocomplete.
+- What are the macros arguments and what is this template's special syntax for providing them? And can my editor help on autocomplete or tell me when I got it wrong (or the macro changed its signature)?
 - How does my current scope interact with the macro's scope, and where does it get other parts of its scope from?
 
-`tdom`, courtesy of `htm.py`, makes this more Pythonic through the use of "components."
-Instead of some sorta-callable, a component is a normal Python callable—e.g., a function—with normal Python arguments and return values.
+The `tdom` package makes this more Pythonic through the use of "components."
+
+Instead of some sorta-callable, a component is a normal Python callable: a
+function with normal Python arguments and return values.
 
 ## Simple Heading
 
-Here is a component callable -- a `Heading` function -- which returns a `Node`:
+Here is a component callable &mdash; a `Heading` function &mdash; which returns
+a `Node`:
 
-```{literalinclude} ../../examples/components/simple_heading/__init__.py
----
-start-at: def Heading
----
+```python
+def Heading() -> Template:
+    return t"<h1>My Title</h1>"
+
+result = html(t"<{Heading} />")
+# <h1>My Title</h1>
 ```
 
 ## Simple Props
 
-As expected, components can have props, passed in as what looks like HTML attributes.
-Here we pass a `title` as an argument to `Heading`, using a simple HTML attribute string value:
+As expected, components can have props, passed in as what looks like HTML
+attributes. Here we pass a `title` as an argument to `Heading`, using a simple
+HTML attribute string value:
 
-```{literalinclude} ../../examples/components/simple_props/__init__.py
----
-start-at: def Heading
----
+```python
+def Heading(title: str) -> Template:
+    return t"<h1>{title}</h1>"
+
+result = html(t'<{Heading title="My Title" } />')
+# <h1>My Title</h1>
 ```
 
 ## Children As Props
 
-If your template has children inside the component element, your component can ask for them as an argument:
+If your template has children inside the component element, your component
+will receive them as `*children` positional arguments:
 
-```{literalinclude} ../../examples/components/children_props/__init__.py
----
-start-at: def Heading
----
+```python
+from tdom import Node, html
+
+def Heading(*children: Node, title: str) -> Node:
+    return html(t"<h1>{title}</h1><div>{children}</div>")
+
+result = html(t'<{Heading} title="My Title">Child</{Heading}>')
 ```
 
-`children` is a keyword parameter that is available to components.
-Note how the component closes with `<//>` when it contains nested children, as opposed to the self-closing form in the first example.
+Note how the component closes with `</{Heading}>` when it contains nested
+children, as opposed to the self-closing form in the first example.
 
-## Expressions as Prop Values
-
-The "prop" can also be a Python symbol, using curly braces as the attribute value:
-
-```{literalinclude} ../../examples/components/expression_props/__init__.py
----
-start-at: def Heading
----
-```
-
-## Prop Values from Scope Variables
-
-That prop value can also be an in-scope variable:
-
-```{literalinclude} ../../examples/components/scope_values/__init__.py
----
-start-at: def Heading
----
-```
+Note also that components functions can return `Node` or `Template` values
+as they wish. Iterables of nodes and templates are also supported.
 
 ## Optional Props
 
-Since this is typical function-argument stuff, you can have optional props through argument defaults:
+Since this is typical function-argument stuff, you can have optional props
+through argument defaults:
 
-```{literalinclude} ../../examples/components/optional_props/__init__.py
----
-start-at: def Heading
----
+```python
+def Heading(title: str = "My Title") -> Template:
+    return t"<h1>{title}</h1>"
+
+result = html(t"<{Heading} />")
+# <h1>My Title</h1>
 ```
 
-## Pass Component as Prop
+## Passsing Another Component as a Prop
 
-Here's a useful pattern: you can pass a component as a "prop" to another component.
-This lets the caller -- in this case, the `result` line -- do the driving:
+Here's a useful pattern: you can pass a component as a "prop" to another
+component. This lets the caller (in this case, the `result` line) do the driving:
 
-```{literalinclude} ../../examples/components/pass_component/__init__.py
----
-start-at: def DefaultHeading
----
+```python
+def DefaultHeading() -> Template:
+    return t"<h1>Default Heading</h1>"
+
+def Body(heading: str) -> Template:
+    return t"<body><{heading} /></body>"
+
+result = html(t"<{Body} heading={DefaultHeading} />")
+# <body><h1>Default Heading</h1></body>
 ```
 
 ## Default Component for Prop
 
-As a variation, let the caller do the driving but make the prop default to a default component if none was provided:
+As a variation, let the caller do the driving but make the prop default to a
+default component if none was provided:
 
-```{literalinclude} ../../examples/components/default_component/__init__.py
----
-start-at: def DefaultHeading
----
+```python
+from tdom import ComponentCallable, html
+
+def DefaultHeading() -> Template:
+    return t"<h1>Default Heading</h1>"
+
+def OtherHeading() -> Template:
+    return t"<h1>Other Heading</h1>"
+
+def Body(heading: ComponentCallable) -> Template:
+    return html(t"<body><{heading} /></body>")
+
+result = html(t"<{Body} heading={OtherHeading}/>")
+# <body><h1>Other Heading</h1></body>
 ```
 
 ## Conditional Default
 
-One final variation for passing a component as a prop... move the "default or passed-in" decision into the template itself:
+One final variation for passing a component as a prop... move the
+"default or passed-in" decision into the template itself:
 
-```{literalinclude} ../../examples/components/conditional_default/__init__.py
----
-start-at: def DefaultHeading
----
-```
+```python
+from tdom import ComponentCallable, html
 
-## Children as Prop
+def DefaultHeading() -> Template:
+    return t"<h1>Default Heading</h1>"
 
-You can combine different props and arguments.
-In this case, `title` is a prop.
-`children` is another argument, but is provided automatically by `tdom`.
+def OtherHeading() -> Template:
+    return t"<h1>Other Heading</h1>"
 
-```{literalinclude} ../../examples/components/children_props/__init__.py
----
-start-at: def Heading
----
+def Body(heading: ComponentCallable | None = None) -> Template:
+    return t"<body>{heading if heading else DefaultHeading}</body>"
+
+result = html(t"<{Body} heading={OtherHeading}/>")
+# <body><h1>Other Heading</h1></body>
 ```
 
 ## Generators as Components
 
-You can also have components that act as generators.
-For example, imagine you have a todo list.
-There might be a lot of todos, so you want to generate them in a memory-efficient way:
+You can also have components that act as generators. For example, imagine you
+have a todo list. There might be a lot of todos, so you want to generate them
+in a memory-efficient way:
 
-```{literalinclude} ../../examples/components/generators/__init__.py
----
-start-at: def Todos
----
+```python
+from typing import Iterable
+
+def Todos() -> Iterable[Template]:
+    for todo in ["first", "second", "third"]:
+        yield t"<li>{todo}</li>"
+
+result = html(t"<ul><{Todos} /></ul>")
+# <ul><li>first</li><li>second</li><li>third</li></ul>
 ```
 
-## Subcomponents
+## Nested Components
 
-Subcomponents are also supported:
+Components can be nested just like any other templating or function call:
 
-```{literalinclude} ../../examples/components/subcomponents/__init__.py
----
-start-at: def Todo
----
+```python
+from typing import Iterable
+
+def Todo(label: str) -> Template:
+    return t"<li>{label}</li>"
+
+def TodoList(labels: Iterable[str]) -> Template:
+    return t"<ul>[t'<{Todo} label={label} />' for label in labels]</ul>"
+
+title = "My Todos"
+labels = ["first", "second", "third"]
+result = html(t"<h1>{title}</h1><{TodoList} labels={todos} />")
+# <h1>My Todos</h1><ul><li>first</li><li>second</li><li>third</li></ul>
 ```
