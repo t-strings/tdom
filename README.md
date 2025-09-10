@@ -5,7 +5,7 @@ A 🤘 rockin' t-string HTML templating system for Python 3.14.
 [![PyPI](https://img.shields.io/pypi/v/tdom.svg)](https://pypi.org/project/tdom/)
 [![Tests](https://github.com/t-strings/tdom/actions/workflows/ci.yml/badge.svg)](https://github.com/t-strings/tdom/actions/workflows/pytest.yml)
 [![Test Count](https://t-strings.github.io/tdom/reports/pytest.svg)](https://t-strings.github.io/tdom/reports/pytest.html)
-[![Coverage](https://t-strings.github.io/tdom/reports/coverage.svg)](https://t-strings.github.io/tdom/reports/coverage.html)
+[![Coverage](https://t-strings.github.io/tdom/reports/coverage.svg)](https://t-strings.github.io/tdom/reports/coverage/index.html)
 [![Changelog](https://img.shields.io/github/v/release/t-strings/tdom?include_prereleases&label=changelog)](https://github.com/t-strings/tdom/releases)
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/t-strings/tdom/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-online-blue.svg)](https://t-strings.github.io/tdom/)
