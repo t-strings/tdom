@@ -9,8 +9,12 @@ wheels/
 # Virtual environments
 .venv
 
-# Coverage
+# Coverage and test reports
 .coverage
+reports/
 
 # Sphinx build output
 docs/_build/
+
+# macOS
+.DS_Store

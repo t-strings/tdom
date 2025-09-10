@@ -31,3 +31,16 @@ clean_package:
 build: build_docs build_package
 
 clean: clean_docs clean_package
+
+reports:
+    uv run pytest --cov=tdom --cov-report=xml:reports/coverage.xml --cov-report=term --cov-report=html:reports/coverage --junitxml=reports/pytest.xml --html=reports/pytest.html
+
+clean_reports:
+    rm -rf reports/
+
+badges:
+    uv run genbadge tests -i reports/pytest.xml -v -o reports/pytest.svg
+    uv run genbadge coverage -i reports/coverage.xml -v -o reports/coverage.svg
+
+clean_badges:
+    rm -rf reports/*.svg
