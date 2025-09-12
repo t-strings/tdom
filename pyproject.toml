@@ -8,7 +8,11 @@ version = "0.1.5"
 description = "A 🤘 rockin' t-string HTML templating system for Python 3.14."
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = ["markupsafe>=3.0.2"]
+dependencies = [
+    "furo>=2025.7.19",
+    "genbadge>=1.1.2",
+    "markupsafe>=3.0.2",
+]
 authors = [
   { name = "Dave Peck", email = "davepeck@davepeck.org" },
   { name = "Andrea Giammarchi", email = "andrea.giammarchi@gmail.com" },
