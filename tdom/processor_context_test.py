@@ -1,8 +1,9 @@
-from tdom import Element, Text, html
+from dataclasses import dataclass
+from tdom import Text, html
 from tdom.types import Context
 
 
-def test_context_passed_to_component_simple():
+def test_context_passed_to_function_component_simple():
     calls: list[dict[str, object] | None] = []
 
     def Comp(*children: Text, answer: int, context: Context = None):
@@ -13,7 +14,7 @@ def test_context_passed_to_component_simple():
     assert calls == [{"x": 7}]
 
 
-def test_context_passed_to_subcomponent_via_template():
+def test_context_passed_to_function_subcomponent_via_template():
     seen: list[object] = []
 
     def Child(*children: Text, context: Context = None):
@@ -28,12 +29,49 @@ def test_context_passed_to_subcomponent_via_template():
     assert seen == ["alice"]
 
 
-def test_context_not_required_for_component():
+def test_context_not_required_for_function_component():
     # Component does not accept `context`; passing context to html() should not break.
     def NoCtx(*children: Text, answer: int):
         return Text(f"answer={answer}")
 
     node = html(t"<div><{NoCtx} answer={42} /></div>", context={"x": 7})
+    # Fake out PyCharm's type checker
+    children = getattr(node, "children")
+    assert children[0].text == "answer=42"
+
+
+def test_context_passed_to_class_component_simple():
+    calls: list[dict[str, object] | None] = []
+
+    @dataclass
+    class CompClass:
+        answer: int
+        context: Context = None
+
+        def __call__(self) -> Text:
+            calls.append(self.context)
+            return Text(
+                f"answer={self.answer},ctx={self.context['x'] if self.context else 'None'}"
+            )
+
+    comp = CompClass(answer=42, context={"x": 7})
+    html(t"<div><{comp} /></div>")
+
+    # Ensure context was available on the instance
+    assert calls == [{"x": 7}]
+
+
+def test_context_not_required_for_class_component():
+    @dataclass
+    class NoCtxClass:
+        answer: int
+        context: Context = None
+
+        def __call__(self) -> Text:
+            return Text(f"answer={self.answer}")
+
+    node = html(t"<div><{NoCtxClass(answer=42)} /></div>", context={"x": 7})
+
     # Fake out PyCharm's type checker
     children = getattr(node, "children")
     assert children[0].text == "answer=42"
