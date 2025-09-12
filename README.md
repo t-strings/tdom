@@ -304,7 +304,60 @@ TODO: say more about SVG support
 
 #### Context
 
-TODO: implement context feature
+The html() function accepts an optional named argument, context, which lets you pass shared, read-only data down through rendering. This is handy for things like user/session info, feature flags, locale, or request-scoped configuration.
+
+- Type: a simple dictionary, centralized as a shared type
+  
+  from tdom.types import Context
+  
+  Context = dict[str, object] | None
+
+- How it flows: when you call html(template, context=...), the same context is automatically propagated to:
+  - Component functions you invoke via <{Component} ...> syntax, if their signature includes a context parameter (or accepts **kwargs).
+  - Any nested Template values encountered during rendering (e.g., components returning templates or interpolated t-strings).
+
+- Non-intrusive: if a component does not accept a context parameter (and doesn’t use **kwargs), nothing is passed and no error is raised.
+
+Basic usage, passing context to a component:
+
+```python
+from tdom import html, Text
+from tdom.types import Context
+
+# Components can optionally accept `context`.
+# Treat it as read-only shared data.
+
+def UserGreeting(*children: Text, *, context: Context = None):
+    user = (context or {}).get("user", "guest")
+    return t"<p>Hello, {user}!</p>"
+
+page = html(t"<main><{UserGreeting} /></main>", context={"user": "alice"})
+print(page)  # <main><p>Hello, alice!</p></main>
+```
+
+Context automatically propagates to nested templates and subcomponents:
+
+```python
+from tdom import html, Text
+from tdom.types import Context
+
+
+def Child(*children: Text, *, context: Context = None):
+    theme = (context or {}).get("theme", "light")
+    return t"<span class='{theme}'>Child</span>"
+
+# Parent returns a Template that invokes Child; context flows through.
+
+def Parent(*children: Text, *, context: Context = None):
+    return t"<section><{Child} /></section>"
+
+result = html(t"<{Parent} />", context={"theme": "dark"})
+print(result)  # <section><span class='dark'>Child</span></section>
+```
+
+Notes
+- If a component supports **kwargs but doesn’t name context explicitly, tdom still passes context via **kwargs.
+- You can omit the context argument entirely if you don’t need it.
 
 ### The `tdom` Module
 

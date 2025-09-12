@@ -1,6 +1,7 @@
 import random
 import string
 import typing as t
+from inspect import signature
 from collections.abc import Iterable
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
@@ -11,6 +12,7 @@ from .classnames import classnames
 from .nodes import Element, Fragment, Node, Text
 from .parser import parse_html
 from .utils import format_interpolation as base_format_interpolation
+from .types import Context
 
 
 @t.runtime_checkable
@@ -262,12 +264,15 @@ def _substitute_attrs(
 
 
 def _substitute_and_flatten_children(
-    children: t.Iterable[Node], interpolations: tuple[Interpolation, ...]
+    children: t.Iterable[Node],
+    interpolations: tuple[Interpolation, ...],
+    *,
+    context: Context = None,
 ) -> list[Node]:
     """Substitute placeholders in a list of children and flatten any fragments."""
     new_children: list[Node] = []
     for child in children:
-        substituted = _substitute_node(child, interpolations)
+        substituted = _substitute_node(child, interpolations, context=context)
         if isinstance(substituted, Fragment):
             # This can happen if an interpolation results in a Fragment, for
             # instance if it is iterable.
@@ -277,7 +282,7 @@ def _substitute_and_flatten_children(
     return new_children
 
 
-def _node_from_value(value: object) -> Node:
+def _node_from_value(value: object, *, context: Context = None) -> Node:
     """
     Convert an arbitrary value to a Node.
 
@@ -290,11 +295,11 @@ def _node_from_value(value: object) -> Node:
         case Node():
             return value
         case Template():
-            return html(value)
+            return html(value, context=context)
         case False:
             return Text("")
         case Iterable():
-            children = [_node_from_value(v) for v in value]
+            children = [_node_from_value(v, context=context) for v in value]
             return Fragment(children=children)
         case HasHTMLDunder():
             # CONSIDER: could we return a lazy Text?
@@ -313,6 +318,8 @@ def _invoke_component(
     new_attrs: dict[str, object | None],
     new_children: list[Node],
     interpolations: tuple[Interpolation, ...],
+    *,
+    context: Context = None,
 ) -> Node:
     """Substitute a component invocation based on the corresponding interpolations."""
     index = _placholder_index(tag)
@@ -327,12 +334,24 @@ def _invoke_component(
     kwargs = {k.replace("-", "_"): v for k, v in new_attrs.items()}
 
     # Call the component and return the resulting node
-    result = value(*new_children, **kwargs)
+    # Pass context if the callable supports it and no explicit context kwarg provided
+    try:
+        sig = signature(value)
+        params = sig.parameters
+        if (
+            "context" in params or any(p.kind == p.VAR_KEYWORD for p in params.values())
+        ) and "context" not in kwargs:
+            result = value(*new_children, **kwargs, context=context)
+        else:
+            result = value(*new_children, **kwargs)
+    except (ValueError, TypeError):
+        # Fallback if signature cannot be inspected
+        result = value(*new_children, **kwargs)
     match result:
         case Node():
             return result
         case Template():
-            return html(result)
+            return html(result, context=context)
         case str():
             return Text(result)
         case HasHTMLDunder():
@@ -349,24 +368,32 @@ def _stringify_attrs(attrs: dict[str, object | None]) -> dict[str, str | None]:
     return {k: str(v) if v is not None else None for k, v in attrs.items()}
 
 
-def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) -> Node:
+def _substitute_node(
+    p_node: Node, interpolations: tuple[Interpolation, ...], context: Context = None
+) -> Node:
     """Substitute placeholders in a node based on the corresponding interpolations."""
     match p_node:
         case Text(text) if str(text).startswith(_PLACEHOLDER_PREFIX):
             index = _placholder_index(str(text))
             interpolation = interpolations[index]
             value = format_interpolation(interpolation)
-            return _node_from_value(value)
+            return _node_from_value(value, context=context)
         case Element(tag=tag, attrs=attrs, children=children):
             new_attrs = _substitute_attrs(attrs, interpolations)
-            new_children = _substitute_and_flatten_children(children, interpolations)
+            new_children = _substitute_and_flatten_children(
+                children, interpolations, context=context
+            )
             if tag.startswith(_PLACEHOLDER_PREFIX):
-                return _invoke_component(tag, new_attrs, new_children, interpolations)
+                return _invoke_component(
+                    tag, new_attrs, new_children, interpolations, context=context
+                )
             else:
                 new_attrs = _stringify_attrs(new_attrs)
                 return Element(tag=tag, attrs=new_attrs, children=new_children)
         case Fragment(children=children):
-            new_children = _substitute_and_flatten_children(children, interpolations)
+            new_children = _substitute_and_flatten_children(
+                children, interpolations, context=context
+            )
             return Fragment(children=new_children)
         case _:
             return p_node
@@ -377,9 +404,13 @@ def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) ->
 # --------------------------------------------------------------------------
 
 
-def html(template: Template) -> Node:
-    """Parse a t-string and return a tree of Nodes."""
+def html(template: Template, *, context: Context = None) -> Node:
+    """Parse a t-string and return a tree of Nodes.
+
+    The optional named argument `context` can be used to pass a dictionary down to
+    component callables and any nested template processing.
+    """
     # Parse the HTML, returning a tree of nodes with placeholders
     # where interpolations go.
     p_node = _instrument_and_parse(template)
-    return _substitute_node(p_node, template.interpolations)
+    return _substitute_node(p_node, template.interpolations, context=context)
