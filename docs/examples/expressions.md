@@ -1,6 +1,7 @@
 # Expressions
 
-In Python f-strings, the curly brackets can take not just variable names, but also Python "expressions" inside a t-string's interpolation.
+In Python f-strings, the curly brackets can take not just variable names, but
+also Python "expressions" inside a t-string's interpolation.
 
 The same is true in `tdom`.
 

@@ -18,7 +18,9 @@ Just run:
 pip install tdom
 ```
 
-Python 3.14 isn't out yet, but you can use [Astral's `uv`](https://docs.astral.sh/uv/) to easily try `tdom` in a Python 3.14 environment:
+Python 3.14 isn't out yet, but you can use
+[Astral's `uv`](https://docs.astral.sh/uv/) to easily try `tdom` in a Python
+3.14 environment:
 
 ```bash
 uv run --with tdom --python 3.14 python
@@ -26,11 +28,19 @@ uv run --with tdom --python 3.14 python
 
 ## Usage
 
-`tdom` leverages Python 3.14's [new t-strings feature](https://t-strings.help/introduction.html) to provide a powerful HTML templating system that feels familiar if you've used JSX, Jinja2, or Django templates.
+`tdom` leverages Python 3.14's
+[new t-strings feature](https://t-strings.help/introduction.html) to provide a
+powerful HTML templating system that feels familiar if you've used JSX, Jinja2,
+or Django templates.
 
-T-strings work just like f-strings but use a `t` prefix and [create `Template` objects](https://docs.python.org/3.14/library/string.templatelib.html#template-strings) instead of strings.
+T-strings work just like f-strings but use a `t` prefix and
+[create `Template` objects](https://docs.python.org/3.14/library/string.templatelib.html#template-strings)
+instead of strings.
 
-Once you have a `Template`, you can call this package's `html()` function to convert it into a tree of `Node` objects that represent your HTML structure. From there, you can render it to a string, manipulate it programmatically, or compose it with other templates for maximum flexibility.
+Once you have a `Template`, you can call this package's `html()` function to
+convert it into a tree of `Node` objects that represent your HTML structure.
+From there, you can render it to a string, manipulate it programmatically, or
+compose it with other templates for maximum flexibility.
 
 ### Getting Started
 
@@ -45,7 +55,8 @@ print(greeting)  # <h1>Hello, World!</h1>
 
 ### Variable Interpolation
 
-Just like f-strings, you can interpolate (substitute) variables directly into your templates:
+Just like f-strings, you can interpolate (substitute) variables directly into
+your templates:
 
 ```python
 name = "Alice"
@@ -54,7 +65,8 @@ user_info = html(t"<p>Hello, {name}! You are {age} years old.</p>")
 print(user_info)  # <p>Hello, Alice! You are 30 years old.</p>
 ```
 
-The `html()` function ensures that interpolated values are automatically escaped to prevent XSS attacks:
+The `html()` function ensures that interpolated values are automatically escaped
+to prevent XSS attacks:
 
 ```python
 user_name = "<script>alert('owned')</script>"
@@ -64,7 +76,8 @@ print(safe_output)  # <p>Hello, &lt;script&gt;alert('owned')&lt;/script&gt;!</p>
 
 ### Attribute Substitution
 
-The `html()` function provides a number of convenient ways to define HTML attributes.
+The `html()` function provides a number of convenient ways to define HTML
+attributes.
 
 #### Direct Attribute Values
 
@@ -84,7 +97,8 @@ button = html(t"<button id={element_id}>Click me</button>")
 # <button id="my-button">Click me</button>
 ```
 
-Boolean attributes are supported too. Just use a boolean value in the attribute position:
+Boolean attributes are supported too. Just use a boolean value in the attribute
+position:
 
 ```python
 form_button = html(t"<button disabled={True} hidden={False}>Submit</button>")
@@ -93,7 +107,9 @@ form_button = html(t"<button disabled={True} hidden={False}>Submit</button>")
 
 #### The `class` Attribute
 
-The `class` attribute has special handling to make it easy to combine multiple classes from different sources. The simplest way is to provide a list of class names:
+The `class` attribute has special handling to make it easy to combine multiple
+classes from different sources. The simplest way is to provide a list of class
+names:
 
 ```python
 classes = ["btn", "btn-primary", "active"]
@@ -101,7 +117,8 @@ button = html(t'<button class="{classes}">Click me</button>')
 # <button class="btn btn-primary active">Click me</button>
 ```
 
-For flexibility, you can also provide a list of strings, dictionaries, or a mix of both:
+For flexibility, you can also provide a list of strings, dictionaries, or a mix
+of both:
 
 ```python
 classes = ["btn", "btn-primary", {"active": True}, None, False and "disabled"]
@@ -109,11 +126,14 @@ button = html(t'<button class="{classes}">Click me</button>')
 # <button class="btn btn-primary active">Click me</button>
 ```
 
-See the [`classnames()`](https://github.com/t-strings/tdom/blob/main/tdom/classnames_test.py) helper function for more information on how class names are combined.
+See the
+[`classnames()`](https://github.com/t-strings/tdom/blob/main/tdom/classnames_test.py)
+helper function for more information on how class names are combined.
 
 #### The `style` Attribute
 
-In addition to strings, you can also provide a dictionary of CSS properties and values for the `style` attribute:
+In addition to strings, you can also provide a dictionary of CSS properties and
+values for the `style` attribute:
 
 ```python
 # Style attributes from dictionaries
@@ -124,7 +144,8 @@ styled = html(t"<p style={styles}>Important text</p>")
 
 #### The `data` and `aria` Attributes
 
-The `data` and `aria` attributes also have special handling to convert dictionary keys to the appropriate attribute names:
+The `data` and `aria` attributes also have special handling to convert
+dictionary keys to the appropriate attribute names:
 
 ```python
 data_attrs = {"user-id": 123, "role": "admin"}
@@ -134,11 +155,13 @@ element = html(t"<div data={data_attrs} aria={aria_attrs}>Content</div>")
 # aria-hidden="true">Content</div>
 ```
 
-Note that boolean values in `aria` attributes are converted to `"true"` or `"false"` as per [the ARIA specification](https://www.w3.org/TR/wai-aria-1.2/).
+Note that boolean values in `aria` attributes are converted to `"true"` or
+`"false"` as per [the ARIA specification](https://www.w3.org/TR/wai-aria-1.2/).
 
 #### Attribute Spreading
 
-It's possible to specify multiple attributes at once by using a dictionary and spreading it into an element using curly braces:
+It's possible to specify multiple attributes at once by using a dictionary and
+spreading it into an element using curly braces:
 
 ```python
 attrs = {"href": "https://example.com", "target": "_blank"}
@@ -155,7 +178,8 @@ link = html(t'<a {base_attrs} target="{target}">Link</a>')
 # <a id="my-link" target="_blank">Link</a>
 ```
 
-Special attributes likes `class` behave as expected when combined with spreading:
+Special attributes likes `class` behave as expected when combined with
+spreading:
 
 ```python
 classes = ["btn", {"active": True}]
@@ -197,9 +221,14 @@ fruit_list = html(t"<ul>{[t'<li>{fruit}</li>' for fruit in fruits]}</ul>")
 
 ### Raw HTML Injection
 
-The `tdom` package provides several ways to include trusted raw HTML content in your templates. This is useful when you have HTML content that you _know_ is safe and do not wish to escape.
+The `tdom` package provides several ways to include trusted raw HTML content in
+your templates. This is useful when you have HTML content that you _know_ is
+safe and do not wish to escape.
 
-Under the hood, `tdom` builds on top of the familiar [MarkupSafe](https://pypi.org/project/MarkupSafe/) library to handle trusted HTML content. If you've used Flask, Jinja2, or similar libraries, this will feel very familiar.
+Under the hood, `tdom` builds on top of the familiar
+[MarkupSafe](https://pypi.org/project/MarkupSafe/) library to handle trusted
+HTML content. If you've used Flask, Jinja2, or similar libraries, this will feel
+very familiar.
 
 The `Markup` class from MarkupSafe is available for use:
 
@@ -211,7 +240,8 @@ content = html(t"<div>{trusted_html}</div>")
 # <div><strong>This is safe HTML</strong></div>
 ```
 
-As a convenience, `tdom` also supports a `:safe` format specifier that marks a string as safe HTML:
+As a convenience, `tdom` also supports a `:safe` format specifier that marks a
+string as safe HTML:
 
 ```python
 trusted_html = "<em>Emphasized text</em>"
@@ -219,7 +249,9 @@ page = html(t"<p>Here is some {trusted_html:safe} content.</p>")
 # <p>Here is some <em>Emphasized text</em> content.</p>
 ```
 
-For interoperability with other templating libraries, any object that implements a `__html__` method will be treated as safe HTML. Many popular libraries (including MarkupSafe and Django) use this convention:
+For interoperability with other templating libraries, any object that implements
+a `__html__` method will be treated as safe HTML. Many popular libraries
+(including MarkupSafe and Django) use this convention:
 
 ```python
 class SafeWidget:
@@ -230,7 +262,9 @@ page = html(t"<div>My widget: {SafeWidget()}</div>")
 # <div>My widget: <button>Custom Widget</button></div>
 ```
 
-You can also explicitly mark a string as "unsafe" using the `:unsafe` format specifier. This forces the string to be escaped, even if it would normally be treated as safe:
+You can also explicitly mark a string as "unsafe" using the `:unsafe` format
+specifier. This forces the string to be escaped, even if it would normally be
+treated as safe:
 
 ```python
 from tdom import html, Markup
@@ -251,7 +285,9 @@ page = html(t"<div>{content}</div>")
 # <div><h1>My Site</h1></div>
 ```
 
-In the example above, `content` is a `Template` object that gets correctly parsed and embedded within the outer template. You can also explicitly call `html()` on nested templates if you prefer:
+In the example above, `content` is a `Template` object that gets correctly
+parsed and embedded within the outer template. You can also explicitly call
+`html()` on nested templates if you prefer:
 
 ```python
 content = html(t"<h1>My Site</h1>")
@@ -263,7 +299,8 @@ The result is the same either way.
 
 #### Component Functions
 
-You can create reusable component functions that generate templates with dynamic content and attributes. Use these like custom HTML elements in your templates.
+You can create reusable component functions that generate templates with dynamic
+content and attributes. Use these like custom HTML elements in your templates.
 
 The basic form of all component functions is:
 
@@ -275,14 +312,16 @@ def MyComponent(*children: Node, **attrs: Any) -> Template:
     return t"<div {attrs}>{children}</div>"
 ```
 
-To _invoke_ your component within an HTML template, use the special `<{ComponentName} ... />` syntax:
+To _invoke_ your component within an HTML template, use the special
+`<{ComponentName} ... />` syntax:
 
 ```python
 result = html(t"<{MyComponent} id='comp1'>Hello, Component!</{MyComponent}>")
 # <div id="comp1">Hello, Component!</div>
 ```
 
-Because attributes are passed as keyword arguments, you can explicitly provide type hints for better editor support:
+Because attributes are passed as keyword arguments, you can explicitly provide
+type hints for better editor support:
 
 ```python
 from typing import Any
@@ -294,9 +333,14 @@ result = html(t'<{Link} href="https://example.com" text="Example" data-value={42
 # <a href="https://example.com" target="_blank">Example: 42</a>
 ```
 
-Note that attributes with hyphens (like `data-value`) are converted to underscores (`data_value`) in the function signature.
+Note that attributes with hyphens (like `data-value`) are converted to
+underscores (`data_value`) in the function signature.
 
-In addition to returning a `Template` directly, component functions may also return any `Node` type found in [`tdom.nodes`](https://github.com/t-strings/tdom/blob/main/tdom/nodes.py). This allows you to build more complex components that manipulate the HTML structure programmatically.
+In addition to returning a `Template` directly, component functions may also
+return any `Node` type found in
+[`tdom.nodes`](https://github.com/t-strings/tdom/blob/main/tdom/nodes.py). This
+allows you to build more complex components that manipulate the HTML structure
+programmatically.
 
 #### SVG Support
 

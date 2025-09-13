@@ -7,10 +7,15 @@ that can be re-used and called from other templates.
 
 The whole mechanism, though, is quite magical:
 
-- Where do the macros come from? Multiple layers of context magic and specially named directories provide the answer.
-- What macros are available at the cursor position I'm at in a template? It's hard for an editor or IDE to predict and provide autocomplete.
-- What are the macros arguments and what is this template's special syntax for providing them? And can my editor help on autocomplete or tell me when I got it wrong (or the macro changed its signature)?
-- How does my current scope interact with the macro's scope, and where does it get other parts of its scope from?
+- Where do the macros come from? Multiple layers of context magic and specially
+  named directories provide the answer.
+- What macros are available at the cursor position I'm at in a template? It's
+  hard for an editor or IDE to predict and provide autocomplete.
+- What are the macros arguments and what is this template's special syntax for
+  providing them? And can my editor help on autocomplete or tell me when I got
+  it wrong (or the macro changed its signature)?
+- How does my current scope interact with the macro's scope, and where does it
+  get other parts of its scope from?
 
 The `tdom` package makes this more Pythonic through the use of "components."
 
@@ -46,8 +51,8 @@ result = html(t'<{Heading title="My Title" } />')
 
 ## Children As Props
 
-If your template has children inside the component element, your component
-will receive them as `*children` positional arguments:
+If your template has children inside the component element, your component will
+receive them as `*children` positional arguments:
 
 ```python
 from tdom import Node, html
@@ -61,8 +66,8 @@ result = html(t'<{Heading} title="My Title">Child</{Heading}>')
 Note how the component closes with `</{Heading}>` when it contains nested
 children, as opposed to the self-closing form in the first example.
 
-Note also that components functions can return `Node` or `Template` values
-as they wish. Iterables of nodes and templates are also supported.
+Note also that components functions can return `Node` or `Template` values as
+they wish. Iterables of nodes and templates are also supported.
 
 ## Optional Props
 
@@ -80,7 +85,8 @@ result = html(t"<{Heading} />")
 ## Passsing Another Component as a Prop
 
 Here's a useful pattern: you can pass a component as a "prop" to another
-component. This lets the caller (in this case, the `result` line) do the driving:
+component. This lets the caller (in this case, the `result` line) do the
+driving:
 
 ```python
 def DefaultHeading() -> Template:
@@ -116,8 +122,8 @@ result = html(t"<{Body} heading={OtherHeading}/>")
 
 ## Conditional Default
 
-One final variation for passing a component as a prop... move the
-"default or passed-in" decision into the template itself:
+One final variation for passing a component as a prop... move the "default or
+passed-in" decision into the template itself:
 
 ```python
 from tdom import ComponentCallable, html
@@ -138,8 +144,8 @@ result = html(t"<{Body} heading={OtherHeading}/>")
 ## Generators as Components
 
 You can also have components that act as generators. For example, imagine you
-have a todo list. There might be a lot of todos, so you want to generate them
-in a memory-efficient way:
+have a todo list. There might be a lot of todos, so you want to generate them in
+a memory-efficient way:
 
 ```python
 from typing import Iterable

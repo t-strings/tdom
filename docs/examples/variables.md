@@ -1,7 +1,7 @@
 # Variables
 
-Inserting a variable into a template mimics what you would expect from a
-Python f-string.
+Inserting a variable into a template mimics what you would expect from a Python
+f-string.
 
 ## Insert Value Into Template
 
@@ -39,4 +39,5 @@ result = hello("tdom")
 
 TODO: write this section
 
-`tdom` now builds on top of [MarkupSafe](https://markupsafe.palletsprojects.com/en/stable/).
+`tdom` now builds on top of
+[MarkupSafe](https://markupsafe.palletsprojects.com/en/stable/).
