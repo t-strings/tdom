@@ -6,6 +6,9 @@ lint:
 format_check:
     uv run ruff format --check
 
+format_docs:
+    npx prettier --write "**/*.md"
+
 type_check:
     uv run pyright
 

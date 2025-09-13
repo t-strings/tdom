@@ -4,8 +4,8 @@ Let's look at some non-dynamic uses of templating to learn the basics.
 
 ## Render a String Literal
 
-Let's start with the simplest form of templating: just a string, no tags,
-no attributes:
+Let's start with the simplest form of templating: just a string, no tags, no
+attributes:
 
 ```python
 result = html(t"Hello World")
@@ -32,8 +32,8 @@ result = html(t"<div>Hello World</div>")
 
 Let's take a look at that `Element` structure.
 
-This time, we'll inspect the returned value rather than rendering it to
-a string:
+This time, we'll inspect the returned value rather than rendering it to a
+string:
 
 ```python
 from tdom import Element, Text
@@ -54,8 +54,9 @@ In our test we see that we got back an `Element`. What does it look like?
 
 ## Interpolations as Attribute Values
 
-We can go one step further with this and use interpolations from PEP 750 t-strings.
-Let's pass in a Python symbol as part of the template, inside curly braces:
+We can go one step further with this and use interpolations from PEP 750
+t-strings. Let's pass in a Python symbol as part of the template, inside curly
+braces:
 
 ```python
 my_class = "active"
