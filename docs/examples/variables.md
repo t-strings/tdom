@@ -7,20 +7,14 @@ f-string.
 
 In this case, `name` comes from the immediate scope:
 
+<!-- invisible-code-block: python
+from tdom import html
+-->
+
 ```python
 name = "tdom"
 result = html(t"<div>Hello {name}</div>")
-# <div>Hello tdom</div>
-```
-
-## Value From Import
-
-Here, `name` is imported from another module:
-
-```python
-from .elsewhere import name
-result = html(t"<div>Hello {name}</div>")
-# <div>Hello tdom</div>
+assert str(result) == '<div>Hello tdom</div>'
 ```
 
 ## Passed-In Prop
@@ -32,7 +26,7 @@ def hello(name: str) -> Template:
     return html(t"<div>Hello {name}</div>")
 
 result = hello("tdom")
-# <div>Hello tdom</div>
+assert str(result) == '<div>Hello tdom</div>'
 ```
 
 ## Unsafe Values

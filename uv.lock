@@ -603,6 +603,20 @@ wheels = [
 ]
 
 [[package]]
+name = "sybil"
+version = "9.2.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/fe/01/cd109cc45ad8be87a3338ebb2d0e9f4a46a635952a7cf25f1f30fd13a794/sybil-9.2.0.tar.gz", hash = "sha256:a7cbccf4b06af7e946a218e23fd59fde36738e91eb698b15619a4d5f97b176bb", size = 43757, upload-time = "2025-08-08T09:00:27.632Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d0/e1/14e7b92ebebd8264a36555967e450035249f5a065f57a71d16a5ed7c36a9/sybil-9.2.0-py3-none-any.whl", hash = "sha256:c0c82823a86c2a9e202fb628526aa973700cc20dbfd5c91481c265521e40b742", size = 38521, upload-time = "2025-08-08T09:00:26.824Z" },
+]
+
+[package.optional-dependencies]
+pytest = [
+    { name = "pytest" },
+]
+
+[[package]]
 name = "tdom"
 version = "0.1.5"
 source = { editable = "." }
@@ -622,6 +636,7 @@ dev = [
     { name = "pytest-watcher" },
     { name = "ruff" },
     { name = "sphinx" },
+    { name = "sybil", extra = ["pytest"] },
 ]
 
 [package.metadata]
@@ -639,6 +654,7 @@ dev = [
     { name = "pytest-watcher", specifier = ">=0.4.3" },
     { name = "ruff", specifier = ">=0.12.11" },
     { name = "sphinx", specifier = ">=8.2.3" },
+    { name = "sybil", extras = ["pytest"], specifier = ">=9.2.0" },
 ]
 
 [[package]]
