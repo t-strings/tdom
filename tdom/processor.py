@@ -318,7 +318,6 @@ def _invoke_component(
     index = _placholder_index(tag)
     interpolation = interpolations[index]
     value = format_interpolation(interpolation)
-    # TODO: consider use of signature() or other approaches to validation.
     if not callable(value):
         raise TypeError(
             f"Expected a callable for component invocation, got {type(value).__name__}"
@@ -327,21 +326,9 @@ def _invoke_component(
     kwargs = {k.replace("-", "_"): v for k, v in new_attrs.items()}
 
     # Call the component and return the resulting node
+    # TODO: handle failed calls more gracefully; consider using signature()?
     result = value(*new_children, **kwargs)
-    match result:
-        case Node():
-            return result
-        case Template():
-            return html(result)
-        case str():
-            return Text(result)
-        case HasHTMLDunder():
-            return Text(Markup(result.__html__()))
-        case _:
-            raise TypeError(
-                f"Component callable must return a Node, Template, or str; "
-                f"got {type(result).__name__}"
-            )
+    return _node_from_value(result)
 
 
 def _stringify_attrs(attrs: dict[str, object | None]) -> dict[str, str | None]:
