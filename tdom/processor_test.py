@@ -1,4 +1,5 @@
 import typing as t
+from dataclasses import dataclass
 from string.templatelib import Template
 
 import pytest
@@ -605,3 +606,55 @@ def test_component_returning_explicit_fragment():
         ],
     )
     assert str(node) == "<ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>"
+
+
+@dataclass
+class Avatar:
+    """Example class-based component."""
+
+    user_name: str
+    image_url: str
+    homepage: str = "#"
+
+    def __call__(self) -> Node:
+        return html(
+            t"<div class='avatar'>"
+            t"<a href={self.homepage}>"
+            t"<img src='{self.image_url}' alt='{f'Avatar of {self.user_name}'}' />"
+            t"</a>"
+            t"<span>{self.user_name}</span>"
+            t"</div>"
+        )
+
+
+def test_class_based_component():
+    avatar = Avatar(
+        user_name="Alice",
+        image_url="https://example.com/alice.png",
+        homepage="https://example.com/users/alice",
+    )
+    node = html(t"<{avatar} />")
+    assert node == Element(
+        "div",
+        attrs={"class": "avatar"},
+        children=[
+            Element(
+                "a",
+                attrs={"href": "https://example.com/users/alice"},
+                children=[
+                    Element(
+                        "img",
+                        attrs={
+                            "src": "https://example.com/alice.png",
+                            "alt": "Avatar of Alice",
+                        },
+                    )
+                ],
+            ),
+            Element("span", children=[Text("Alice")]),
+        ],
+    )
+    assert (
+        str(node)
+        == '<div class="avatar"><a href="https://example.com/users/alice"><img src="https://example.com/alice.png" alt="Avatar of Alice" /></a><span>Alice</span></div>'
+    )
