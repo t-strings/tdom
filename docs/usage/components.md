@@ -170,6 +170,6 @@ def TodoList(labels: Iterable[str]) -> Template:
 
 title = "My Todos"
 labels = ["first", "second", "third"]
-result = html(t"<h1>{title}</h1><{TodoList} labels={todos} />")
-# <h1>My Todos</h1><ul><li>first</li><li>second</li><li>third</li></ul>
+result = html(t"<h1>{title}</h1><{TodoList} labels={labels} />")
+assert str(result) == '<h1>My Todos</h1><ul><li>first</li><li>second</li><li>third</li></ul>'
 ```
