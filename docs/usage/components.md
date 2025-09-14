@@ -29,7 +29,8 @@ a `Node`:
 
 <!-- invisible-code-block: python
 from string.templatelib import Template
-from tdom import html
+from tdom import html, ComponentCallable, Node
+from typing import Iterable
 -->
 
 ```python
@@ -60,8 +61,6 @@ If your template has children inside the component element, your component will
 receive them as `*children` positional arguments:
 
 ```python
-from tdom.nodes import Node
-
 def Heading(*children: Node, title: str) -> Node:
     return html(t"<h1>{title}</h1><div>{children}</div>")
 
@@ -111,8 +110,6 @@ As a variation, let the caller do the driving but make the prop default to a
 default component if none was provided:
 
 ```python
-from tdom import ComponentCallable
-
 def DefaultHeading() -> Template:
     return t"<h1>Default Heading</h1>"
 
@@ -132,8 +129,6 @@ One final variation for passing a component as a prop... move the "default or
 passed-in" decision into the template itself:
 
 ```python
-from tdom import ComponentCallable
-
 def DefaultHeading() -> Template:
     return t"<h1>Default Heading</h1>"
 
@@ -141,11 +136,10 @@ def OtherHeading() -> Template:
     return t"<h1>Other Heading</h1>"
 
 def Body(heading: ComponentCallable | None = None) -> Template:
-    return t"<body>{heading if heading else DefaultHeading}</body>"
+    return t"<body><{heading if heading else DefaultHeading} /></body>"
 
 result = html(t"<{Body} heading={OtherHeading}></{Body}>")
-# TODO Fix this and uncomment
-# assert str(result) == '<body><h1>Other Heading</h1></body>'
+assert str(result) == '<body><h1>Other Heading</h1></body>'
 ```
 
 ## Generators as Components
@@ -155,8 +149,6 @@ have a todo list. There might be a lot of todos, so you want to generate them in
 a memory-efficient way:
 
 ```python
-from typing import Iterable
-
 def Todos() -> Iterable[Template]:
     for todo in ["first", "second", "third"]:
         yield t"<li>{todo}</li>"
@@ -170,8 +162,6 @@ assert str(result) == '<ul><li>first</li><li>second</li><li>third</li></ul>'
 Components can be nested just like any other templating or function call:
 
 ```python
-from typing import Iterable
-
 def Todo(label: str) -> Template:
     return t"<li>{label}</li>"
 

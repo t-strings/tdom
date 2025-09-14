@@ -8,7 +8,7 @@ Let's start with the simplest form of templating: just a string, no tags, no
 attributes:
 
 <!-- invisible-code-block: python
-from tdom import html
+from tdom import html, Element, Text
 -->
 
 ```python
@@ -40,7 +40,6 @@ This time, we'll inspect the returned value rather than rendering it to a
 string:
 
 ```python
-from tdom import Element, Text
 result = html(t'<div class="container">Hello World</div>')
 assert result == Element(
     "div",
@@ -77,7 +76,6 @@ TODO: describe all the many many ways to express attribute values, including
 Let's look at what more nesting would look like:
 
 ```python
-from tdom import Element, Text
 result = html(t"<div>Hello <span>World<em>!</em></span></div>")
 assert result == Element(
     "div",
