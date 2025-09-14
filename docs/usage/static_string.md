@@ -7,9 +7,13 @@ Let's look at some non-dynamic uses of templating to learn the basics.
 Let's start with the simplest form of templating: just a string, no tags, no
 attributes:
 
+<!-- invisible-code-block: python
+from tdom import html, Element, Text
+-->
+
 ```python
 result = html(t"Hello World")
-# Hello World
+assert str(result) == 'Hello World'
 ```
 
 We start by importing the `html` function from `tdom`.
@@ -25,7 +29,7 @@ but done in one step:
 
 ```python
 result = html(t"<div>Hello World</div>")
-# <div>Hello World</div>
+assert str(result) == '<div>Hello World</div>'
 ```
 
 ## Show the `Element` Itself
@@ -36,7 +40,6 @@ This time, we'll inspect the returned value rather than rendering it to a
 string:
 
 ```python
-from tdom import Element, Text
 result = html(t'<div class="container">Hello World</div>')
 assert result == Element(
     "div",
@@ -61,7 +64,7 @@ braces:
 ```python
 my_class = "active"
 result = html(t'<div class={my_class}>Hello World</div>')
-# <div class="active">Hello World</div>
+assert str(result) == '<div class="active">Hello World</div>'
 ```
 
 TODO: describe all the many many ways to express attribute values, including
@@ -73,7 +76,6 @@ TODO: describe all the many many ways to express attribute values, including
 Let's look at what more nesting would look like:
 
 ```python
-from tdom import Element, Text
 result = html(t"<div>Hello <span>World<em>!</em></span></div>")
 assert result == Element(
     "div",
@@ -99,7 +101,7 @@ In `tdom` this is straightforward:
 
 ```python
 result = html(t"<!DOCTYPE html><div>Hello World</div>")
-# <!DOCTYPE html><div>Hello World</div>
+assert str(result) == '<!DOCTYPE html><div>Hello World</div>'
 ```
 
 ## Reducing Boolean Attribute Values
@@ -110,5 +112,5 @@ without a _value_:
 
 ```python
 result = html(t"<div editable={True}>Hello World</div>")
-# <div editable>Hello World</div>
+assert str(result) == '<div editable>Hello World</div>'
 ```
