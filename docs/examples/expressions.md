@@ -9,9 +9,13 @@ The same is true in `tdom`.
 
 Let's use an expression which adds two numbers together:
 
+<!-- invisible-code-block: python
+from tdom import html
+-->
+
 ```python
 result = html(t"<div>{1 + 3}</div>")
-# <div>4</div>
+assert str(result) == '<div>4</div>'
 ```
 
 ## Python Operation
@@ -21,7 +25,7 @@ curly braces:
 
 ```python
 result = html(t"<div>{','.join(['a', 'b', 'c'])}</div>")
-# <div>a,b,c</div>
+assert str(result) == '<div>a,b,c</div>'
 ```
 
 ## Call a Function
@@ -36,5 +40,5 @@ def make_big(s: str) -> str:
     return f"SO VERY BIG: {s.upper()}"
 
 result = html(t"<div>{make_big('hello')}</div>")
-# <div>SO VERY BIG: HELLO</div>
+assert str(result) == '<div>SO VERY BIG: HELLO</div>'
 ```

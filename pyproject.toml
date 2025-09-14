@@ -46,11 +46,13 @@ dev = [
   "pytest-watcher>=0.4.3",
   "ruff>=0.12.11",
   "sphinx>=8.2.3",
+  "sybil[pytest]>=9.2.0",
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tdom"]
+testpaths = ["tdom", "docs"]
 python_files = ["*_test.py"]
+addopts = "-p no:doctest"
 
 [tool.pyright]
 include = ["tdom"]
