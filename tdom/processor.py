@@ -318,7 +318,6 @@ def _invoke_component(
     index = _placholder_index(tag)
     interpolation = interpolations[index]
     value = format_interpolation(interpolation)
-    # TODO: consider use of signature() or other approaches to validation.
     if not callable(value):
         raise TypeError(
             f"Expected a callable for component invocation, got {type(value).__name__}"
@@ -327,39 +326,9 @@ def _invoke_component(
     kwargs = {k.replace("-", "_"): v for k, v in new_attrs.items()}
 
     # Call the component and return the resulting node
+    # TODO: handle failed calls more gracefully; consider using signature()?
     result = value(*new_children, **kwargs)
-    match result:
-        case Node():
-            return result
-        case Template():
-            return html(result)
-        case str():
-            return Text(result)
-        case HasHTMLDunder():
-            return Text(Markup(result.__html__()))
-        case Iterable():
-            # Support generator/iterable returns from component callables
-            children: list[Node] = []
-            for item in result:
-                # Each yielded item can be a Node, Template, str, HasHTMLDunder
-                match item:
-                    case Node():
-                        children.append(item)
-                    case Template():
-                        children.append(html(item))
-                    case str():
-                        children.append(Text(item))
-                    case HasHTMLDunder():
-                        children.append(Text(Markup(item.__html__())))
-                    case _:
-                        # Fallback to string conversion to mirror _node_from_value behavior
-                        children.append(Text(str(item)))
-            return Fragment(children=children)
-        case _:
-            raise TypeError(
-                f"Component callable must return a Node, Template, or str; "
-                f"got {type(result).__name__}"
-            )
+    return _node_from_value(result)
 
 
 def _stringify_attrs(attrs: dict[str, object | None]) -> dict[str, str | None]:
