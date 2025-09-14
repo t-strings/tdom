@@ -336,11 +336,38 @@ result = html(t'<{Link} href="https://example.com" text="Example" data-value={42
 Note that attributes with hyphens (like `data-value`) are converted to
 underscores (`data_value`) in the function signature.
 
-In addition to returning a `Template` directly, component functions may also
-return any `Node` type found in
-[`tdom.nodes`](https://github.com/t-strings/tdom/blob/main/tdom/nodes.py). This
-allows you to build more complex components that manipulate the HTML structure
-programmatically.
+In addition to returning `Template`, component functions may also return any 
+`Node` type found in [`tdom.nodes`](https://github.com/t-strings/tdom/blob/main/tdom/nodes.py):
+
+```python
+def Link(*, href: str, text: str) -> Node:
+    return html(t'<a href="{href}">{text}</a>')
+
+result = html(t'<{Link} href="https://example.com" text="Example" />')
+# <a href="https://example.com">Example</a>
+```
+
+You may also return an `Iterable[Node | Template]` if you want to return multiple
+elements; this is treated as implicitly wrapping the children in a `Fragment`:
+
+```python
+def Items() -> Iterable[Template]:
+    for item in ["first", "second"]:
+        yield t'<li>{item}</li>'
+
+result = html(t'<ul><{Items} /></ul>')
+# <ul><li>first</li><li>second</li></ul>
+```
+
+If you prefer, you can use **explicit fragment syntax** to wrap multiple elements in a `Fragment`:
+
+```python
+def Items() -> Node:
+    return html(t'<><li>first</li><li>second</li></>')
+
+result = html(t'<ul><{Items} /></ul>')
+# <ul><li>first</li><li>second</li></ul>
+```
 
 #### SVG Support
 
