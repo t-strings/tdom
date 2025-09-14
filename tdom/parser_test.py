@@ -69,6 +69,47 @@ def test_parse_doctype():
     assert node == DocumentType("html")
 
 
+def test_parse_explicit_fragment_empty():
+    node = parse_html("<></>")
+    assert node == Fragment(children=[])
+
+
+def test_parse_explicit_fragment_with_content():
+    node = parse_html("<><div>Item 1</div><div>Item 2</div></>")
+    assert node == Fragment(
+        children=[
+            Element("div", children=[Text("Item 1")]),
+            Element("div", children=[Text("Item 2")]),
+        ]
+    )
+
+
+def test_parse_explicit_fragment_with_text():
+    node = parse_html("<>Hello, <span>world</span>!</>")
+    assert node == Fragment(
+        children=[
+            Text("Hello, "),
+            Element("span", children=[Text("world")]),
+            Text("!"),
+        ]
+    )
+
+
+def test_parse_explicit_fragment_nested():
+    node = parse_html("<div><>Nested <span>fragment</span></></div>")
+    assert node == Element(
+        "div",
+        children=[
+            Fragment(
+                children=[
+                    Text("Nested "),
+                    Element("span", children=[Text("fragment")]),
+                ]
+            )
+        ],
+    )
+
+
 def test_parse_multiple_voids():
     node = parse_html("<br><hr><hr /><hr /><br /><br><br>")
     assert node == Fragment(

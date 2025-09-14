@@ -1,7 +1,11 @@
+import random
+import string
 import typing as t
 from html.parser import HTMLParser
 
 from .nodes import VOID_ELEMENTS, Comment, DocumentType, Element, Fragment, Node, Text
+
+_FRAGMENT_TAG = f"t🐍f-{''.join(random.choices(string.ascii_lowercase, k=4))}-"
 
 
 class NodeParser(HTMLParser):
@@ -16,8 +20,8 @@ class NodeParser(HTMLParser):
     def handle_starttag(
         self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
     ) -> None:
-        element = Element(tag, attrs=dict(attrs), children=[])
-        self.stack.append(element)
+        node = Element(tag, attrs=dict(attrs), children=[])
+        self.stack.append(node)
 
         # Unfortunately, Python's built-in HTMLParser has inconsistent behavior
         # with void elements. In particular, it calls handle_endtag() for them
@@ -42,7 +46,7 @@ class NodeParser(HTMLParser):
             open_element = self.get_open_element()
             if open_element and open_element.tag == tag:
                 _ = self.stack.pop()
-                self.append_child(open_element)
+                self.append_element_child(open_element)
                 return
 
         if not self.stack:
@@ -52,7 +56,7 @@ class NodeParser(HTMLParser):
         if element.tag != tag:
             raise ValueError(f"Mismatched closing tag </{tag}> for <{element.tag}>.")
 
-        self.append_child(element)
+        self.append_element_child(element)
 
     def handle_data(self, data: str) -> None:
         text = Text(data)
@@ -85,9 +89,19 @@ class NodeParser(HTMLParser):
             return parent.children[-1]
         return None
 
-    def append_child(self, child: Node) -> None:
+    def append_element_child(self, child: Element) -> None:
         parent = self.get_parent()
-        # We *know* our parser is using lists for children, so this cast is safe.
+        node: Element | Fragment = child
+        # Special case: if the element is a Fragment, convert it to a Fragment node.
+        if child.tag == _FRAGMENT_TAG:
+            assert not child.attrs, (
+                "Fragment elements should never be able to have attributes."
+            )
+            node = Fragment(children=child.children)
+        parent.children.append(node)
+
+    def append_child(self, child: Fragment | Text | Comment | DocumentType) -> None:
+        parent = self.get_parent()
         parent.children.append(child)
 
     def close(self) -> None:
@@ -111,6 +125,15 @@ class NodeParser(HTMLParser):
             # Special case: the parse structure is empty; we treat
             # this as an empty Text Node.
             return Text("")
+
+    def feed(self, data: str) -> None:
+        # Special case: handle custom fragment syntax <>...</>
+        # by replacing it with a unique tag name that is unlikely
+        # to appear in normal HTML.
+        data = data.replace("<>", f"<{_FRAGMENT_TAG}>").replace(
+            "</>", f"</{_FRAGMENT_TAG}>"
+        )
+        super().feed(data)
 
 
 def parse_html(input: str | t.Iterable[str]) -> Node:
