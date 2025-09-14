@@ -1,6 +1,6 @@
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["uv-build"]
+build-backend = "uv_build"
 
 [project]
 name = "tdom"
@@ -59,16 +59,7 @@ exclude = [".venv", ".git", ".github"]
 [tool.ruff.lint]
 preview = true
 
-[tool.hatch.build]
-exclude = [
-  "*_test.py",
-  ".github",
-  ".gitignore",
-  ".vscode",
-  ".aiassistant",
-  ".junie",
-  ".editorconfig",
-  "docs",
-  "uv.lock",
-  "justfile",
-]
+[tool.uv.build-backend]
+module-name = "tdom"
+module-root = ""
+source-exclude = ["*_test.py"]
