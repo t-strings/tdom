@@ -11,6 +11,10 @@ You know what's more Python-like? Python.
 f-strings can do looping in a Python expression using list comprehensions and so
 can `tdom`:
 
+<!-- invisible-code-block: python
+from tdom import html
+-->
+
 ```python
 message = "Hello"
 names = ["World", "Universe"]
@@ -21,7 +25,11 @@ result = html(
         </ul>
     """
 )
-# <ul title="Hello"><li>World</li><li>Universe</li></ul>
+assert str(result) == """
+        <ul title="Hello">
+            <li>World</li><li>Universe</li>
+        </ul>
+    """
 ```
 
 ## Rendered Looping
@@ -34,5 +42,5 @@ message = "Hello"
 names = ["World", "Universe"]
 items = [html(t"<li>{label}</li>") for label in names]
 result = html(t"<ul title={message}>{items}</ul>")
-# <ul title="Hello"><li>World</li><li>Universe</li></ul>
+assert str(result) == '<ul title="Hello"><li>World</li><li>Universe</li></ul>'
 ```

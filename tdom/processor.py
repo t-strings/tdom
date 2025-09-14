@@ -337,6 +337,24 @@ def _invoke_component(
             return Text(result)
         case HasHTMLDunder():
             return Text(Markup(result.__html__()))
+        case Iterable():
+            # Support generator/iterable returns from component callables
+            children: list[Node] = []
+            for item in result:
+                # Each yielded item can be a Node, Template, str, HasHTMLDunder
+                match item:
+                    case Node():
+                        children.append(item)
+                    case Template():
+                        children.append(html(item))
+                    case str():
+                        children.append(Text(item))
+                    case HasHTMLDunder():
+                        children.append(Text(Markup(item.__html__())))
+                    case _:
+                        # Fallback to string conversion to mirror _node_from_value behavior
+                        children.append(Text(str(item)))
+            return Fragment(children=children)
         case _:
             raise TypeError(
                 f"Component callable must return a Node, Template, or str; "
