@@ -1,4 +1,4 @@
-# Examples
+# Usage
 
 Let's take a look at some common templating patterns, implemented in `tdom`.
 
