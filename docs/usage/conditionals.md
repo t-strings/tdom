@@ -8,15 +8,15 @@ Thus, conditionals are a common part of templating.
 They're also a common part of Python f-strings, because...well, Python has
 conditionals. Here's a simple example using a Python "ternary":
 
+<!-- invisible-code-block: python
+from tdom import html
+-->
+
+
 ```python
 message = "Say Howdy"
 not_message = "So Sad"
 show_message = True
-result = html(
-  t"""
-    <h1>Show?</h1>
-    {message if show_message else not_message}
-  """
-)
-# <h1>Show?</h1>Say Howdy
+result = html(t'<h1>Show?</h1>{message if show_message else not_message}')
+assert str(result) == '<h1>Show?</h1>Say Howdy'
 ```
