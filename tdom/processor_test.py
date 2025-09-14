@@ -571,3 +571,37 @@ def test_nested_component_gh23():
     node = html(t"<{Header} />")
     assert node == Text("Hello World")
     assert str(node) == "Hello World"
+
+
+def test_component_returning_iterable():
+    def Items() -> t.Iterable:
+        for i in range(2):
+            yield t"<li>Item {i + 1}</li>"
+        yield html(t"<li>Item {3}</li>")
+
+    node = html(t"<ul><{Items} /></ul>")
+    assert node == Element(
+        "ul",
+        children=[
+            Element("li", children=[Text("Item "), Text("1")]),
+            Element("li", children=[Text("Item "), Text("2")]),
+            Element("li", children=[Text("Item "), Text("3")]),
+        ],
+    )
+    assert str(node) == "<ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>"
+
+
+def test_component_returning_explicit_fragment():
+    def Items() -> Node:
+        return html(t"<><li>Item {1}</li><li>Item {2}</li><li>Item {3}</li></>")
+
+    node = html(t"<ul><{Items} /></ul>")
+    assert node == Element(
+        "ul",
+        children=[
+            Element("li", children=[Text("Item "), Text("1")]),
+            Element("li", children=[Text("Item "), Text("2")]),
+            Element("li", children=[Text("Item "), Text("3")]),
+        ],
+    )
+    assert str(node) == "<ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>"
