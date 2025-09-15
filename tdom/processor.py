@@ -150,7 +150,7 @@ def _force_dict(value: t.Any, *, kind: str) -> dict:
         ) from None
 
 
-def _substitute_aria_attrs(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_aria_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     """Produce aria-* attributes based on the interpolated value for "aria"."""
     d = _force_dict(value, kind="aria")
     for sub_k, sub_v in d.items():
@@ -164,7 +164,7 @@ def _substitute_aria_attrs(value: object) -> t.Iterable[tuple[str, str | None]]:
             yield f"aria-{sub_k}", str(sub_v)
 
 
-def _substitute_data_attrs(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_data_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     """Produce data-* attributes based on the interpolated value for "data"."""
     d = _force_dict(value, kind="data")
     for sub_k, sub_v in d.items():
@@ -174,12 +174,12 @@ def _substitute_data_attrs(value: object) -> t.Iterable[tuple[str, str | None]]:
             yield f"data-{sub_k}", str(sub_v)
 
 
-def _substitute_class_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_class_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     """Substitute a class attribute based on the interpolated value."""
     yield ("class", classnames(value))
 
 
-def _substitute_style_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_style_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     """Substitute a style attribute based on the interpolated value."""
     try:
         d = _force_dict(value, kind="style")
@@ -201,21 +201,21 @@ def _substitute_spread_attrs(
     """
     d = _force_dict(value, kind="spread")
     for sub_k, sub_v in d.items():
-        yield from _substitute_attr(sub_k, sub_v)
+        yield from _process_attr(sub_k, sub_v)
 
 
 # A collection of custom handlers for certain attribute names that have
 # special semantics. This is in addition to the special-casing in
 # _substitute_attr() itself.
-CUSTOM_ATTR_HANDLERS = {
-    "class": _substitute_class_attr,
-    "data": _substitute_data_attrs,
-    "style": _substitute_style_attr,
-    "aria": _substitute_aria_attrs,
+CUSTOM_ATTR_PROCESSORS = {
+    "class": _process_class_attr,
+    "data": _process_data_attr,
+    "style": _process_style_attr,
+    "aria": _process_aria_attr,
 }
 
 
-def _substitute_attr(
+def _process_attr(
     key: str,
     value: object,
 ) -> t.Iterable[tuple[str, object | None]]:
@@ -228,8 +228,8 @@ def _substitute_attr(
     the attribute being omitted entirely; nothing is yielded in that case.
     """
     # Special handling for certain attribute names that have special semantics
-    if custom_handler := CUSTOM_ATTR_HANDLERS.get(key):
-        yield from custom_handler(value)
+    if custom_processor := CUSTOM_ATTR_PROCESSORS.get(key):
+        yield from custom_processor(value)
         return
 
     # General handling for all other attributes:
@@ -242,27 +242,61 @@ def _substitute_attr(
             yield (key, value)
 
 
-def _substitute_attrs(
+def _substitute_interpolated_attrs(
     attrs: dict[str, str | None], interpolations: tuple[Interpolation, ...]
-) -> dict[str, object | None]:
-    """Substitute placeholders in attributes based on the corresponding interpolations."""
+) -> dict[str, object]:
+    """
+    Replace placeholder values in attributes with their interpolated values.
+
+    This only handles step (1): value substitution. No special processing
+    of attribute names or value types is performed.
+    """
     new_attrs: dict[str, object | None] = {}
     for key, value in attrs.items():
         if value and value.startswith(_PLACEHOLDER_PREFIX):
+            # Interpolated attribute value
             index = _placholder_index(value)
             interpolation = interpolations[index]
-            value = format_interpolation(interpolation)
-            for sub_k, sub_v in _substitute_attr(key, value):
-                new_attrs[sub_k] = sub_v
+            interpolated_value = format_interpolation(interpolation)
+            new_attrs[key] = interpolated_value
         elif key.startswith(_PLACEHOLDER_PREFIX):
+            # Spread attributes
             index = _placholder_index(key)
             interpolation = interpolations[index]
-            value = format_interpolation(interpolation)
-            for sub_k, sub_v in _substitute_spread_attrs(value):
+            spread_value = format_interpolation(interpolation)
+            for sub_k, sub_v in _substitute_spread_attrs(spread_value):
                 new_attrs[sub_k] = sub_v
         else:
+            # Static attribute
             new_attrs[key] = value
     return new_attrs
+
+
+def _process_html_attrs(attrs: dict[str, object]) -> dict[str, str | None]:
+    """
+    Process attributes for HTML elements.
+
+    This handles steps (2) and (3): special attribute name handling and
+    value type processing (True -> None, False -> omit, etc.)
+    """
+    processed_attrs: dict[str, str | None] = {}
+    for key, value in attrs.items():
+        for sub_k, sub_v in _process_attr(key, value):
+            # Convert to string, preserving None
+            processed_attrs[sub_k] = str(sub_v) if sub_v is not None else None
+    return processed_attrs
+
+
+def _substitute_attrs(
+    attrs: dict[str, str | None], interpolations: tuple[Interpolation, ...]
+) -> dict[str, str | None]:
+    """
+    Substitute placeholders in attributes for HTML elements.
+
+    This is the full pipeline: interpolation + HTML processing.
+    """
+    interpolated_attrs = _substitute_interpolated_attrs(attrs, interpolations)
+    return _process_html_attrs(interpolated_attrs)
 
 
 def _substitute_and_flatten_children(
@@ -405,11 +439,6 @@ def _invoke_component(
     return _node_from_value(result)
 
 
-def _stringify_attrs(attrs: dict[str, object | None]) -> dict[str, str | None]:
-    """Convert all attribute values to strings, preserving None values."""
-    return {k: str(v) if v is not None else None for k, v in attrs.items()}
-
-
 def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) -> Node:
     """Substitute placeholders in a node based on the corresponding interpolations."""
     match p_node:
@@ -419,16 +448,15 @@ def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) ->
             value = format_interpolation(interpolation)
             return _node_from_value(value)
         case Element(tag=tag, attrs=attrs, children=children):
-            new_attrs = _substitute_attrs(attrs, interpolations)
             new_children = _substitute_and_flatten_children(children, interpolations)
             if tag.startswith(_PLACEHOLDER_PREFIX):
-                # TODO: bug: at this point, we've replaced boolean-valued
-                # attributes with False and None, which is *not* what we want
-                # if we're invoking a component. This should wait until _stringify_attrs()
-                return _invoke_component(tag, new_attrs, new_children, interpolations)
+                component_attrs = _substitute_interpolated_attrs(attrs, interpolations)
+                return _invoke_component(
+                    tag, component_attrs, new_children, interpolations
+                )
             else:
-                new_attrs = _stringify_attrs(new_attrs)
-                return Element(tag=tag, attrs=new_attrs, children=new_children)
+                html_attrs = _substitute_attrs(attrs, interpolations)
+                return Element(tag=tag, attrs=html_attrs, children=new_children)
         case Fragment(children=children):
             new_children = _substitute_and_flatten_children(children, interpolations)
             return Fragment(children=new_children)

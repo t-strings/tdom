@@ -1,6 +1,6 @@
 import datetime
 import typing as t
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from string.templatelib import Template
 
 import pytest
@@ -651,6 +651,7 @@ class ClassComponent:
     user_name: str
     image_url: str
     homepage: str = "#"
+    children: t.Iterable[Node] = field(default_factory=list)
 
     def __call__(self) -> Node:
         return html(
@@ -659,13 +660,14 @@ class ClassComponent:
             t"<img src='{self.image_url}' alt='{f'Avatar of {self.user_name}'}' />"
             t"</a>"
             t"<span>{self.user_name}</span>"
-            t"</div>"
+            t"{self.children}"
+            t"</div>",
         )
 
 
 def test_class_component_implicit_invocation():
     node = html(
-        t"<{ClassComponent} user-name='Alice' image-url='https://example.com/alice.png' />"
+        t"<{ClassComponent} user-name='Alice' image-url='https://example.com/alice.png'>Fun times!</{ClassComponent}>"
     )
     assert node == Element(
         "div",
@@ -685,11 +687,12 @@ def test_class_component_implicit_invocation():
                 ],
             ),
             Element("span", children=[Text("Alice")]),
+            Text("Fun times!"),
         ],
     )
     assert (
         str(node)
-        == '<div class="avatar"><a href="#"><img src="https://example.com/alice.png" alt="Avatar of Alice" /></a><span>Alice</span></div>'
+        == '<div class="avatar"><a href="#"><img src="https://example.com/alice.png" alt="Avatar of Alice" /></a><span>Alice</span>Fun times!</div>'
     )
 
 
