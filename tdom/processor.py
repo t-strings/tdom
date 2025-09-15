@@ -1,5 +1,6 @@
 import random
 import string
+import sys
 import typing as t
 from collections.abc import Iterable
 from functools import lru_cache
@@ -7,6 +8,7 @@ from string.templatelib import Interpolation, Template
 
 from markupsafe import Markup
 
+from .callables import CallableInfo, get_callable_info
 from .classnames import classnames
 from .nodes import Element, Fragment, Node, Text
 from .parser import parse_html
@@ -64,7 +66,7 @@ def _placholder_index(s: str) -> int:
 
 
 def _instrument(
-    strings: tuple[str, ...], callable_ids: tuple[int | None, ...]
+    strings: tuple[str, ...], callable_infos: tuple[CallableInfo | None, ...]
 ) -> t.Iterable[str]:
     """
     Join the strings with placeholders in between where interpolations go.
@@ -88,29 +90,31 @@ def _instrument(
             # Special case for component callables: if the interpolation
             # is a callable, we need to make sure that any matching closing
             # tag uses the same placeholder.
-            callable_id = callable_ids[i]
-            if callable_id:
-                placeholder = callable_placeholders.setdefault(callable_id, placeholder)
+            callable_info = callable_infos[i]
+            if callable_info:
+                placeholder = callable_placeholders.setdefault(
+                    callable_info.id, placeholder
+                )
 
             yield placeholder
 
 
-@lru_cache()
+@lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
 def _instrument_and_parse_internal(
-    strings: tuple[str, ...], callable_ids: tuple[int | None, ...]
+    strings: tuple[str, ...], callable_infos: tuple[CallableInfo | None, ...]
 ) -> Node:
     """
     Instrument the strings and parse the resulting HTML.
 
     The result is cached to avoid re-parsing the same template multiple times.
     """
-    instrumented = _instrument(strings, callable_ids)
+    instrumented = _instrument(strings, callable_infos)
     return parse_html(instrumented)
 
 
-def _callable_id(value: object) -> int | None:
+def _callable_info(value: object) -> CallableInfo | None:
     """Return a unique identifier for a callable, or None if not callable."""
-    return id(value) if callable(value) else None
+    return get_callable_info(value) if callable(value) else None
 
 
 def _instrument_and_parse(template: Template) -> Node:
@@ -125,10 +129,10 @@ def _instrument_and_parse(template: Template) -> Node:
     # wouldn't have to do this. But I worry that tdom's syntax is harder to read
     # (it's easy to miss the closing tag) and may prove unfamiliar for
     # users coming from other templating systems.
-    callable_ids = tuple(
-        _callable_id(interpolation.value) for interpolation in template.interpolations
+    callable_infos = tuple(
+        _callable_info(interpolation.value) for interpolation in template.interpolations
     )
-    return _instrument_and_parse_internal(template.strings, callable_ids)
+    return _instrument_and_parse_internal(template.strings, callable_infos)
 
 
 # --------------------------------------------------------------------------
@@ -146,7 +150,7 @@ def _force_dict(value: t.Any, *, kind: str) -> dict:
         ) from None
 
 
-def _substitute_aria_attrs(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_aria_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     """Produce aria-* attributes based on the interpolated value for "aria"."""
     d = _force_dict(value, kind="aria")
     for sub_k, sub_v in d.items():
@@ -160,7 +164,7 @@ def _substitute_aria_attrs(value: object) -> t.Iterable[tuple[str, str | None]]:
             yield f"aria-{sub_k}", str(sub_v)
 
 
-def _substitute_data_attrs(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_data_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     """Produce data-* attributes based on the interpolated value for "data"."""
     d = _force_dict(value, kind="data")
     for sub_k, sub_v in d.items():
@@ -170,19 +174,22 @@ def _substitute_data_attrs(value: object) -> t.Iterable[tuple[str, str | None]]:
             yield f"data-{sub_k}", str(sub_v)
 
 
-def _substitute_class_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_class_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     """Substitute a class attribute based on the interpolated value."""
     yield ("class", classnames(value))
 
 
-def _substitute_style_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_style_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     """Substitute a style attribute based on the interpolated value."""
+    if isinstance(value, str):
+        yield ("style", value)
+        return
     try:
         d = _force_dict(value, kind="style")
         style_str = "; ".join(f"{k}: {v}" for k, v in d.items())
         yield ("style", style_str)
     except TypeError:
-        yield ("style", str(value))
+        raise TypeError("'style' attribute value must be a string or dict") from None
 
 
 def _substitute_spread_attrs(
@@ -197,21 +204,21 @@ def _substitute_spread_attrs(
     """
     d = _force_dict(value, kind="spread")
     for sub_k, sub_v in d.items():
-        yield from _substitute_attr(sub_k, sub_v)
+        yield from _process_attr(sub_k, sub_v)
 
 
 # A collection of custom handlers for certain attribute names that have
 # special semantics. This is in addition to the special-casing in
 # _substitute_attr() itself.
-CUSTOM_ATTR_HANDLERS = {
-    "class": _substitute_class_attr,
-    "data": _substitute_data_attrs,
-    "style": _substitute_style_attr,
-    "aria": _substitute_aria_attrs,
+CUSTOM_ATTR_PROCESSORS = {
+    "class": _process_class_attr,
+    "data": _process_data_attr,
+    "style": _process_style_attr,
+    "aria": _process_aria_attr,
 }
 
 
-def _substitute_attr(
+def _process_attr(
     key: str,
     value: object,
 ) -> t.Iterable[tuple[str, object | None]]:
@@ -224,8 +231,8 @@ def _substitute_attr(
     the attribute being omitted entirely; nothing is yielded in that case.
     """
     # Special handling for certain attribute names that have special semantics
-    if custom_handler := CUSTOM_ATTR_HANDLERS.get(key):
-        yield from custom_handler(value)
+    if custom_processor := CUSTOM_ATTR_PROCESSORS.get(key):
+        yield from custom_processor(value)
         return
 
     # General handling for all other attributes:
@@ -238,27 +245,61 @@ def _substitute_attr(
             yield (key, value)
 
 
-def _substitute_attrs(
+def _substitute_interpolated_attrs(
     attrs: dict[str, str | None], interpolations: tuple[Interpolation, ...]
-) -> dict[str, object | None]:
-    """Substitute placeholders in attributes based on the corresponding interpolations."""
+) -> dict[str, object]:
+    """
+    Replace placeholder values in attributes with their interpolated values.
+
+    This only handles step (1): value substitution. No special processing
+    of attribute names or value types is performed.
+    """
     new_attrs: dict[str, object | None] = {}
     for key, value in attrs.items():
         if value and value.startswith(_PLACEHOLDER_PREFIX):
+            # Interpolated attribute value
             index = _placholder_index(value)
             interpolation = interpolations[index]
-            value = format_interpolation(interpolation)
-            for sub_k, sub_v in _substitute_attr(key, value):
-                new_attrs[sub_k] = sub_v
+            interpolated_value = format_interpolation(interpolation)
+            new_attrs[key] = interpolated_value
         elif key.startswith(_PLACEHOLDER_PREFIX):
+            # Spread attributes
             index = _placholder_index(key)
             interpolation = interpolations[index]
-            value = format_interpolation(interpolation)
-            for sub_k, sub_v in _substitute_spread_attrs(value):
+            spread_value = format_interpolation(interpolation)
+            for sub_k, sub_v in _substitute_spread_attrs(spread_value):
                 new_attrs[sub_k] = sub_v
         else:
+            # Static attribute
             new_attrs[key] = value
     return new_attrs
+
+
+def _process_html_attrs(attrs: dict[str, object]) -> dict[str, str | None]:
+    """
+    Process attributes for HTML elements.
+
+    This handles steps (2) and (3): special attribute name handling and
+    value type processing (True -> None, False -> omit, etc.)
+    """
+    processed_attrs: dict[str, str | None] = {}
+    for key, value in attrs.items():
+        for sub_k, sub_v in _process_attr(key, value):
+            # Convert to string, preserving None
+            processed_attrs[sub_k] = str(sub_v) if sub_v is not None else None
+    return processed_attrs
+
+
+def _substitute_attrs(
+    attrs: dict[str, str | None], interpolations: tuple[Interpolation, ...]
+) -> dict[str, str | None]:
+    """
+    Substitute placeholders in attributes for HTML elements.
+
+    This is the full pipeline: interpolation + HTML processing.
+    """
+    interpolated_attrs = _substitute_interpolated_attrs(attrs, interpolations)
+    return _process_html_attrs(interpolated_attrs)
 
 
 def _substitute_and_flatten_children(
@@ -281,8 +322,8 @@ def _node_from_value(value: object) -> Node:
     """
     Convert an arbitrary value to a Node.
 
-    This is the primary substitution performed when replacing interpolations
-    in child content positions.
+    This is the primary action performed when replacing interpolations in child
+    content positions.
     """
     match value:
         case str():
@@ -291,21 +332,32 @@ def _node_from_value(value: object) -> Node:
             return value
         case Template():
             return html(value)
-        case False:
-            return Text("")
+        # Consider: falsey values, not just False and None?
+        case False | None:
+            return Fragment(children=[])
         case Iterable():
             children = [_node_from_value(v) for v in value]
             return Fragment(children=children)
         case HasHTMLDunder():
-            # CONSIDER: could we return a lazy Text?
+            # CONSIDER: should we do this lazily?
             return Text(Markup(value.__html__()))
+        case c if callable(c):
+            # Treat all callable values in child content positions as if
+            # they are zero-arg functions that return a value to be rendered.
+            return _node_from_value(c())
         case _:
-            # CONSIDER: could we return a lazy Text?
+            # CONSIDER: should we do this lazily?
             return Text(str(value))
 
 
-type ComponentReturn = Node | Template | str | HasHTMLDunder
-type ComponentCallable = t.Callable[..., ComponentReturn | t.Iterable[ComponentReturn]]
+def _accepts_children(callable_info: CallableInfo) -> bool:
+    """Return True if the callable accepts a "children" parameter."""
+    return "children" in callable_info.named_params or callable_info.kwargs
+
+
+def _kebab_to_snake(name: str) -> str:
+    """Convert a kebab-case name to snake_case."""
+    return name.replace("-", "_").lower()
 
 
 def _invoke_component(
@@ -314,7 +366,40 @@ def _invoke_component(
     new_children: list[Node],
     interpolations: tuple[Interpolation, ...],
 ) -> Node:
-    """Substitute a component invocation based on the corresponding interpolations."""
+    """
+    Invoke a component callable with the provided attributes and children.
+
+    Components are any callable that meets the required calling signature.
+    Typically, that's a function, but it could also be the constructor or
+    __call__() method for a class; dataclass constructors match our expected
+    invocation style.
+
+    We validate the callable's signature and invoke it with keyword-only
+    arguments, then convert the result to a Node.
+
+    Component invocation rules:
+
+    1. All arguments are passed as keywords only. Components cannot require
+    positional arguments.
+
+    2. Children are passed via a "children" parameter when:
+
+    - Child content exists in the template AND
+    - The callable accepts "children" OR has **kwargs
+
+    If no children exist but the callable accepts "children", we pass an
+    empty tuple.
+
+    3. Components that don't accept "children" and have no **kwargs cannot
+    receive child content (will raise TypeError if attempted).
+
+    4. All component attributes must map to the callable's named parameters,
+    except "children" which is handled separately. Missing required
+    parameters will raise TypeError.
+
+    5. Extra attributes that don't match parameters are silently ignored
+    (unless the callable uses **kwargs to capture them).
+    """
     index = _placholder_index(tag)
     interpolation = interpolations[index]
     value = format_interpolation(interpolation)
@@ -322,18 +407,39 @@ def _invoke_component(
         raise TypeError(
             f"Expected a callable for component invocation, got {type(value).__name__}"
         )
-    # Replace attr names hyphens with underscores for Python kwargs
-    kwargs = {k.replace("-", "_"): v for k, v in new_attrs.items()}
+    callable_info = get_callable_info(value)
 
-    # Call the component and return the resulting node
-    # TODO: handle failed calls more gracefully; consider using signature()?
-    result = value(*new_children, **kwargs)
+    call_kwargs: dict[str, object] = {}
+
+    # Rule 1: no required positional arguments
+    if callable_info.requires_positional:
+        raise TypeError(
+            "Component callables cannot have required positional arguments."
+        )
+
+    # Rules 2 and 3: handle children
+    if _accepts_children(callable_info):
+        call_kwargs["children"] = tuple(new_children)
+    elif new_children:
+        raise TypeError(
+            "Component does not accept children, but child content was provided."
+        )
+
+    # Rule 4: match attributes to named parameters
+    for attr_name, attr_value in new_attrs.items():
+        snake_name = _kebab_to_snake(attr_name)
+        if snake_name in callable_info.named_params or callable_info.kwargs:
+            call_kwargs[snake_name] = attr_value
+
+    # Rule 5: extra attributes are ignored
+    missing = callable_info.required_named_params - call_kwargs.keys()
+    if missing:
+        raise TypeError(
+            f"Missing required parameters for component: {', '.join(missing)}"
+        )
+
+    result = value(**call_kwargs)
     return _node_from_value(result)
-
-
-def _stringify_attrs(attrs: dict[str, object | None]) -> dict[str, str | None]:
-    """Convert all attribute values to strings, preserving None values."""
-    return {k: str(v) if v is not None else None for k, v in attrs.items()}
 
 
 def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) -> Node:
@@ -345,13 +451,15 @@ def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) ->
             value = format_interpolation(interpolation)
             return _node_from_value(value)
         case Element(tag=tag, attrs=attrs, children=children):
-            new_attrs = _substitute_attrs(attrs, interpolations)
             new_children = _substitute_and_flatten_children(children, interpolations)
             if tag.startswith(_PLACEHOLDER_PREFIX):
-                return _invoke_component(tag, new_attrs, new_children, interpolations)
+                component_attrs = _substitute_interpolated_attrs(attrs, interpolations)
+                return _invoke_component(
+                    tag, component_attrs, new_children, interpolations
+                )
             else:
-                new_attrs = _stringify_attrs(new_attrs)
-                return Element(tag=tag, attrs=new_attrs, children=new_children)
+                html_attrs = _substitute_attrs(attrs, interpolations)
+                return Element(tag=tag, attrs=html_attrs, children=new_children)
         case Fragment(children=children):
             new_children = _substitute_and_flatten_children(children, interpolations)
             return Fragment(children=new_children)

@@ -305,11 +305,11 @@ content and attributes. Use these like custom HTML elements in your templates.
 The basic form of all component functions is:
 
 ```python
-from typing import Any
+from typing import Any, Iterable
+from tdom import Node, html
 
-def MyComponent(*children: Node, **attrs: Any) -> Template:
-    # Build your template using the provided props
-    return t"<div {attrs}>{children}</div>"
+def MyComponent(children: Iterable[Node], **attrs: Any) -> Node:
+    return html(t"<div {attrs}>Cool: {children}</div>")
 ```
 
 To _invoke_ your component within an HTML template, use the special
@@ -317,7 +317,7 @@ To _invoke_ your component within an HTML template, use the special
 
 ```python
 result = html(t"<{MyComponent} id='comp1'>Hello, Component!</{MyComponent}>")
-# <div id="comp1">Hello, Component!</div>
+# <div id="comp1">Cool: Hello, Component!</div>
 ```
 
 Because attributes are passed as keyword arguments, you can explicitly provide
@@ -325,9 +325,10 @@ type hints for better editor support:
 
 ```python
 from typing import Any
+from tdom import Node, html
 
-def Link(*, href: str, text: str, data_value: int, **attrs: Any) -> Template:
-    return t'<a href="{href}" {attrs}>{text}: {data_value}</a>'
+def Link(*, href: str, text: str, data_value: int, **attrs: Any) -> Node:
+    return html(t'<a href="{href}" {attrs}>{text}: {data_value}</a>')
 
 result = html(t'<{Link} href="https://example.com" text="Example" data-value={42} target="_blank" />')
 # <a href="https://example.com" target="_blank">Example: 42</a>
@@ -336,26 +337,27 @@ result = html(t'<{Link} href="https://example.com" text="Example" data-value={42
 Note that attributes with hyphens (like `data-value`) are converted to
 underscores (`data_value`) in the function signature.
 
-In addition to returning `Template`, component functions may also return any 
-`Node` type found in [`tdom.nodes`](https://github.com/t-strings/tdom/blob/main/tdom/nodes.py):
+Component functions build children and can return _any_ type of value; the returned value will be treated exactly as if it were placed directly in a child position in the template.
+
+Among other things, this means you can return a `Template` directly from a component function:
 
 ```python
-def Link(*, href: str, text: str) -> Node:
-    return html(t'<a href="{href}">{text}</a>')
+def Greeting(name: str) -> Template:
+    return t"<h1>Hello, {name}!</h1>"
 
-result = html(t'<{Link} href="https://example.com" text="Example" />')
-# <a href="https://example.com">Example</a>
+result = html(t"<{Greeting} name='Alice' />")
+# <h1>Hello, Alice!</h1>
 ```
 
-You may also return an `Iterable[Node | Template]` if you want to return multiple
-elements; this is treated as implicitly wrapping the children in a `Fragment`:
+You may also return an iterable:
 
 ```python
-def Items() -> Iterable[Template]:
-    for item in ["first", "second"]:
-        yield t'<li>{item}</li>'
+from typing import Iterable
 
-result = html(t'<ul><{Items} /></ul>')
+def Items() -> Iterable[Template]:
+    return [t"<li>first</li>", t"<li>second</li>"]
+
+result = html(t"<ul><{Items} /></ul>")
 # <ul><li>first</li><li>second</li></ul>
 ```
 
@@ -369,6 +371,48 @@ result = html(t'<ul><{Items} /></ul>')
 # <ul><li>first</li><li>second</li></ul>
 ```
 
+This is not required, but it can make your intent clearer.
+
+#### Class-based components
+
+Component functions are great for simple use cases, but for more complex components
+you may want to use a class-based approach. Remember that the component
+invocation syntax (`<{ComponentName} ... />`) works with any callable. That includes
+the `__init__` method or `__call__` method of a class.
+
+One particularly useful pattern is to build class-based components with dataclasses:
+
+```python
+from dataclasses import dataclass, field
+from typing import Any, Iterable
+from tdom import Node, html
+
+@dataclass
+class Card:
+    children: Iterable[Node]
+    title: str
+    subtitle: str | None = None
+
+    def __call__(self) -> Node:
+        return html(t"""
+            <div class='card'>
+                <h2>{self.title}</h2>
+                {self.subtitle and t'<h3>{self.subtitle}</h3>'}
+                <div class="content">{self.children}</div>
+            </div>
+        """)
+
+result = html(t"<{Card} title='My Card' subtitle='A subtitle'><p>Card content</p></{Card}>")
+# <div class='card'>
+#     <h2>My Card</h2>
+#     <h3>A subtitle</h3>
+#     <div class="content"><p>Card content</p></div>
+# </div>
+```
+
+This approach allows you to encapsulate component logic and state within a class,
+making it easier to manage complex components.
+    
 #### SVG Support
 
 TODO: say more about SVG support
