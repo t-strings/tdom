@@ -352,7 +352,7 @@ def _node_from_value(value: object) -> Node:
 
 def _accepts_children(callable_info: CallableInfo) -> bool:
     """Return True if the callable accepts a "children" parameter."""
-    return "children" in callable_info.named_params or callable_info.kwargs
+    return "children" in callable_info.named_params
 
 
 def _kebab_to_snake(name: str) -> str:
@@ -417,13 +417,9 @@ def _invoke_component(
             "Component callables cannot have required positional arguments."
         )
 
-    # Rules 2 and 3: handle children
+    # Rules 2 and 3: handle children. If the component asks, provide in kwargs. If not, silently omit from kwargs.
     if _accepts_children(callable_info):
         call_kwargs["children"] = tuple(new_children)
-    elif new_children:
-        raise TypeError(
-            "Component does not accept children, but child content was provided."
-        )
 
     # Rule 4: match attributes to named parameters
     for attr_name, attr_value in new_attrs.items():

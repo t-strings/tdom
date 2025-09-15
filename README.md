@@ -337,9 +337,12 @@ result = html(t'<{Link} href="https://example.com" text="Example" data-value={42
 Note that attributes with hyphens (like `data-value`) are converted to
 underscores (`data_value`) in the function signature.
 
-Component functions build children and can return _any_ type of value; the returned value will be treated exactly as if it were placed directly in a child position in the template.
+Component functions build children and can return _any_ type of value; the
+returned value will be treated exactly as if it were placed directly in a child
+position in the template.
 
-Among other things, this means you can return a `Template` directly from a component function:
+Among other things, this means you can return a `Template` directly from a
+component function:
 
 ```python
 def Greeting(name: str) -> Template:
@@ -361,7 +364,8 @@ result = html(t"<ul><{Items} /></ul>")
 # <ul><li>first</li><li>second</li></ul>
 ```
 
-If you prefer, you can use **explicit fragment syntax** to wrap multiple elements in a `Fragment`:
+If you prefer, you can use **explicit fragment syntax** to wrap multiple
+elements in a `Fragment`:
 
 ```python
 def Items() -> Node:
@@ -375,12 +379,13 @@ This is not required, but it can make your intent clearer.
 
 #### Class-based components
 
-Component functions are great for simple use cases, but for more complex components
-you may want to use a class-based approach. Remember that the component
-invocation syntax (`<{ComponentName} ... />`) works with any callable. That includes
-the `__init__` method or `__call__` method of a class.
+Component functions are great for simple use cases, but for more complex
+components you may want to use a class-based approach. Remember that the
+component invocation syntax (`<{ComponentName} ... />`) works with any callable.
+That includes the `__init__` method or `__call__` method of a class.
 
-One particularly useful pattern is to build class-based components with dataclasses:
+One particularly useful pattern is to build class-based components with
+dataclasses:
 
 ```python
 from dataclasses import dataclass, field
@@ -410,9 +415,14 @@ result = html(t"<{Card} title='My Card' subtitle='A subtitle'><p>Card content</p
 # </div>
 ```
 
-This approach allows you to encapsulate component logic and state within a class,
-making it easier to manage complex components.
-    
+This approach allows you to encapsulate component logic and state within a
+class, making it easier to manage complex components.
+
+As a note, `children` are optional in component signatures. If a component
+requests children, it will receive them if provided. If no children are
+provided, the value of children is an empty tuple. If the component does _not_
+ask for children, but they are provided, then they are silently ignored.
+
 #### SVG Support
 
 TODO: say more about SVG support

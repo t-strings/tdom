@@ -570,9 +570,67 @@ def test_interpolated_template_component():
     )
 
 
+def test_interpolated_template_component_no_children_provided():
+    """Same test, but the caller didn't provide any children."""
+    node = html(
+        t'<{FunctionComponent} first=1 second={99} third-arg="comp1" class="my-comp"></{FunctionComponent}>'
+    )
+    assert node == Element(
+        "div",
+        attrs={
+            "id": "comp1",
+            "data-first": "1",
+            "data-second": "99",
+            "class": "my-comp",
+        },
+        children=[
+            Text("Component: "),
+        ],
+    )
+    assert (
+        str(node)
+        == '<div id="comp1" data-first="1" data-second="99" class="my-comp">Component: </div>'
+    )
+
+
 def test_invalid_component_invocation():
     with pytest.raises(TypeError):
         _ = html(t"<{FunctionComponent}>Missing props</{FunctionComponent}>")  # type: ignore
+
+
+def FunctionComponentNoChildren(
+    first: str, second: int, third_arg: str, **attrs: t.Any
+) -> Template:
+    # Ensure type correctness of props at runtime for testing purposes
+    assert isinstance(first, str)
+    assert isinstance(second, int)
+    assert isinstance(third_arg, str)
+    new_attrs = {
+        "id": third_arg,
+        "data": {"first": first, "second": second},
+        **attrs,
+    }
+    return t"<div {new_attrs}>Component: ignore children</div>"
+
+
+def test_interpolated_template_component_ignore_children():
+    node = html(
+        t'<{FunctionComponentNoChildren} first=1 second={99} third-arg="comp1" class="my-comp">Hello, Component!</{FunctionComponentNoChildren}>'
+    )
+    assert node == Element(
+        "div",
+        attrs={
+            "id": "comp1",
+            "data-first": "1",
+            "data-second": "99",
+            "class": "my-comp",
+        },
+        children=[Text(text="Component: ignore children")],
+    )
+    assert (
+        str(node)
+        == '<div id="comp1" data-first="1" data-second="99" class="my-comp">Component: ignore children</div>'
+    )
 
 
 def ColumnsComponent() -> Template:
@@ -752,6 +810,57 @@ def test_class_component_direct_invocation():
     )
 
 
+@dataclass
+class ClassComponentNoChildren:
+    """Example class-based component that does not ask for children."""
+
+    user_name: str
+    image_url: str
+    homepage: str = "#"
+
+    def __call__(self) -> Node:
+        return html(
+            t"<div class='avatar'>"
+            t"<a href={self.homepage}>"
+            t"<img src='{self.image_url}' alt='{f'Avatar of {self.user_name}'}' />"
+            t"</a>"
+            t"<span>{self.user_name}</span>"
+            t"ignore children"
+            t"</div>",
+        )
+
+
+def test_class_component_implicit_invocation_ignore_children():
+    node = html(
+        t"<{ClassComponentNoChildren} user-name='Alice' image-url='https://example.com/alice.png'>Fun times!</{ClassComponentNoChildren}>"
+    )
+    assert node == Element(
+        "div",
+        attrs={"class": "avatar"},
+        children=[
+            Element(
+                "a",
+                attrs={"href": "#"},
+                children=[
+                    Element(
+                        "img",
+                        attrs={
+                            "src": "https://example.com/alice.png",
+                            "alt": "Avatar of Alice",
+                        },
+                    )
+                ],
+            ),
+            Element("span", children=[Text("Alice")]),
+            Text("ignore children"),
+        ],
+    )
+    assert (
+        str(node)
+        == '<div class="avatar"><a href="#"><img src="https://example.com/alice.png" alt="Avatar of Alice" /></a><span>Alice</span>ignore children</div>'
+    )
+
+
 def AttributeTypeComponent(
     data_int: int,
     data_true: bool,
@@ -793,13 +902,6 @@ def test_component_non_callable_fails():
 
 def DoesNotAcceptChildren() -> Template:  # pragma: no cover
     return t"<p>No children allowed!</p>"
-
-
-def test_component_not_accepting_children_with_children_fails():
-    with pytest.raises(TypeError):
-        _ = html(
-            t"<{DoesNotAcceptChildren}>I should not be here</{DoesNotAcceptChildren}>"
-        )
 
 
 def RequiresPositional(whoops: int, /) -> Template:  # pragma: no cover
