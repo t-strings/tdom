@@ -1,3 +1,4 @@
+import datetime
 import typing as t
 from dataclasses import dataclass
 from string.templatelib import Template
@@ -723,3 +724,37 @@ def test_class_component_direct_invocation():
         str(node)
         == '<div class="avatar"><a href="https://example.com/users/alice"><img src="https://example.com/alice.png" alt="Avatar of Alice" /></a><span>Alice</span></div>'
     )
+
+
+def AttributeTypeComponent(
+    data_int: int,
+    data_true: bool,
+    data_false: bool,
+    data_none: None,
+    data_float: float,
+    data_dt: datetime.datetime,
+) -> Template:
+    """Component to test that we don't incorrectly convert attribute types."""
+    assert isinstance(data_int, int)
+    assert data_true is True
+    assert data_false is False
+    assert data_none is None
+    assert isinstance(data_float, float)
+    assert isinstance(data_dt, datetime.datetime)
+    return t"Looks good!"
+
+
+def test_attribute_type_component():
+    an_int: int = 42
+    a_true: bool = True
+    a_false: bool = False
+    a_none: None = None
+    a_float: float = 3.14
+    a_dt: datetime.datetime = datetime.datetime(2024, 1, 1, 12, 0, 0)
+    node = html(
+        t"<{AttributeTypeComponent} data-int={an_int} data-true={a_true} "
+        t"data-false={a_false} data-none={a_none} data-float={a_float} "
+        t"data-dt={a_dt} />"
+    )
+    assert node == Text("Looks good!")
+    assert str(node) == "Looks good!"
