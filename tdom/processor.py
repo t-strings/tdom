@@ -96,7 +96,7 @@ def _instrument(
             yield placeholder
 
 
-@lru_cache(maxsize=0 if "pytest" in sys.modules else 256)
+@lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
 def _instrument_and_parse_internal(
     strings: tuple[str, ...], callable_ids: tuple[int | None, ...]
 ) -> Node:
