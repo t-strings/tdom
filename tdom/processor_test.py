@@ -159,7 +159,7 @@ def test_interpolated_zero_arg_function():
 
 
 def test_interpolated_multi_arg_function_fails():
-    def add(a, b):
+    def add(a, b):  # pragma: no cover
         return a + b
 
     with pytest.raises(TypeError):
@@ -472,25 +472,31 @@ def test_interpolated_attribute_spread_with_class_attribute():
 
 
 def test_interpolated_data_attributes():
-    data = {"user-id": 123, "role": "admin"}
+    data = {"user-id": 123, "role": "admin", "wild": True}
     node = html(t"<div data={data}>User Info</div>")
     assert node == Element(
         "div",
-        attrs={"data-user-id": "123", "data-role": "admin"},
+        attrs={"data-user-id": "123", "data-role": "admin", "data-wild": None},
         children=[Text("User Info")],
     )
-    assert str(node) == '<div data-user-id="123" data-role="admin">User Info</div>'
+    assert (
+        str(node)
+        == '<div data-user-id="123" data-role="admin" data-wild>User Info</div>'
+    )
 
 
 def test_interpolated_aria_attributes():
-    aria = {"label": "Close", "hidden": True}
+    aria = {"label": "Close", "hidden": True, "another": False, "more": None}
     node = html(t"<button aria={aria}>X</button>")
     assert node == Element(
         "button",
-        attrs={"aria-label": "Close", "aria-hidden": "true"},
+        attrs={"aria-label": "Close", "aria-hidden": "true", "aria-another": "false"},
         children=[Text("X")],
     )
-    assert str(node) == '<button aria-label="Close" aria-hidden="true">X</button>'
+    assert (
+        str(node)
+        == '<button aria-label="Close" aria-hidden="true" aria-another="false">X</button>'
+    )
 
 
 def test_interpolated_style_attribute():
@@ -505,6 +511,23 @@ def test_interpolated_style_attribute():
         str(node)
         == '<p style="color: red; font-weight: bold; font-size: 16px">Warning!</p>'
     )
+
+
+def test_style_attribute_str():
+    styles = "color: red; font-weight: bold;"
+    node = html(t"<p style={styles}>Warning!</p>")
+    assert node == Element(
+        "p",
+        attrs={"style": "color: red; font-weight: bold;"},
+        children=[Text("Warning!")],
+    )
+    assert str(node) == '<p style="color: red; font-weight: bold;">Warning!</p>'
+
+
+def test_style_attribute_non_str_non_dict():
+    with pytest.raises(TypeError):
+        styles = [1, 2]
+        _ = html(t"<p style={styles}>Warning!</p>")
 
 
 # --------------------------------------------------------------------------
@@ -761,3 +784,28 @@ def test_attribute_type_component():
     )
     assert node == Text("Looks good!")
     assert str(node) == "Looks good!"
+
+
+def test_component_non_callable_fails():
+    with pytest.raises(TypeError):
+        _ = html(t"<{'not a function'} />")
+
+
+def DoesNotAcceptChildren() -> Template:  # pragma: no cover
+    return t"<p>No children allowed!</p>"
+
+
+def test_component_not_accepting_children_with_children_fails():
+    with pytest.raises(TypeError):
+        _ = html(
+            t"<{DoesNotAcceptChildren}>I should not be here</{DoesNotAcceptChildren}>"
+        )
+
+
+def RequiresPositional(whoops: int, /) -> Template:  # pragma: no cover
+    return t"<p>Positional arg: {whoops}</p>"
+
+
+def test_component_requiring_positional_arg_fails():
+    with pytest.raises(TypeError):
+        _ = html(t"<{RequiresPositional} />")

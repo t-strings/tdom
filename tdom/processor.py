@@ -181,12 +181,15 @@ def _process_class_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
 
 def _process_style_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     """Substitute a style attribute based on the interpolated value."""
+    if isinstance(value, str):
+        yield ("style", value)
+        return
     try:
         d = _force_dict(value, kind="style")
         style_str = "; ".join(f"{k}: {v}" for k, v in d.items())
         yield ("style", style_str)
     except TypeError:
-        yield ("style", str(value))
+        raise TypeError("'style' attribute value must be a string or dict") from None
 
 
 def _substitute_spread_attrs(
