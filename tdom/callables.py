@@ -11,10 +11,10 @@ class CallableInfo:
     id: int
     """The unique identifier of the callable (from id())."""
 
-    named_args: frozenset[str]
+    named_params: frozenset[str]
     """The names of the callable's named arguments."""
 
-    required_named_args: frozenset[str]
+    required_named_params: frozenset[str]
     """The names of the callable's required named arguments."""
 
     requires_positional: bool
@@ -29,8 +29,8 @@ class CallableInfo:
         import inspect
 
         sig = inspect.signature(c)
-        named_args = []
-        required_named_args = []
+        named_params = []
+        required_named_params = []
         requires_positional = False
         kwargs = False
 
@@ -40,26 +40,26 @@ class CallableInfo:
                     if param.default is param.empty:
                         requires_positional = True
                 case inspect.Parameter.POSITIONAL_OR_KEYWORD:
-                    named_args.append(param.name)
+                    named_params.append(param.name)
                     if param.default is param.empty:
-                        required_named_args.append(param.name)
+                        required_named_params.append(param.name)
                 case inspect.Parameter.VAR_POSITIONAL:
                     # Does this necessarily mean it requires positional args?
                     # Answer: No, but we have no way of knowing how many
-                    # positional args it *might* require, so we have to assume
-                    # it does.
+                    # positional args it *might* expect, so we have to assume
+                    # that it does.
                     requires_positional = True
                 case inspect.Parameter.KEYWORD_ONLY:
-                    named_args.append(param.name)
+                    named_params.append(param.name)
                     if param.default is param.empty:
-                        required_named_args.append(param.name)
+                        required_named_params.append(param.name)
                 case inspect.Parameter.VAR_KEYWORD:
                     kwargs = True
 
         return cls(
             id=id(c),
-            named_args=frozenset(named_args),
-            required_named_args=frozenset(required_named_args),
+            named_params=frozenset(named_params),
+            required_named_params=frozenset(required_named_params),
             requires_positional=requires_positional,
             kwargs=kwargs,
         )
@@ -67,7 +67,7 @@ class CallableInfo:
     @property
     def supports_zero_args(self) -> bool:
         """Whether the callable can be called with zero arguments."""
-        return not self.requires_positional and not self.required_named_args
+        return not self.requires_positional and not self.required_named_params
 
 
 @lru_cache(maxsize=0 if "pytest" in sys.modules else 512)

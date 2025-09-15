@@ -512,7 +512,7 @@ def test_interpolated_style_attribute():
 
 
 def TemplateComponent(
-    *children: Node, first: str, second: int, third_arg: str, **attrs: t.Any
+    children: t.Iterable[Node], first: str, second: int, third_arg: str, **attrs: t.Any
 ) -> Template:
     # Ensure type correctness of props at runtime for testing purposes
     assert isinstance(first, str)
@@ -575,7 +575,9 @@ def test_fragment_from_component():
 
 
 def test_component_passed_as_attr_value():
-    def Wrapper(*children: Node, sub_component: t.Callable, **attrs: t.Any) -> Template:
+    def Wrapper(
+        children: t.Iterable[Node], sub_component: t.Callable, **attrs: t.Any
+    ) -> Template:
         return t"<{sub_component} {attrs}>{children}</{sub_component}>"
 
     node = html(

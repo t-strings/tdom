@@ -8,6 +8,7 @@ from string.templatelib import Interpolation, Template
 
 from markupsafe import Markup
 
+from .callables import CallableInfo, get_callable_info
 from .classnames import classnames
 from .nodes import Element, Fragment, Node, Text
 from .parser import parse_html
@@ -65,7 +66,7 @@ def _placholder_index(s: str) -> int:
 
 
 def _instrument(
-    strings: tuple[str, ...], callable_ids: tuple[int | None, ...]
+    strings: tuple[str, ...], callable_infos: tuple[CallableInfo | None, ...]
 ) -> t.Iterable[str]:
     """
     Join the strings with placeholders in between where interpolations go.
@@ -89,29 +90,31 @@ def _instrument(
             # Special case for component callables: if the interpolation
             # is a callable, we need to make sure that any matching closing
             # tag uses the same placeholder.
-            callable_id = callable_ids[i]
-            if callable_id:
-                placeholder = callable_placeholders.setdefault(callable_id, placeholder)
+            callable_info = callable_infos[i]
+            if callable_info:
+                placeholder = callable_placeholders.setdefault(
+                    callable_info.id, placeholder
+                )
 
             yield placeholder
 
 
 @lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
 def _instrument_and_parse_internal(
-    strings: tuple[str, ...], callable_ids: tuple[int | None, ...]
+    strings: tuple[str, ...], callable_infos: tuple[CallableInfo | None, ...]
 ) -> Node:
     """
     Instrument the strings and parse the resulting HTML.
 
     The result is cached to avoid re-parsing the same template multiple times.
     """
-    instrumented = _instrument(strings, callable_ids)
+    instrumented = _instrument(strings, callable_infos)
     return parse_html(instrumented)
 
 
-def _callable_id(value: object) -> int | None:
+def _callable_info(value: object) -> CallableInfo | None:
     """Return a unique identifier for a callable, or None if not callable."""
-    return id(value) if callable(value) else None
+    return get_callable_info(value) if callable(value) else None
 
 
 def _instrument_and_parse(template: Template) -> Node:
@@ -126,10 +129,10 @@ def _instrument_and_parse(template: Template) -> Node:
     # wouldn't have to do this. But I worry that tdom's syntax is harder to read
     # (it's easy to miss the closing tag) and may prove unfamiliar for
     # users coming from other templating systems.
-    callable_ids = tuple(
-        _callable_id(interpolation.value) for interpolation in template.interpolations
+    callable_infos = tuple(
+        _callable_info(interpolation.value) for interpolation in template.interpolations
     )
-    return _instrument_and_parse_internal(template.strings, callable_ids)
+    return _instrument_and_parse_internal(template.strings, callable_infos)
 
 
 # --------------------------------------------------------------------------
@@ -310,13 +313,56 @@ def _node_from_value(value: object) -> Node:
             return Text(str(value))
 
 
+def _accepts_children(callable_info: CallableInfo) -> bool:
+    """Return True if the callable accepts a "children" parameter."""
+    return "children" in callable_info.named_params or callable_info.kwargs
+
+
+def _kebab_to_snake(name: str) -> str:
+    """Convert a kebab-case name to snake_case."""
+    return name.replace("-", "_").lower()
+
+
 def _invoke_component(
     tag: str,
     new_attrs: dict[str, object | None],
     new_children: list[Node],
     interpolations: tuple[Interpolation, ...],
 ) -> Node:
-    """Substitute a component invocation based on the corresponding interpolations."""
+    """
+    Invoke a component callable with the provided attributes and children.
+
+    Components are any callable that meets the required calling signature.
+    Typically, that's a function, but it could also be the constructor or
+    __call__() method for a class; dataclass constructors match our expected
+    invocation style.
+
+    We validate the callable's signature and invoke it with keyword-only
+    arguments, then convert the result to a Node.
+
+    Component invocation rules:
+
+    1. All arguments are passed as keywords only. Components cannot require
+    positional arguments.
+
+    2. Children are passed via a "children" parameter when:
+
+    - Child content exists in the template AND
+    - The callable accepts "children" OR has **kwargs
+
+    If no children exist but the callable accepts "children", we pass an
+    empty tuple.
+
+    3. Components that don't accept "children" and have no **kwargs cannot
+    receive child content (will raise TypeError if attempted).
+
+    4. All component attributes must map to the callable's named parameters,
+    except "children" which is handled separately. Missing required
+    parameters will raise TypeError.
+
+    5. Extra attributes that don't match parameters are silently ignored
+    (unless the callable uses **kwargs to capture them).
+    """
     index = _placholder_index(tag)
     interpolation = interpolations[index]
     value = format_interpolation(interpolation)
@@ -324,12 +370,38 @@ def _invoke_component(
         raise TypeError(
             f"Expected a callable for component invocation, got {type(value).__name__}"
         )
-    # Replace attr names hyphens with underscores for Python kwargs
-    kwargs = {k.replace("-", "_"): v for k, v in new_attrs.items()}
+    callable_info = get_callable_info(value)
 
-    # Call the component and return the resulting node
-    # TODO: handle failed calls more gracefully; consider using signature()?
-    result = value(*new_children, **kwargs)
+    call_kwargs: dict[str, object] = {}
+
+    # Rule 1: no required positional arguments
+    if callable_info.requires_positional:
+        raise TypeError(
+            "Component callables cannot have required positional arguments."
+        )
+
+    # Rules 2 and 3: handle children
+    if _accepts_children(callable_info):
+        call_kwargs["children"] = tuple(new_children)
+    elif new_children:
+        raise TypeError(
+            "Component does not accept children, but child content was provided."
+        )
+
+    # Rule 4: match attributes to named parameters
+    for attr_name, attr_value in new_attrs.items():
+        snake_name = _kebab_to_snake(attr_name)
+        if snake_name in callable_info.named_params or callable_info.kwargs:
+            call_kwargs[snake_name] = attr_value
+
+    # Rule 5: extra attributes are ignored
+    missing = callable_info.required_named_params - call_kwargs.keys()
+    if missing:
+        raise TypeError(
+            f"Missing required parameters for component: {', '.join(missing)}"
+        )
+
+    result = value(**call_kwargs)
     return _node_from_value(result)
 
 
@@ -350,6 +422,9 @@ def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) ->
             new_attrs = _substitute_attrs(attrs, interpolations)
             new_children = _substitute_and_flatten_children(children, interpolations)
             if tag.startswith(_PLACEHOLDER_PREFIX):
+                # TODO: bug: at this point, we've replaced boolean-valued
+                # attributes with False and None, which is *not* what we want
+                # if we're invoking a component. This should wait until _stringify_attrs()
                 return _invoke_component(tag, new_attrs, new_children, interpolations)
             else:
                 new_attrs = _stringify_attrs(new_attrs)
