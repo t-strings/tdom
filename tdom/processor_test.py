@@ -1,12 +1,13 @@
+import datetime
 import typing as t
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from string.templatelib import Template
 
 import pytest
 from markupsafe import Markup
 
 from .nodes import Element, Fragment, Node, Text
-from .processor import ComponentCallable, html
+from .processor import html
 
 # --------------------------------------------------------------------------
 # Basic HTML parsing tests
@@ -128,6 +129,41 @@ def test_conversions():
             Element("li", children=[Text("'\\U0001f60a'")]),
         ],
     )
+
+
+# --------------------------------------------------------------------------
+# Interpolated non-text content
+# --------------------------------------------------------------------------
+
+
+def test_interpolated_false_content():
+    node = html(t"<div>{False}</div>")
+    assert node == Element("div", children=[])
+    assert str(node) == "<div></div>"
+
+
+def test_interpolated_none_content():
+    node = html(t"<div>{None}</div>")
+    assert node == Element("div", children=[])
+    assert str(node) == "<div></div>"
+
+
+def test_interpolated_zero_arg_function():
+    def get_value():
+        return "dynamic"
+
+    node = html(t"<p>The value is {get_value}.</p>")
+    assert node == Element(
+        "p", children=[Text("The value is "), Text("dynamic"), Text(".")]
+    )
+
+
+def test_interpolated_multi_arg_function_fails():
+    def add(a, b):  # pragma: no cover
+        return a + b
+
+    with pytest.raises(TypeError):
+        _ = html(t"<p>The sum is {add}.</p>")
 
 
 # --------------------------------------------------------------------------
@@ -436,25 +472,31 @@ def test_interpolated_attribute_spread_with_class_attribute():
 
 
 def test_interpolated_data_attributes():
-    data = {"user-id": 123, "role": "admin"}
+    data = {"user-id": 123, "role": "admin", "wild": True}
     node = html(t"<div data={data}>User Info</div>")
     assert node == Element(
         "div",
-        attrs={"data-user-id": "123", "data-role": "admin"},
+        attrs={"data-user-id": "123", "data-role": "admin", "data-wild": None},
         children=[Text("User Info")],
     )
-    assert str(node) == '<div data-user-id="123" data-role="admin">User Info</div>'
+    assert (
+        str(node)
+        == '<div data-user-id="123" data-role="admin" data-wild>User Info</div>'
+    )
 
 
 def test_interpolated_aria_attributes():
-    aria = {"label": "Close", "hidden": True}
+    aria = {"label": "Close", "hidden": True, "another": False, "more": None}
     node = html(t"<button aria={aria}>X</button>")
     assert node == Element(
         "button",
-        attrs={"aria-label": "Close", "aria-hidden": "true"},
+        attrs={"aria-label": "Close", "aria-hidden": "true", "aria-another": "false"},
         children=[Text("X")],
     )
-    assert str(node) == '<button aria-label="Close" aria-hidden="true">X</button>'
+    assert (
+        str(node)
+        == '<button aria-label="Close" aria-hidden="true" aria-another="false">X</button>'
+    )
 
 
 def test_interpolated_style_attribute():
@@ -471,13 +513,30 @@ def test_interpolated_style_attribute():
     )
 
 
+def test_style_attribute_str():
+    styles = "color: red; font-weight: bold;"
+    node = html(t"<p style={styles}>Warning!</p>")
+    assert node == Element(
+        "p",
+        attrs={"style": "color: red; font-weight: bold;"},
+        children=[Text("Warning!")],
+    )
+    assert str(node) == '<p style="color: red; font-weight: bold;">Warning!</p>'
+
+
+def test_style_attribute_non_str_non_dict():
+    with pytest.raises(TypeError):
+        styles = [1, 2]
+        _ = html(t"<p style={styles}>Warning!</p>")
+
+
 # --------------------------------------------------------------------------
 # Function component interpolation tests
 # --------------------------------------------------------------------------
 
 
-def TemplateComponent(
-    *children: Node, first: str, second: int, third_arg: str, **attrs: t.Any
+def FunctionComponent(
+    children: t.Iterable[Node], first: str, second: int, third_arg: str, **attrs: t.Any
 ) -> Template:
     # Ensure type correctness of props at runtime for testing purposes
     assert isinstance(first, str)
@@ -493,7 +552,7 @@ def TemplateComponent(
 
 def test_interpolated_template_component():
     node = html(
-        t'<{TemplateComponent} first=1 second={99} third-arg="comp1" class="my-comp">Hello, Component!</{TemplateComponent}>'
+        t'<{FunctionComponent} first=1 second={99} third-arg="comp1" class="my-comp">Hello, Component!</{FunctionComponent}>'
     )
     assert node == Element(
         "div",
@@ -513,7 +572,7 @@ def test_interpolated_template_component():
 
 def test_invalid_component_invocation():
     with pytest.raises(TypeError):
-        _ = html(t"<{TemplateComponent}>Missing props</{TemplateComponent}>")  # type: ignore
+        _ = html(t"<{FunctionComponent}>Missing props</{FunctionComponent}>")  # type: ignore
 
 
 def ColumnsComponent() -> Template:
@@ -541,12 +600,12 @@ def test_fragment_from_component():
 
 def test_component_passed_as_attr_value():
     def Wrapper(
-        *children: Node, sub_component: ComponentCallable, **attrs: t.Any
+        children: t.Iterable[Node], sub_component: t.Callable, **attrs: t.Any
     ) -> Template:
         return t"<{sub_component} {attrs}>{children}</{sub_component}>"
 
     node = html(
-        t'<{Wrapper} sub-component={TemplateComponent} class="wrapped" first=1 second={99} third-arg="comp1"><p>Inside wrapper</p></{Wrapper}>'
+        t'<{Wrapper} sub-component={FunctionComponent} class="wrapped" first=1 second={99} third-arg="comp1"><p>Inside wrapper</p></{Wrapper}>'
     )
     assert node == Element(
         "div",
@@ -609,12 +668,13 @@ def test_component_returning_explicit_fragment():
 
 
 @dataclass
-class Avatar:
+class ClassComponent:
     """Example class-based component."""
 
     user_name: str
     image_url: str
     homepage: str = "#"
+    children: t.Iterable[Node] = field(default_factory=list)
 
     def __call__(self) -> Node:
         return html(
@@ -623,12 +683,44 @@ class Avatar:
             t"<img src='{self.image_url}' alt='{f'Avatar of {self.user_name}'}' />"
             t"</a>"
             t"<span>{self.user_name}</span>"
-            t"</div>"
+            t"{self.children}"
+            t"</div>",
         )
 
 
-def test_class_based_component():
-    avatar = Avatar(
+def test_class_component_implicit_invocation():
+    node = html(
+        t"<{ClassComponent} user-name='Alice' image-url='https://example.com/alice.png'>Fun times!</{ClassComponent}>"
+    )
+    assert node == Element(
+        "div",
+        attrs={"class": "avatar"},
+        children=[
+            Element(
+                "a",
+                attrs={"href": "#"},
+                children=[
+                    Element(
+                        "img",
+                        attrs={
+                            "src": "https://example.com/alice.png",
+                            "alt": "Avatar of Alice",
+                        },
+                    )
+                ],
+            ),
+            Element("span", children=[Text("Alice")]),
+            Text("Fun times!"),
+        ],
+    )
+    assert (
+        str(node)
+        == '<div class="avatar"><a href="#"><img src="https://example.com/alice.png" alt="Avatar of Alice" /></a><span>Alice</span>Fun times!</div>'
+    )
+
+
+def test_class_component_direct_invocation():
+    avatar = ClassComponent(
         user_name="Alice",
         image_url="https://example.com/alice.png",
         homepage="https://example.com/users/alice",
@@ -658,3 +750,62 @@ def test_class_based_component():
         str(node)
         == '<div class="avatar"><a href="https://example.com/users/alice"><img src="https://example.com/alice.png" alt="Avatar of Alice" /></a><span>Alice</span></div>'
     )
+
+
+def AttributeTypeComponent(
+    data_int: int,
+    data_true: bool,
+    data_false: bool,
+    data_none: None,
+    data_float: float,
+    data_dt: datetime.datetime,
+) -> Template:
+    """Component to test that we don't incorrectly convert attribute types."""
+    assert isinstance(data_int, int)
+    assert data_true is True
+    assert data_false is False
+    assert data_none is None
+    assert isinstance(data_float, float)
+    assert isinstance(data_dt, datetime.datetime)
+    return t"Looks good!"
+
+
+def test_attribute_type_component():
+    an_int: int = 42
+    a_true: bool = True
+    a_false: bool = False
+    a_none: None = None
+    a_float: float = 3.14
+    a_dt: datetime.datetime = datetime.datetime(2024, 1, 1, 12, 0, 0)
+    node = html(
+        t"<{AttributeTypeComponent} data-int={an_int} data-true={a_true} "
+        t"data-false={a_false} data-none={a_none} data-float={a_float} "
+        t"data-dt={a_dt} />"
+    )
+    assert node == Text("Looks good!")
+    assert str(node) == "Looks good!"
+
+
+def test_component_non_callable_fails():
+    with pytest.raises(TypeError):
+        _ = html(t"<{'not a function'} />")
+
+
+def DoesNotAcceptChildren() -> Template:  # pragma: no cover
+    return t"<p>No children allowed!</p>"
+
+
+def test_component_not_accepting_children_with_children_fails():
+    with pytest.raises(TypeError):
+        _ = html(
+            t"<{DoesNotAcceptChildren}>I should not be here</{DoesNotAcceptChildren}>"
+        )
+
+
+def RequiresPositional(whoops: int, /) -> Template:  # pragma: no cover
+    return t"<p>Positional arg: {whoops}</p>"
+
+
+def test_component_requiring_positional_arg_fails():
+    with pytest.raises(TypeError):
+        _ = html(t"<{RequiresPositional} />")
