@@ -511,7 +511,7 @@ def test_interpolated_style_attribute():
 # --------------------------------------------------------------------------
 
 
-def TemplateComponent(
+def FunctionComponent(
     children: t.Iterable[Node], first: str, second: int, third_arg: str, **attrs: t.Any
 ) -> Template:
     # Ensure type correctness of props at runtime for testing purposes
@@ -528,7 +528,7 @@ def TemplateComponent(
 
 def test_interpolated_template_component():
     node = html(
-        t'<{TemplateComponent} first=1 second={99} third-arg="comp1" class="my-comp">Hello, Component!</{TemplateComponent}>'
+        t'<{FunctionComponent} first=1 second={99} third-arg="comp1" class="my-comp">Hello, Component!</{FunctionComponent}>'
     )
     assert node == Element(
         "div",
@@ -548,7 +548,7 @@ def test_interpolated_template_component():
 
 def test_invalid_component_invocation():
     with pytest.raises(TypeError):
-        _ = html(t"<{TemplateComponent}>Missing props</{TemplateComponent}>")  # type: ignore
+        _ = html(t"<{FunctionComponent}>Missing props</{FunctionComponent}>")  # type: ignore
 
 
 def ColumnsComponent() -> Template:
@@ -581,7 +581,7 @@ def test_component_passed_as_attr_value():
         return t"<{sub_component} {attrs}>{children}</{sub_component}>"
 
     node = html(
-        t'<{Wrapper} sub-component={TemplateComponent} class="wrapped" first=1 second={99} third-arg="comp1"><p>Inside wrapper</p></{Wrapper}>'
+        t'<{Wrapper} sub-component={FunctionComponent} class="wrapped" first=1 second={99} third-arg="comp1"><p>Inside wrapper</p></{Wrapper}>'
     )
     assert node == Element(
         "div",
@@ -644,7 +644,7 @@ def test_component_returning_explicit_fragment():
 
 
 @dataclass
-class Avatar:
+class ClassComponent:
     """Example class-based component."""
 
     user_name: str
@@ -662,8 +662,38 @@ class Avatar:
         )
 
 
-def test_class_based_component():
-    avatar = Avatar(
+def test_class_component_implicit_invocation():
+    node = html(
+        t"<{ClassComponent} user-name='Alice' image-url='https://example.com/alice.png' />"
+    )
+    assert node == Element(
+        "div",
+        attrs={"class": "avatar"},
+        children=[
+            Element(
+                "a",
+                attrs={"href": "#"},
+                children=[
+                    Element(
+                        "img",
+                        attrs={
+                            "src": "https://example.com/alice.png",
+                            "alt": "Avatar of Alice",
+                        },
+                    )
+                ],
+            ),
+            Element("span", children=[Text("Alice")]),
+        ],
+    )
+    assert (
+        str(node)
+        == '<div class="avatar"><a href="#"><img src="https://example.com/alice.png" alt="Avatar of Alice" /></a><span>Alice</span></div>'
+    )
+
+
+def test_class_component_direct_invocation():
+    avatar = ClassComponent(
         user_name="Alice",
         image_url="https://example.com/alice.png",
         homepage="https://example.com/users/alice",

@@ -61,7 +61,7 @@ If your template has children inside the component element, your component will
 receive them as `*children` positional arguments:
 
 ```python
-def Heading(*children: Node, title: str) -> Node:
+def Heading(children: Iterable[Node], title: str) -> Node:
     return html(t"<h1>{title}</h1><div>{children}</div>")
 
 result = html(t'<{Heading} title="My Title">Child</{Heading}>')
@@ -97,7 +97,7 @@ driving:
 def DefaultHeading() -> Template:
     return t"<h1>Default Heading</h1>"
 
-def Body(heading: str) -> Template:
+def Body(heading: Callable) -> Template:
     return t"<body><{heading} /></body>"
 
 result = html(t"<{Body} heading={DefaultHeading} />")
