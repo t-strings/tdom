@@ -281,8 +281,8 @@ def _node_from_value(value: object) -> Node:
     """
     Convert an arbitrary value to a Node.
 
-    This is the primary substitution performed when replacing interpolations
-    in child content positions.
+    This is the primary action performed when replacing interpolations in child
+    content positions.
     """
     match value:
         case str():
@@ -291,21 +291,22 @@ def _node_from_value(value: object) -> Node:
             return value
         case Template():
             return html(value)
-        case False:
+        # Consider: falsey values, not just False and None?
+        case False | None:
             return Text("")
         case Iterable():
             children = [_node_from_value(v) for v in value]
             return Fragment(children=children)
         case HasHTMLDunder():
-            # CONSIDER: could we return a lazy Text?
+            # CONSIDER: should we do this lazily?
             return Text(Markup(value.__html__()))
+        case c if callable(c):
+            # Treat all callable values in child content positions as if
+            # they are zero-arg functions that return a value to be rendered.
+            return _node_from_value(c())
         case _:
-            # CONSIDER: could we return a lazy Text?
+            # CONSIDER: should we do this lazily?
             return Text(str(value))
-
-
-type ComponentReturn = Node | Template | str | HasHTMLDunder
-type ComponentCallable = t.Callable[..., ComponentReturn | t.Iterable[ComponentReturn]]
 
 
 def _invoke_component(

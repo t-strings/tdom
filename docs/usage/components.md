@@ -29,8 +29,8 @@ a `Node`:
 
 <!-- invisible-code-block: python
 from string.templatelib import Template
-from tdom import html, ComponentCallable, Node
-from typing import Iterable
+from tdom import html, Node
+from typing import Callable, Iterable
 -->
 
 ```python
@@ -116,7 +116,7 @@ def DefaultHeading() -> Template:
 def OtherHeading() -> Template:
     return t"<h1>Other Heading</h1>"
 
-def Body(heading: ComponentCallable) -> Template:
+def Body(heading: Callable) -> Template:
     return html(t"<body><{heading} /></body>")
 
 result = html(t"<{Body} heading={OtherHeading}></{Body}>")
@@ -135,7 +135,7 @@ def DefaultHeading() -> Template:
 def OtherHeading() -> Template:
     return t"<h1>Other Heading</h1>"
 
-def Body(heading: ComponentCallable | None = None) -> Template:
+def Body(heading: Callable | None = None) -> Template:
     return t"<body><{heading if heading else DefaultHeading} /></body>"
 
 result = html(t"<{Body} heading={OtherHeading}></{Body}>")

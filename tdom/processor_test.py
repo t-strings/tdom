@@ -6,7 +6,7 @@ import pytest
 from markupsafe import Markup
 
 from .nodes import Element, Fragment, Node, Text
-from .processor import ComponentCallable, html
+from .processor import html
 
 # --------------------------------------------------------------------------
 # Basic HTML parsing tests
@@ -540,9 +540,7 @@ def test_fragment_from_component():
 
 
 def test_component_passed_as_attr_value():
-    def Wrapper(
-        *children: Node, sub_component: ComponentCallable, **attrs: t.Any
-    ) -> Template:
+    def Wrapper(*children: Node, sub_component: t.Callable, **attrs: t.Any) -> Template:
         return t"<{sub_component} {attrs}>{children}</{sub_component}>"
 
     node = html(
