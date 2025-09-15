@@ -131,6 +131,41 @@ def test_conversions():
 
 
 # --------------------------------------------------------------------------
+# Interpolated non-text content
+# --------------------------------------------------------------------------
+
+
+def test_interpolated_false_content():
+    node = html(t"<div>{False}</div>")
+    assert node == Element("div", children=[])
+    assert str(node) == "<div></div>"
+
+
+def test_interpolated_none_content():
+    node = html(t"<div>{None}</div>")
+    assert node == Element("div", children=[])
+    assert str(node) == "<div></div>"
+
+
+def test_interpolated_zero_arg_function():
+    def get_value():
+        return "dynamic"
+
+    node = html(t"<p>The value is {get_value}.</p>")
+    assert node == Element(
+        "p", children=[Text("The value is "), Text("dynamic"), Text(".")]
+    )
+
+
+def test_interpolated_multi_arg_function_fails():
+    def add(a, b):
+        return a + b
+
+    with pytest.raises(TypeError):
+        _ = html(t"<p>The sum is {add}.</p>")
+
+
+# --------------------------------------------------------------------------
 # Raw HTML injection tests
 # --------------------------------------------------------------------------
 

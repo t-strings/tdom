@@ -293,7 +293,7 @@ def _node_from_value(value: object) -> Node:
             return html(value)
         # Consider: falsey values, not just False and None?
         case False | None:
-            return Text("")
+            return Fragment(children=[])
         case Iterable():
             children = [_node_from_value(v) for v in value]
             return Fragment(children=children)
