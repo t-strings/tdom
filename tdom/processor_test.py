@@ -573,7 +573,7 @@ def test_interpolated_template_component():
 def test_interpolated_template_component_no_children_provided():
     """Same test, but the caller didn't provide any children."""
     node = html(
-        t'<{FunctionComponent} first=1 second={99} third-arg="comp1" class="my-comp"></{FunctionComponent}>'
+        t'<{FunctionComponent} first=1 second={99} third-arg="comp1" class="my-comp" />'
     )
     assert node == Element(
         "div",
@@ -595,12 +595,10 @@ def test_interpolated_template_component_no_children_provided():
 
 def test_invalid_component_invocation():
     with pytest.raises(TypeError):
-        _ = html(t"<{FunctionComponent}>Missing props</{FunctionComponent}>")  # type: ignore
+        _ = html(t"<{FunctionComponent}>Missing props</{FunctionComponent}>")
 
 
-def FunctionComponentNoChildren(
-    first: str, second: int, third_arg: str, **attrs: t.Any
-) -> Template:
+def FunctionComponentNoChildren(first: str, second: int, third_arg: str) -> Template:
     # Ensure type correctness of props at runtime for testing purposes
     assert isinstance(first, str)
     assert isinstance(second, int)
@@ -608,14 +606,13 @@ def FunctionComponentNoChildren(
     new_attrs = {
         "id": third_arg,
         "data": {"first": first, "second": second},
-        **attrs,
     }
     return t"<div {new_attrs}>Component: ignore children</div>"
 
 
 def test_interpolated_template_component_ignore_children():
     node = html(
-        t'<{FunctionComponentNoChildren} first=1 second={99} third-arg="comp1" class="my-comp">Hello, Component!</{FunctionComponentNoChildren}>'
+        t'<{FunctionComponentNoChildren} first=1 second={99} third-arg="comp1">Hello, Component!</{FunctionComponentNoChildren}>'
     )
     assert node == Element(
         "div",
@@ -623,13 +620,53 @@ def test_interpolated_template_component_ignore_children():
             "id": "comp1",
             "data-first": "1",
             "data-second": "99",
-            "class": "my-comp",
         },
         children=[Text(text="Component: ignore children")],
     )
     assert (
         str(node)
-        == '<div id="comp1" data-first="1" data-second="99" class="my-comp">Component: ignore children</div>'
+        == '<div id="comp1" data-first="1" data-second="99">Component: ignore children</div>'
+    )
+
+
+def FunctionComponentKeywordArgs(first: str, **attrs: t.Any) -> Template:
+    # Ensure type correctness of props at runtime for testing purposes
+    assert isinstance(first, str)
+    assert "children" in attrs
+    _ = attrs.pop("children")
+    new_attrs = {"data-first": first, **attrs}
+    return t"<div {new_attrs}>Component with kwargs</div>"
+
+
+def test_children_always_passed_via_kwargs():
+    node = html(
+        t'<{FunctionComponentKeywordArgs} first="value" extra="info">Child content</{FunctionComponentKeywordArgs}>'
+    )
+    assert node == Element(
+        "div",
+        attrs={
+            "data-first": "value",
+            "extra": "info",
+        },
+        children=[Text("Component with kwargs")],
+    )
+    assert (
+        str(node) == '<div data-first="value" extra="info">Component with kwargs</div>'
+    )
+
+
+def test_children_always_passed_via_kwargs_even_when_empty():
+    node = html(t'<{FunctionComponentKeywordArgs} first="value" extra="info" />')
+    assert node == Element(
+        "div",
+        attrs={
+            "data-first": "value",
+            "extra": "info",
+        },
+        children=[Text("Component with kwargs")],
+    )
+    assert (
+        str(node) == '<div data-first="value" extra="info">Component with kwargs</div>'
     )
 
 
@@ -898,10 +935,6 @@ def test_attribute_type_component():
 def test_component_non_callable_fails():
     with pytest.raises(TypeError):
         _ = html(t"<{'not a function'} />")
-
-
-def DoesNotAcceptChildren() -> Template:  # pragma: no cover
-    return t"<p>No children allowed!</p>"
 
 
 def RequiresPositional(whoops: int, /) -> Template:  # pragma: no cover
