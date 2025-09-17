@@ -350,11 +350,6 @@ def _node_from_value(value: object) -> Node:
             return Text(str(value))
 
 
-def _accepts_children(callable_info: CallableInfo) -> bool:
-    """Return True if the callable accepts a "children" parameter."""
-    return "children" in callable_info.named_params or callable_info.kwargs
-
-
 def _kebab_to_snake(name: str) -> str:
     """Convert a kebab-case name to snake_case."""
     return name.replace("-", "_").lower()
@@ -390,15 +385,9 @@ def _invoke_component(
     If no children exist but the callable accepts "children", we pass an
     empty tuple.
 
-    3. Components that don't accept "children" and have no **kwargs cannot
-    receive child content (will raise TypeError if attempted).
-
-    4. All component attributes must map to the callable's named parameters,
-    except "children" which is handled separately. Missing required
-    parameters will raise TypeError.
-
-    5. Extra attributes that don't match parameters are silently ignored
-    (unless the callable uses **kwargs to capture them).
+    3. All other attributes are converted from kebab-case to snake_case
+    and passed as keyword arguments if the callable accepts them (or has
+    **kwargs). Attributes that don't match parameters are silently ignored.
     """
     index = _placholder_index(tag)
     interpolation = interpolations[index]
@@ -409,36 +398,31 @@ def _invoke_component(
         )
     callable_info = get_callable_info(value)
 
-    call_kwargs: dict[str, object] = {}
-
-    # Rule 1: no required positional arguments
     if callable_info.requires_positional:
         raise TypeError(
             "Component callables cannot have required positional arguments."
         )
 
-    # Rules 2 and 3: handle children
-    if _accepts_children(callable_info):
-        call_kwargs["children"] = tuple(new_children)
-    elif new_children:
-        raise TypeError(
-            "Component does not accept children, but child content was provided."
-        )
+    kwargs: dict[str, object] = {}
 
-    # Rule 4: match attributes to named parameters
+    # Add all supported attributes
     for attr_name, attr_value in new_attrs.items():
         snake_name = _kebab_to_snake(attr_name)
         if snake_name in callable_info.named_params or callable_info.kwargs:
-            call_kwargs[snake_name] = attr_value
+            kwargs[snake_name] = attr_value
 
-    # Rule 5: extra attributes are ignored
-    missing = callable_info.required_named_params - call_kwargs.keys()
+    # Add children if appropriate
+    if "children" in callable_info.named_params or callable_info.kwargs:
+        kwargs["children"] = tuple(new_children)
+
+    # Check to make sure we've fully satisfied the callable's requirements
+    missing = callable_info.required_named_params - kwargs.keys()
     if missing:
         raise TypeError(
             f"Missing required parameters for component: {', '.join(missing)}"
         )
 
-    result = value(**call_kwargs)
+    result = value(**kwargs)
     return _node_from_value(result)
 
 
