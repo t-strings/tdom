@@ -350,11 +350,6 @@ def _node_from_value(value: object) -> Node:
             return Text(str(value))
 
 
-def _accepts_children(callable_info: CallableInfo) -> bool:
-    """Return True if the callable accepts a "children" parameter."""
-    return "children" in callable_info.named_params or callable_info.kwargs
-
-
 def _kebab_to_snake(name: str) -> str:
     """Convert a kebab-case name to snake_case."""
     return name.replace("-", "_").lower()
