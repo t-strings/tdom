@@ -39,19 +39,19 @@ jobs:
           cd docs
           uv run sphinx-build . _build
 
-      - name: Generate reports
-        run: |
-          mkdir -p reports
-          uv run pytest --cov=tdom --cov-report=xml:reports/coverage.xml --cov-report=term --cov-report=html:reports/coverage --junitxml=reports/pytest.xml --html=reports/pytest.html
-
-      - name: Generate badges
-        run: |
-          uv run genbadge tests -i reports/pytest.xml -v -o reports/pytest.svg
-          uv run genbadge coverage -i reports/coverage.xml -v -o reports/coverage.svg
-
-      - name: Move reports to docs/_build
-        run: |
-          mv reports docs/_build/
+#      - name: Generate reports
+#        run: |
+#          mkdir -p reports
+#          uv run pytest --cov=tdom --cov-report=xml:reports/coverage.xml --cov-report=term --cov-report=html:reports/coverage --junitxml=reports/pytest.xml --html=reports/pytest.html
+#
+#      - name: Generate badges
+#        run: |
+#          uv run genbadge tests -i reports/pytest.xml -v -o reports/pytest.svg
+#          uv run genbadge coverage -i reports/coverage.xml -v -o reports/coverage.svg
+#
+#      - name: Move reports to docs/_build
+#        run: |
+#          mv reports docs/_build/
 
       - name: Upload artifact to pages
         uses: actions/upload-pages-artifact@v3
