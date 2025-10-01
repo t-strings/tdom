@@ -103,7 +103,7 @@ def _replace_placeholders_in_string(
         return dynamic_segments[0][1]
 
     return "".join(
-        segment[1] if segment[0] == "static" else str(segment[1])
+        str(segment[1]) if segment[0] == "static" else str(segment[1])
         for segment in segments
     )
 
