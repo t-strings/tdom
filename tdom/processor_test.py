@@ -471,6 +471,40 @@ def test_interpolated_attribute_spread_with_class_attribute():
     assert str(node) == '<button id="button1" class="btn btn-primary">Click me</button>'
 
 
+def test_interpolated_attribute_value_embedded_placeholder():
+    slug = "item42"
+    node = html(t"<div data-id='prefix-{slug}'></div>")
+    assert node == Element(
+        "div",
+        attrs={"data-id": "prefix-item42"},
+        children=[],
+    )
+    assert str(node) == "<div data-id=\"prefix-item42\"></div>"
+
+
+def test_interpolated_attribute_value_with_static_prefix_and_suffix():
+    counter = 3
+    node = html(t"<div data-id=\"item-{counter}-suffix\"></div>")
+    assert node == Element(
+        "div",
+        attrs={"data-id": "item-3-suffix"},
+        children=[],
+    )
+    assert str(node) == '<div data-id="item-3-suffix"></div>'
+
+
+def test_interpolated_attribute_value_multiple_placeholders():
+    start = 1
+    end = 5
+    node = html(t"<div data-range=\"{start}-{end}\"></div>")
+    assert node == Element(
+        "div",
+        attrs={"data-range": "1-5"},
+        children=[],
+    )
+    assert str(node) == '<div data-range="1-5"></div>'
+
+
 def test_interpolated_data_attributes():
     data = {"user-id": 123, "role": "admin", "wild": True}
     node = html(t"<div data={data}>User Info</div>")
