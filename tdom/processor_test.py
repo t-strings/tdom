@@ -479,12 +479,12 @@ def test_interpolated_attribute_value_embedded_placeholder():
         attrs={"data-id": "prefix-item42"},
         children=[],
     )
-    assert str(node) == "<div data-id=\"prefix-item42\"></div>"
+    assert str(node) == '<div data-id="prefix-item42"></div>'
 
 
 def test_interpolated_attribute_value_with_static_prefix_and_suffix():
     counter = 3
-    node = html(t"<div data-id=\"item-{counter}-suffix\"></div>")
+    node = html(t'<div data-id="item-{counter}-suffix"></div>')
     assert node == Element(
         "div",
         attrs={"data-id": "item-3-suffix"},
@@ -496,7 +496,7 @@ def test_interpolated_attribute_value_with_static_prefix_and_suffix():
 def test_interpolated_attribute_value_multiple_placeholders():
     start = 1
     end = 5
-    node = html(t"<div data-range=\"{start}-{end}\"></div>")
+    node = html(t'<div data-range="{start}-{end}"></div>')
     assert node == Element(
         "div",
         attrs={"data-range": "1-5"},
