@@ -1,4 +1,5 @@
 import random
+import re
 import string
 import sys
 import typing as t
@@ -53,6 +54,7 @@ def format_interpolation(interpolation: Interpolation) -> object:
 
 _PLACEHOLDER_PREFIX = f"t🐍-{''.join(random.choices(string.ascii_lowercase, k=4))}-"
 _PP_LEN = len(_PLACEHOLDER_PREFIX)
+_PLACEHOLDER_PATTERN = re.compile(re.escape(_PLACEHOLDER_PREFIX) + r"(\d+)")
 
 
 def _placeholder(i: int) -> str:
@@ -63,6 +65,47 @@ def _placeholder(i: int) -> str:
 def _placholder_index(s: str) -> int:
     """Extract the index from a placeholder string."""
     return int(s[_PP_LEN:])
+
+
+def _replace_placeholders_in_string(
+    value: str, interpolations: tuple[Interpolation, ...]
+) -> object:
+    """Replace any placeholders embedded within a string attribute value."""
+    segments: list[tuple[str, object]] = []
+    has_static_content = False
+    last_index = 0
+
+    for match in _PLACEHOLDER_PATTERN.finditer(value):
+        if match.start() > last_index:
+            static_segment = value[last_index : match.start()]
+            segments.append(("static", static_segment))
+            if static_segment:
+                has_static_content = True
+
+        index = int(match.group(1))
+        interpolation = interpolations[index]
+        formatted = format_interpolation(interpolation)
+        segments.append(("dynamic", formatted))
+        last_index = match.end()
+
+    if last_index < len(value):
+        static_segment = value[last_index:]
+        segments.append(("static", static_segment))
+        if static_segment:
+            has_static_content = True
+
+    if not segments:
+        return value
+
+    dynamic_segments = [segment for segment in segments if segment[0] == "dynamic"]
+
+    if not has_static_content and len(dynamic_segments) == 1 and len(segments) == 1:
+        return dynamic_segments[0][1]
+
+    return "".join(
+        str(segment[1]) if segment[0] == "static" else str(segment[1])
+        for segment in segments
+    )
 
 
 def _instrument(
@@ -256,13 +299,22 @@ def _substitute_interpolated_attrs(
     """
     new_attrs: dict[str, object | None] = {}
     for key, value in attrs.items():
-        if value and value.startswith(_PLACEHOLDER_PREFIX):
-            # Interpolated attribute value
-            index = _placholder_index(value)
-            interpolation = interpolations[index]
-            interpolated_value = format_interpolation(interpolation)
-            new_attrs[key] = interpolated_value
-        elif key.startswith(_PLACEHOLDER_PREFIX):
+        if isinstance(value, str):
+            matches = tuple(_PLACEHOLDER_PATTERN.finditer(value))
+            if matches:
+                if len(matches) == 1:
+                    match = matches[0]
+                    if match.start() == 0 and match.end() == len(value):
+                        index = int(match.group(1))
+                        interpolation = interpolations[index]
+                        interpolated_value = format_interpolation(interpolation)
+                        new_attrs[key] = interpolated_value
+                        continue
+
+                new_attrs[key] = _replace_placeholders_in_string(value, interpolations)
+                continue
+
+        if key.startswith(_PLACEHOLDER_PREFIX):
             # Spread attributes
             index = _placholder_index(key)
             interpolation = interpolations[index]

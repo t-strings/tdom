@@ -460,6 +460,19 @@ def test_interpolated_class_attribute():
     assert str(node) == '<button class="btn btn-primary active">Click me</button>'
 
 
+def test_interpolated_class_attribute_with_multiple_placeholders():
+    classes1 = ["btn", "btn-primary"]
+    classes2 = [False and "disabled", None, {"active": True}]
+    node = html(t'<button class="{classes1} {classes2}">Click me</button>')
+    # CONSIDER: Is this what we want? Currently, when we have multiple
+    # placeholders in a single attribute, we treat it as a string attribute.
+    assert node == Element(
+        "button",
+        attrs={"class": "['btn', 'btn-primary'] [False, None, {'active': True}]"},
+        children=[Text("Click me")],
+    )
+
+
 def test_interpolated_attribute_spread_with_class_attribute():
     attrs = {"id": "button1", "class": ["btn", "btn-primary"]}
     node = html(t"<button {attrs}>Click me</button>")
@@ -469,6 +482,52 @@ def test_interpolated_attribute_spread_with_class_attribute():
         children=[Text("Click me")],
     )
     assert str(node) == '<button id="button1" class="btn btn-primary">Click me</button>'
+
+
+def test_interpolated_attribute_value_embedded_placeholder():
+    slug = "item42"
+    node = html(t"<div data-id='prefix-{slug}'></div>")
+    assert node == Element(
+        "div",
+        attrs={"data-id": "prefix-item42"},
+        children=[],
+    )
+    assert str(node) == '<div data-id="prefix-item42"></div>'
+
+
+def test_interpolated_attribute_value_with_static_prefix_and_suffix():
+    counter = 3
+    node = html(t'<div data-id="item-{counter}-suffix"></div>')
+    assert node == Element(
+        "div",
+        attrs={"data-id": "item-3-suffix"},
+        children=[],
+    )
+    assert str(node) == '<div data-id="item-3-suffix"></div>'
+
+
+def test_interpolated_attribute_value_multiple_placeholders():
+    start = 1
+    end = 5
+    node = html(t'<div data-range="{start}-{end}"></div>')
+    assert node == Element(
+        "div",
+        attrs={"data-range": "1-5"},
+        children=[],
+    )
+    assert str(node) == '<div data-range="1-5"></div>'
+
+
+def test_interpolated_attribute_value_multiple_placeholders_no_quotes():
+    start = 1
+    end = 5
+    node = html(t"<div data-range={start}-{end}></div>")
+    assert node == Element(
+        "div",
+        attrs={"data-range": "1-5"},
+        children=[],
+    )
+    assert str(node) == '<div data-range="1-5"></div>'
 
 
 def test_interpolated_data_attributes():
@@ -485,6 +544,13 @@ def test_interpolated_data_attributes():
     )
 
 
+def test_interpolated_data_attribute_multiple_placeholders():
+    confusing = {"user-id": "user-123"}
+    placeholders = {"role": "admin"}
+    with pytest.raises(TypeError):
+        _ = html(t'<div data="{confusing} {placeholders}">User Info</div>')
+
+
 def test_interpolated_aria_attributes():
     aria = {"label": "Close", "hidden": True, "another": False, "more": None}
     node = html(t"<button aria={aria}>X</button>")
@@ -499,6 +565,13 @@ def test_interpolated_aria_attributes():
     )
 
 
+def test_interpolated_aria_attribute_multiple_placeholders():
+    confusing = {"label": "Close"}
+    placeholders = {"hidden": True}
+    with pytest.raises(TypeError):
+        _ = html(t'<button aria="{confusing} {placeholders}">X</button>')
+
+
 def test_interpolated_style_attribute():
     styles = {"color": "red", "font-weight": "bold", "font-size": "16px"}
     node = html(t"<p style={styles}>Warning!</p>")
@@ -510,6 +583,19 @@ def test_interpolated_style_attribute():
     assert (
         str(node)
         == '<p style="color: red; font-weight: bold; font-size: 16px">Warning!</p>'
+    )
+
+
+def test_interpolated_style_attribute_multiple_placeholders():
+    styles1 = {"color": "red"}
+    styles2 = {"font-weight": "bold"}
+    node = html(t"<p style='{styles1} {styles2}'>Warning!</p>")
+    # CONSIDER: Is this what we want? Currently, when we have multiple
+    # placeholders in a single attribute, we treat it as a string attribute.
+    assert node == Element(
+        "p",
+        attrs={"style": "{'color': 'red'} {'font-weight': 'bold'}"},
+        children=[Text("Warning!")],
     )
 
 

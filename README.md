@@ -97,6 +97,15 @@ button = html(t"<button id={element_id}>Click me</button>")
 # <button id="my-button">Click me</button>
 ```
 
+Multiple substitutions in a single attribute are supported too:
+
+```python
+first = "Alice"
+last = "Smith"
+button = html(t'<button data-name="{first} {last}">Click me</button>')
+# <button data-name="Alice Smith">Click me</button>
+```
+
 Boolean attributes are supported too. Just use a boolean value in the attribute
 position:
 
