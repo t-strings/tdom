@@ -1,13 +1,13 @@
 import datetime
 import typing as t
 from dataclasses import dataclass, field
-from string.templatelib import Template
+from string.templatelib import Interpolation, Template
 
 import pytest
 from markupsafe import Markup
 
 from .nodes import Element, Fragment, Node, Text
-from .processor import html
+from .processor import _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX, html
 
 # --------------------------------------------------------------------------
 # Basic HTML parsing tests
@@ -537,6 +537,29 @@ def test_interpolated_attribute_value_tricky_multiple_placeholders():
         children=[],
     )
     assert str(node) == '<div data-range="start5-and-end12"></div>'
+
+
+def test_placeholder_collision_avoidance():
+    # This test is to ensure that our placeholder detection avoids collisions
+    # even with content that might look like a placeholder.
+    tricky = "123"
+    template = Template(
+        '<div data-tricky="',
+        _PLACEHOLDER_PREFIX,
+        Interpolation(tricky, "tricky"),
+        _PLACEHOLDER_SUFFIX,
+        '"></div>',
+    )
+    node = html(template)
+    assert node == Element(
+        "div",
+        attrs={"data-tricky": _PLACEHOLDER_PREFIX + tricky + _PLACEHOLDER_SUFFIX},
+        children=[],
+    )
+    assert (
+        str(node)
+        == f'<div data-tricky="{_PLACEHOLDER_PREFIX}{tricky}{_PLACEHOLDER_SUFFIX}"></div>'
+    )
 
 
 def test_interpolated_attribute_value_multiple_placeholders_no_quotes():

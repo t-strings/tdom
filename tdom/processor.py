@@ -52,19 +52,23 @@ def format_interpolation(interpolation: Interpolation) -> object:
 # Instrumentation, Parsing, and Caching
 # --------------------------------------------------------------------------
 
-_PLACEHOLDER_PREFIX = f"t🐍-{''.join(random.choices(string.ascii_lowercase, k=4))}-"
+_PLACEHOLDER_PREFIX = f"t🐍{''.join(random.choices(string.ascii_lowercase, k=2))}-"
+_PLACEHOLDER_SUFFIX = f"-{''.join(random.choices(string.ascii_lowercase, k=2))}🐍t"
 _PP_LEN = len(_PLACEHOLDER_PREFIX)
-_PLACEHOLDER_PATTERN = re.compile(re.escape(_PLACEHOLDER_PREFIX) + r"(\d+)")
+_PS_LEN = len(_PLACEHOLDER_SUFFIX)
+_PLACEHOLDER_PATTERN = re.compile(
+    re.escape(_PLACEHOLDER_PREFIX) + r"(\d+)" + re.escape(_PLACEHOLDER_SUFFIX)
+)
 
 
 def _placeholder(i: int) -> str:
     """Generate a placeholder for the i-th interpolation."""
-    return f"{_PLACEHOLDER_PREFIX}{i}"
+    return f"{_PLACEHOLDER_PREFIX}{i}{_PLACEHOLDER_SUFFIX}"
 
 
 def _placholder_index(s: str) -> int:
     """Extract the index from a placeholder string."""
-    return int(s[_PP_LEN:])
+    return int(s[_PP_LEN:-_PS_LEN])
 
 
 def _replace_placeholders_in_string(
