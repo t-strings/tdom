@@ -506,6 +506,15 @@ def test_interpolated_attribute_value_with_static_prefix_and_suffix():
     assert str(node) == '<div data-id="item-3-suffix"></div>'
 
 
+def test_attribute_value_empty_string():
+    node = html(t'<div data-id=""></div>')
+    assert node == Element(
+        "div",
+        attrs={"data-id": ""},
+        children=[],
+    )
+
+
 def test_interpolated_attribute_value_multiple_placeholders():
     start = 1
     end = 5
@@ -516,6 +525,18 @@ def test_interpolated_attribute_value_multiple_placeholders():
         children=[],
     )
     assert str(node) == '<div data-range="1-5"></div>'
+
+
+def test_interpolated_attribute_value_tricky_multiple_placeholders():
+    start = "start"
+    end = "end"
+    node = html(t'<div data-range="{start}5-and-{end}12"></div>')
+    assert node == Element(
+        "div",
+        attrs={"data-range": "start5-and-end12"},
+        children=[],
+    )
+    assert str(node) == '<div data-range="start5-and-end12"></div>'
 
 
 def test_interpolated_attribute_value_multiple_placeholders_no_quotes():
