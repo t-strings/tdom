@@ -19,7 +19,7 @@ from .utils import format_interpolation as base_format_interpolation
 
 @t.runtime_checkable
 class HasHTMLDunder(t.Protocol):
-    def __html__(self) -> str: ...
+    def __html__(self) -> str: ...  # pragma: no cover
 
 
 # --------------------------------------------------------------------------
