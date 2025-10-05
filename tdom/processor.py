@@ -4,6 +4,7 @@ import string
 import sys
 import typing as t
 from collections.abc import Iterable
+from dataclasses import dataclass
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
 
@@ -54,8 +55,6 @@ def format_interpolation(interpolation: Interpolation) -> object:
 
 _PLACEHOLDER_PREFIX = f"t🐍{''.join(random.choices(string.ascii_lowercase, k=2))}-"
 _PLACEHOLDER_SUFFIX = f"-{''.join(random.choices(string.ascii_lowercase, k=2))}🐍t"
-_PP_LEN = len(_PLACEHOLDER_PREFIX)
-_PS_LEN = len(_PLACEHOLDER_SUFFIX)
 _PLACEHOLDER_PATTERN = re.compile(
     re.escape(_PLACEHOLDER_PREFIX) + r"(\d+)" + re.escape(_PLACEHOLDER_SUFFIX)
 )
@@ -66,50 +65,75 @@ def _placeholder(i: int) -> str:
     return f"{_PLACEHOLDER_PREFIX}{i}{_PLACEHOLDER_SUFFIX}"
 
 
-def _placholder_index(s: str) -> int:
-    """Extract the index from a placeholder string."""
-    return int(s[_PP_LEN:-_PS_LEN])
+@dataclass(frozen=True, slots=True)
+class _PlaceholderMatch:
+    start: int
+    end: int
+    index: int | None
 
 
-def _replace_placeholders_in_string(
-    value: str, interpolations: tuple[Interpolation, ...]
-) -> object:
-    """Replace any placeholders embedded within a string attribute value."""
-    segments: list[tuple[str, object]] = []
-    has_static_content = False
-    last_index = 0
+def _find_placeholder(s: str) -> int | None:
+    """
+    If the string is exactly one placeholder, return its index. Otherwise, None.
+    """
+    match = _PLACEHOLDER_PATTERN.fullmatch(s)
+    return int(match.group(1)) if match else None
 
-    for match in _PLACEHOLDER_PATTERN.finditer(value):
-        if match.start() > last_index:
-            static_segment = value[last_index : match.start()]
-            segments.append(("static", static_segment))
-            if static_segment:
-                has_static_content = True
 
+def _find_all_placeholders(s: str) -> t.Iterable[_PlaceholderMatch]:
+    """
+    Find all placeholders in a string, returning their positions and indices.
+
+    If there is non-placeholder text in the string, its position is also
+    returned with index None.
+    """
+    matches = list(_PLACEHOLDER_PATTERN.finditer(s))
+    last_end = 0
+    for match in matches:
+        if match.start() > last_end:
+            yield _PlaceholderMatch(last_end, match.start(), None)
         index = int(match.group(1))
-        interpolation = interpolations[index]
-        formatted = format_interpolation(interpolation)
-        segments.append(("dynamic", formatted))
-        last_index = match.end()
+        yield _PlaceholderMatch(match.start(), match.end(), index)
+        last_end = match.end()
+    if last_end < len(s):
+        yield _PlaceholderMatch(last_end, len(s), None)
 
-    if last_index < len(value):
-        static_segment = value[last_index:]
-        segments.append(("static", static_segment))
-        if static_segment:
-            has_static_content = True
 
-    if not segments:
-        return value
+def _replace_placeholders(
+    value: str, interpolations: tuple[Interpolation, ...]
+) -> tuple[bool, object]:
+    """
+    Replace any placeholders embedded within a string attribute value.
 
-    dynamic_segments = [segment for segment in segments if segment[0] == "dynamic"]
+    If there are no placeholders, return False and the original string.
 
-    if not has_static_content and len(dynamic_segments) == 1 and len(segments) == 1:
-        return dynamic_segments[0][1]
+    If there is exactly one placeholder and nothing else, return True and the
+    corresponding interpolation value.
 
-    return "".join(
-        str(segment[1]) if segment[0] == "static" else str(segment[1])
-        for segment in segments
-    )
+    If there are multiple placeholders or surrounding text, return True and
+    a concatenated string with all placeholders replaced and interpolations
+    formatted and converted to strings.
+    """
+    matches = tuple(_find_all_placeholders(value))
+
+    # Case 1: No placeholders found
+    if len(matches) == 1 and matches[0].index is None:
+        return False, value
+
+    # Case 2: Single placeholder and no surrounding text
+    if len(matches) == 1 and matches[0].index is not None:
+        index = matches[0].index
+        formatted = format_interpolation(interpolations[index])
+        return True, formatted
+
+    # Case 3: Multiple placeholders or surrounding text
+    parts = [
+        value[match.start : match.end]
+        if match.index is None
+        else str(format_interpolation(interpolations[match.index]))
+        for match in matches
+    ]
+    return True, "".join(parts)
 
 
 def _instrument(
@@ -294,7 +318,7 @@ def _process_attr(
 
 def _substitute_interpolated_attrs(
     attrs: dict[str, str | None], interpolations: tuple[Interpolation, ...]
-) -> dict[str, object]:
+) -> dict[str, object | None]:
     """
     Replace placeholder values in attributes with their interpolated values.
 
@@ -303,24 +327,14 @@ def _substitute_interpolated_attrs(
     """
     new_attrs: dict[str, object | None] = {}
     for key, value in attrs.items():
-        if isinstance(value, str):
-            matches = tuple(_PLACEHOLDER_PATTERN.finditer(value))
-            if matches:
-                if len(matches) == 1:
-                    match = matches[0]
-                    if match.start() == 0 and match.end() == len(value):
-                        index = int(match.group(1))
-                        interpolation = interpolations[index]
-                        interpolated_value = format_interpolation(interpolation)
-                        new_attrs[key] = interpolated_value
-                        continue
-
-                new_attrs[key] = _replace_placeholders_in_string(value, interpolations)
+        if value is not None:
+            has_placeholders, new_value = _replace_placeholders(value, interpolations)
+            if has_placeholders:
+                new_attrs[key] = new_value
                 continue
 
-        if key.startswith(_PLACEHOLDER_PREFIX):
+        if (index := _find_placeholder(key)) is not None:
             # Spread attributes
-            index = _placholder_index(key)
             interpolation = interpolations[index]
             spread_value = format_interpolation(interpolation)
             for sub_k, sub_v in _substitute_spread_attrs(spread_value):
@@ -412,10 +426,9 @@ def _kebab_to_snake(name: str) -> str:
 
 
 def _invoke_component(
-    tag: str,
     new_attrs: dict[str, object | None],
     new_children: list[Node],
-    interpolations: tuple[Interpolation, ...],
+    interpolation: Interpolation,
 ) -> Node:
     """
     Invoke a component callable with the provided attributes and children.
@@ -445,8 +458,6 @@ def _invoke_component(
     and passed as keyword arguments if the callable accepts them (or has
     **kwargs). Attributes that don't match parameters are silently ignored.
     """
-    index = _placholder_index(tag)
-    interpolation = interpolations[index]
     value = format_interpolation(interpolation)
     if not callable(value):
         raise TypeError(
@@ -485,17 +496,16 @@ def _invoke_component(
 def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) -> Node:
     """Substitute placeholders in a node based on the corresponding interpolations."""
     match p_node:
-        case Text(text) if str(text).startswith(_PLACEHOLDER_PREFIX):
-            index = _placholder_index(str(text))
+        case Text(text) if (index := _find_placeholder(text)) is not None:
             interpolation = interpolations[index]
             value = format_interpolation(interpolation)
             return _node_from_value(value)
         case Element(tag=tag, attrs=attrs, children=children):
             new_children = _substitute_and_flatten_children(children, interpolations)
-            if tag.startswith(_PLACEHOLDER_PREFIX):
+            if (index := _find_placeholder(tag)) is not None:
                 component_attrs = _substitute_interpolated_attrs(attrs, interpolations)
                 return _invoke_component(
-                    tag, component_attrs, new_children, interpolations
+                    component_attrs, new_children, interpolations[index]
                 )
             else:
                 html_attrs = _substitute_attrs(attrs, interpolations)
