@@ -12,15 +12,15 @@ A 🤘 rockin' t-string HTML templating system for Python 3.14.
 
 ## Installation
 
-Just run:
+You'll need [Python 3.14](https://www.python.org/downloads/release/python-3140/), which was released in October 2025.
+
+Then, just run:
 
 ```bash
 pip install tdom
 ```
 
-Python 3.14 isn't out yet, but you can use
-[Astral's `uv`](https://docs.astral.sh/uv/) to easily try `tdom` in a Python
-3.14 environment:
+If you have [Astral's `uv`](https://docs.astral.sh/uv/) you can easily try `tdom` in an isolated Python 3.14 environment:
 
 ```bash
 uv run --with tdom --python 3.14 python
