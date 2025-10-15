@@ -353,15 +353,23 @@ position in the template.
 Among other things, this means you can return a `Template` directly from a
 component function:
 
+<!-- invisible-code-block: python
+from string.templatelib import Template
+-->
+
 ```python
 def Greeting(name: str) -> Template:
     return t"<h1>Hello, {name}!</h1>"
 
 result = html(t"<{Greeting} name='Alice' />")
-# <h1>Hello, Alice!</h1>
+assert str(result) == "<h1>Hello, Alice!</h1>"
 ```
 
 You may also return an iterable:
+
+<!-- invisible-code-block: python
+from string.templatelib import Template
+-->
 
 ```python
 from typing import Iterable
@@ -370,7 +378,7 @@ def Items() -> Iterable[Template]:
     return [t"<li>first</li>", t"<li>second</li>"]
 
 result = html(t"<ul><{Items} /></ul>")
-# <ul><li>first</li><li>second</li></ul>
+assert str(result) == "<ul><li>first</li><li>second</li></ul>"
 ```
 
 If you prefer, you can use **explicit fragment syntax** to wrap multiple
@@ -381,7 +389,7 @@ def Items() -> Node:
     return html(t'<><li>first</li><li>second</li></>')
 
 result = html(t'<ul><{Items} /></ul>')
-# <ul><li>first</li><li>second</li></ul>
+assert str(result) == "<ul><li>first</li><li>second</li></ul>"
 ```
 
 This is not required, but it can make your intent clearer.
@@ -434,26 +442,177 @@ ask for children, but they are provided, then they are silently ignored.
 
 #### SVG Support
 
-TODO: say more about SVG support
+SVG elements work seamlessly with `tdom` since they follow the same XML-like
+syntax as HTML. You can create inline SVG graphics by simply including SVG tags
+in your templates:
+
+<!-- invisible-code-block: python
+from tdom import html, Node
+-->
+
+```python
+icon = html(t"""
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <circle cx="12" cy="12" r="10" stroke="currentColor" stroke-width="2"/>
+        <path d="M12 6v6l4 2" stroke="currentColor" stroke-width="2"/>
+    </svg>
+""")
+assert '<svg width="24" height="24"' in str(icon)
+assert '<circle cx="12" cy="12" r="10"' in str(icon)
+```
+
+All the same interpolation, attribute handling, and component features work with
+SVG elements:
+
+```python
+def Icon(*, size: int = 24, color: str = "currentColor") -> Node:
+    return html(t"""
+        <svg width="{size}" height="{size}" viewBox="0 0 24 24" fill="none">
+            <circle cx="12" cy="12" r="10" stroke="{color}" stroke-width="2"/>
+        </svg>
+    """)
+
+result = html(t'<{Icon} size={48} color="blue" />')
+assert 'width="48"' in str(result)
+assert 'stroke="blue"' in str(result)
+```
 
 #### Context
 
-TODO: implement context feature
+Unlike some template systems that provide implicit "context" objects for passing
+data through component hierarchies, `tdom` embraces Python's explicit approach.
+If you need to pass data to nested components, you have several Pythonic
+options:
+
+1. **Pass data as explicit arguments**: The most straightforward approach.
+
+2. **Use closures**: Components are just functions, so they can close over
+   variables in their enclosing scope:
+
+```python
+theme = {"primary": "blue", "spacing": "10px"}
+
+def Button(text: str) -> Node:
+    # Button has access to theme from enclosing scope
+    return html(t'<button style="color: {theme["primary"]}; margin: {theme["spacing"]}">{text}</button>')
+
+result = html(t'<{Button} text="Click me" />')
+assert 'color: blue' in str(result)
+assert 'margin: 10px' in str(result)
+assert '>Click me</button>' in str(result)
+```
+
+3. **Use module-level or global state**: For truly application-wide
+   configuration.
+
+4. **Use a dedicated context library**: Libraries like `contextvars` can
+   provide more sophisticated context management if needed.
+
+This explicit approach makes it clear where data comes from and avoids the
+"magic" of implicit context passing.
 
 ### The `tdom` Module
 
 #### Working with `Node` Objects
 
-TODO: say more about working with them directly
+While `html()` is the primary way to create nodes, you can also construct them
+directly for programmatic HTML generation:
+
+```python
+from tdom import Element, Text, Fragment, Comment, DocumentType
+
+# Create elements directly
+div = Element("div", attrs={"class": "container"}, children=[
+    Text("Hello, "),
+    Element("strong", children=[Text("World")]),
+])
+assert str(div) == '<div class="container">Hello, <strong>World</strong></div>'
+
+# Create fragments to group multiple nodes
+fragment = Fragment(children=[
+    Element("h1", children=[Text("Title")]),
+    Element("p", children=[Text("Paragraph")]),
+])
+assert str(fragment) == "<h1>Title</h1><p>Paragraph</p>"
+
+# Add comments
+page = Element("body", children=[
+    Comment("Navigation section"),
+    Element("nav", children=[Text("Nav content")]),
+])
+assert str(page) == "<body><!--Navigation section--><nav>Nav content</nav></body>"
+```
+
+All nodes implement the `__html__()` protocol, which means they can be used
+anywhere that expects an object with HTML representation. Converting a node to a
+string (via `str()` or `print()`) automatically renders it as HTML with proper
+escaping.
 
 #### The `classnames()` Helper
 
-TODO: say more about it
+The `classnames()` function provides a flexible way to build class name strings
+from various input types. It's particularly useful when you need to
+conditionally include classes:
+
+```python
+from tdom import classnames
+
+# Combine strings
+assert classnames("btn", "btn-primary") == "btn btn-primary"
+
+# Use dictionaries for conditional classes
+is_active = True
+is_disabled = False
+assert classnames("btn", {
+    "btn-active": is_active,
+    "btn-disabled": is_disabled
+}) == "btn btn-active"
+
+# Mix lists, dicts, and strings
+assert classnames(
+    "btn",
+    ["btn-large", "rounded"],
+    {"btn-primary": True, "btn-secondary": False},
+    None,  # Ignored
+    False  # Ignored
+) == "btn btn-large rounded btn-primary"
+
+# Nested lists are flattened
+assert classnames(["btn", ["btn-primary", ["active"]]]) == "btn btn-primary active"
+```
+
+This function is automatically used when processing `class` attributes in
+templates, so you can pass any of these input types directly in your t-strings.
 
 #### Utilities
 
-TODO: say more about them
+The `tdom` package includes several utility functions for working with
+interpolations:
 
-## Supporters
+**`format_interpolation()`**: This function handles the formatting of
+interpolated values according to their format specifiers and conversions. It's
+used internally by the `html()` function but can also be used independently:
 
-TODO: add supporters
+```python
+from string.templatelib import Interpolation
+from tdom.utils import format_interpolation, convert
+
+# Test convert function
+assert convert("hello", "s") == "hello"
+assert convert("hello", "r") == "'hello'"
+assert convert(42, None) == 42
+
+# format_interpolation is used internally for custom format specifiers
+# The html() function uses this to implement :safe and :unsafe specifiers
+```
+
+**`convert()`**: Applies conversion specifiers (`!a`, `!r`, `!s`) to values
+before formatting, following the same semantics as f-strings.
+
+These utilities follow the patterns established by PEP 750 for t-string
+processing, allowing you to build custom template processors if needed.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit issues or pull requests on
+[GitHub](https://github.com/t-strings/tdom).
