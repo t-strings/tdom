@@ -50,7 +50,7 @@ dev = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tdom", "docs"]
+testpaths = ["tdom", "docs", "README.md"]
 python_files = ["*_test.py"]
 addopts = "-p no:doctest"
 
