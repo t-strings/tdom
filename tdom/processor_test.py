@@ -109,6 +109,16 @@ def test_escaping_of_interpolated_text_content():
     assert str(node) == "<p>Hello, &lt;Alice &amp; Bob&gt;!</p>"
 
 
+def test_interpolated_closed_tag():
+    LT = '&lt;'
+    GT = '&gt;'
+    theme_styles = "</style><script>myapp.openFloodGates()</script><style>"
+    node = html(t"<style>{theme_styles}</style>")
+    print (str(node))
+    assert node == Element('style', children=[Text(theme_styles)])
+    assert str(node) == f"<style>{LT}/style{GT}{LT}script{GT}myapp.openFloodGates(){LT}/script{GT}</style>"
+
+
 class Convertible:
     def __str__(self):
         return "string"
