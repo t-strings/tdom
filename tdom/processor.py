@@ -12,7 +12,7 @@ from markupsafe import Markup
 
 from .callables import CallableInfo, get_callable_info
 from .classnames import classnames
-from .nodes import Element, Fragment, Node, Text
+from .nodes import Element, Fragment, Node, Text, Comment
 from .parser import parse_html
 from .utils import format_interpolation as base_format_interpolation
 
@@ -513,8 +513,47 @@ def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) ->
         case Fragment(children=children):
             new_children = _substitute_and_flatten_children(children, interpolations)
             return Fragment(children=new_children)
+        case Comment(text):
+            # placeholders are not full matches so we cannot use _find_placeholder.
+            (has_placeholders, new_text) = _replace_placeholders(text, interpolations)
+            if has_placeholders:
+                if isinstance(new_text, str):
+                    # This is a hack to escape dynamic content stuffed in a comment.
+                    return Comment(escape_comment_text(new_text))
+                else:
+                    # I'm not actually sure what to do here.
+                    return Comment(new_text)
+            else:
+                return p_node
         case _:
             return p_node
+
+
+def escape_comment_text(text):
+    """ Escape text injected into an HTML comment. """
+
+    # - text must not start with the string ">"
+    GT = '&gt;'
+    LT = '&lt;'
+    if text[0] == '>':
+        text = GT + text[1:]
+
+    # - nor start with the string "->"
+    if text[:2] == '->':
+        text = '-' + GT + text[2:]
+
+    # - nor contain the strings "<!--", "-->", or "--!>"
+    if (index := text.find('<!--')) and index != -1:
+        text = text[:index] + LT + text[index+1]
+    if (index := text.find('-->')) and index != -1:
+        text = text[:index+2] + GT + text[index+3]
+    if (index := text.find('--!>')) and index != -1:
+        text = text[:index+3] + GT + text[index+4]
+
+    # - nor end with the string "<!-".
+    if text[-3:] == '<!-':
+        text = text[:-3] + LT + '!-'
+    return text
 
 
 # --------------------------------------------------------------------------

@@ -6,7 +6,7 @@ from string.templatelib import Interpolation, Template
 import pytest
 from markupsafe import Markup
 
-from .nodes import Element, Fragment, Node, Text
+from .nodes import Element, Fragment, Node, Text, Comment
 from .processor import _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX, html
 
 # --------------------------------------------------------------------------
@@ -107,6 +107,25 @@ def test_escaping_of_interpolated_text_content():
         "p", children=[Text("Hello, "), Text("<Alice & Bob>"), Text("!")]
     )
     assert str(node) == "<p>Hello, &lt;Alice &amp; Bob&gt;!</p>"
+
+
+def test_interpolated_text_in_comment():
+    name = "Alice"
+    node = html(t"<!--{name}-->")
+    assert node == Comment("Alice")
+    assert str(node) == "<!--Alice-->"
+
+
+def test_escaping_of_interpolated_text_in_comment():
+    name = "<p>Alice</p>"
+    node = html(t"<!--{name}-->")
+    assert node == Comment("<p>Alice</p>")
+    assert str(node) == "<!--<p>Alice</p>-->"
+
+    name = ">Alice"
+    node = html(t"<!--{name}-->")
+    assert node == Comment("&gt;Alice")
+    assert str(node) == "<!--&gt;Alice-->"
 
 
 class Convertible:
