@@ -116,7 +116,7 @@ def test_interpolated_closed_tag():
     node = html(t"<style>{theme_styles}</style>")
     print (str(node))
     assert node == Element('style', children=[Text(theme_styles)])
-    assert str(node) == f"<style>{LT}/style{GT}{LT}script{GT}myapp.openFloodGates(){LT}/script{GT}</style>"
+    assert str(node) == f"<style>{LT}/style{GT}{LT}script{GT}myapp.openFloodGates(){LT}/script{GT}{LT}style{GT}</style>"
 
 
 class Convertible:
