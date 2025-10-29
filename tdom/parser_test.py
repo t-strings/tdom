@@ -1,4 +1,5 @@
 import pytest
+from markupsafe import Markup
 
 from .nodes import Comment, DocumentType, Element, Fragment, Text
 from .parser import parse_html
@@ -149,11 +150,20 @@ def test_parse_mixed_content():
     )
 
 
+def test_parse_entities_are_escaped():
+    node = parse_html("<p>&lt;/p&gt;</p>")
+    assert node == Element(
+        "p",
+        children=[Text("</p>")],
+    )
+    assert str(node) == "<p>&lt;/p&gt;</p>"
+
+
 def test_parse_script_tag_content():
     node = parse_html("<script>if (a < b && c > d) { alert('wow'); }</script>")
     assert node == Element(
         "script",
-        children=[Text("if (a < b && c > d) { alert('wow'); }")],
+        children=[Text(Markup("if (a < b && c > d) { alert('wow'); }"))],
     )
     assert str(node) == ("<script>if (a < b && c > d) { alert('wow'); }</script>")
 
@@ -163,7 +173,7 @@ def test_parse_script_with_entities():
     node = parse_html("<script>var x = 'a &amp; b';</script>")
     assert node == Element(
         "script",
-        children=[Text("var x = 'a &amp; b';")],
+        children=[Text(Markup("var x = 'a &amp; b';"))],
     )
     assert str(node) == "<script>var x = 'a &amp; b';</script>"
 
@@ -172,7 +182,7 @@ def test_parse_textarea_tag_content():
     node = parse_html("<textarea>if (a < b && c > d) { alert('wow'); }</textarea>")
     assert node == Element(
         "textarea",
-        children=[Text("if (a < b && c > d) { alert('wow'); }")],
+        children=[Text(Markup("if (a < b && c > d) { alert('wow'); }"))],
     )
     assert str(node) == "<textarea>if (a < b && c > d) { alert('wow'); }</textarea>"
 
@@ -182,7 +192,7 @@ def test_parse_textarea_with_entities():
     node = parse_html("<textarea>var x = 'a &amp; b';</textarea>")
     assert node == Element(
         "textarea",
-        children=[Text("var x = 'a & b';")],
+        children=[Text(Markup("var x = 'a & b';"))],
     )
     assert str(node) == "<textarea>var x = 'a & b';</textarea>"
 
@@ -191,7 +201,7 @@ def test_parse_title_unusual():
     node = parse_html("<title>My & Awesome <Site></title>")
     assert node == Element(
         "title",
-        children=[Text("My & Awesome <Site>")],
+        children=[Text(Markup("My & Awesome <Site>"))],
     )
     assert str(node) == "<title>My & Awesome <Site></title>"
 

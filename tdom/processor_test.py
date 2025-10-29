@@ -88,6 +88,15 @@ def test_parse_nested_elements():
     assert str(node) == "<div><p>Hello</p><p>World</p></div>"
 
 
+def test_parse_entities_are_escaped():
+    node = html(t"<p>&lt;/p&gt;</p>")
+    assert node == Element(
+        "p",
+        children=[Text("</p>")],
+    )
+    assert str(node) == "<p>&lt;/p&gt;</p>"
+
+
 # --------------------------------------------------------------------------
 # Interpolated text content
 # --------------------------------------------------------------------------
