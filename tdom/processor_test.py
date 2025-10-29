@@ -254,7 +254,7 @@ def test_raw_html_injection_with_markupsafe_unsafe_format_spec():
         "p",
         children=[
             Text("This is "),
-            Text(supposedly_safe),
+            Text(str(supposedly_safe)),
             Text(" text."),
         ],
     )

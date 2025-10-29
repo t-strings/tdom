@@ -41,11 +41,16 @@ class Node:
 
 @dataclass(slots=True)
 class Text(Node):
-    text: str
+    text: str  # which may be markupsafe.Markup in practice.
 
     def __str__(self) -> str:
         # Use markupsafe's escape to handle HTML escaping
         return escape(self.text)
+
+    def __eq__(self, other: object) -> bool:
+        # This is primarily of use for testing purposes. We only consider
+        # two Text nodes equal if their string representations match.
+        return isinstance(other, Text) and str(self) == str(other)
 
 
 @dataclass(slots=True)
