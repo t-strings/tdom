@@ -3,6 +3,8 @@ import string
 import typing as t
 from html.parser import HTMLParser
 
+from markupsafe import Markup
+
 from .nodes import VOID_ELEMENTS, Comment, DocumentType, Element, Fragment, Node, Text
 
 _FRAGMENT_TAG = f"t🐍f-{''.join(random.choices(string.ascii_lowercase, k=4))}-"
@@ -59,7 +61,7 @@ class NodeParser(HTMLParser):
         self.append_element_child(element)
 
     def handle_data(self, data: str) -> None:
-        text = Text(data)
+        text = Text(Markup(data))
         self.append_child(text)
 
     def handle_comment(self, data: str) -> None:

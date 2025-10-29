@@ -131,6 +131,20 @@ def test_conversions():
     )
 
 
+def test_interpolated_in_content_node():
+    # https://github.com/t-strings/tdom/issues/68
+    evil = "</style><script>alert('whoops');</script><style>"
+    node = html(t"<style>{evil}</style>")
+    assert node == Element(
+        "style",
+        children=[Text("</style><script>alert('whoops');</script><style>")],
+    )
+    assert (
+        str(node)
+        == "<style>&lt;/style&gt;&lt;script&gt;alert(&#39;whoops&#39;);&lt;/script&gt;&lt;style&gt;</style>"
+    )
+
+
 # --------------------------------------------------------------------------
 # Interpolated non-text content
 # --------------------------------------------------------------------------

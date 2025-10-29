@@ -109,21 +109,6 @@ def test_standard_element_with_text_child():
     assert str(div) == "<div>Hello, world!</div>"
 
 
-def test_script_element_with_text_child():
-    node = Element(
-        "script",
-        children=[Text("if (a < b && c > d) { alert('hello &amp; friend'); }")],
-    )
-    assert str(node) == (
-        "<script>if (a < b && c > d) { alert('hello &amp; friend'); }</script>"
-    )
-
-
-def test_title_element_with_text_child():
-    node = Element("title", children=[Text("My & Awesome <Site>")])
-    assert str(node) == "<title>My & Awesome <Site></title>"
-
-
 def test_standard_element_with_element_children():
     div = Element(
         "div",

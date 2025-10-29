@@ -106,13 +106,5 @@ class Element(Node):
             return f"<{self.tag}{attrs_str} />"
         if not self.children:
             return f"<{self.tag}{attrs_str}></{self.tag}>"
-        if self.is_content:
-            # Content elements should *not* escape their content when
-            # rendering to HTML. Sheesh, HTML is weird.
-            children_str = "".join(
-                child.text if isinstance(child, Text) else str(child)
-                for child in self.children
-            )
-        else:
-            children_str = "".join(str(child) for child in self.children)
+        children_str = "".join(str(child) for child in self.children)
         return f"<{self.tag}{attrs_str}>{children_str}</{self.tag}>"
