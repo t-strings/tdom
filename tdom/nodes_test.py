@@ -1,4 +1,5 @@
 import pytest
+from markupsafe import Markup
 
 from .nodes import Comment, DocumentType, Element, Fragment, Text
 
@@ -45,6 +46,14 @@ def test_text_safe():
 
     text = Text(CustomHTML())
     assert str(text) == "<b>Bold Text</b>"
+
+
+def test_text_equality():
+    text1 = Text("<Hello>")
+    text2 = Text(Markup("&lt;Hello&gt;"))
+    text3 = Text(Markup("<Hello>"))
+    assert text1 == text2
+    assert text1 != text3
 
 
 def test_fragment_empty():
