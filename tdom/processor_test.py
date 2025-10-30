@@ -88,6 +88,15 @@ def test_parse_nested_elements():
     assert str(node) == "<div><p>Hello</p><p>World</p></div>"
 
 
+def test_parse_entities_are_escaped():
+    node = html(t"<p>&lt;/p&gt;</p>")
+    assert node == Element(
+        "p",
+        children=[Text("</p>")],
+    )
+    assert str(node) == "<p>&lt;/p&gt;</p>"
+
+
 # --------------------------------------------------------------------------
 # Interpolated text content
 # --------------------------------------------------------------------------
@@ -129,6 +138,30 @@ def test_conversions():
             Element("li", children=[Text("'\\U0001f60a'")]),
         ],
     )
+
+
+def test_interpolated_in_content_node():
+    # https://github.com/t-strings/tdom/issues/68
+    evil = "</style><script>alert('whoops');</script><style>"
+    node = html(t"<style>{evil}</style>")
+    assert node == Element(
+        "style",
+        children=[Text("</style><script>alert('whoops');</script><style>")],
+    )
+    assert (
+        str(node)
+        == "<style>&lt;/style&gt;&lt;script&gt;alert(&#39;whoops&#39;);&lt;/script&gt;&lt;style&gt;</style>"
+    )
+
+
+def test_interpolated_trusted_in_content_node():
+    # https://github.com/t-strings/tdom/issues/68
+    node = html(t"<script>if (a < b && c > d) {{ alert('wow'); }}</script>")
+    assert node == Element(
+        "script",
+        children=[Text(Markup("if (a < b && c > d) { alert('wow'); }"))],
+    )
+    assert str(node) == ("<script>if (a < b && c > d) { alert('wow'); }</script>")
 
 
 # --------------------------------------------------------------------------
@@ -221,7 +254,7 @@ def test_raw_html_injection_with_markupsafe_unsafe_format_spec():
         "p",
         children=[
             Text("This is "),
-            Text(supposedly_safe),
+            Text(str(supposedly_safe)),
             Text(" text."),
         ],
     )

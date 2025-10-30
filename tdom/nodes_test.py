@@ -1,4 +1,5 @@
 import pytest
+from markupsafe import Markup
 
 from .nodes import Comment, DocumentType, Element, Fragment, Text
 
@@ -45,6 +46,14 @@ def test_text_safe():
 
     text = Text(CustomHTML())
     assert str(text) == "<b>Bold Text</b>"
+
+
+def test_text_equality():
+    text1 = Text("<Hello>")
+    text2 = Text(Markup("&lt;Hello&gt;"))
+    text3 = Text(Markup("<Hello>"))
+    assert text1 == text2
+    assert text1 != text3
 
 
 def test_fragment_empty():
@@ -107,21 +116,6 @@ def test_standard_element_with_attributes():
 def test_standard_element_with_text_child():
     div = Element("div", children=[Text("Hello, world!")])
     assert str(div) == "<div>Hello, world!</div>"
-
-
-def test_script_element_with_text_child():
-    node = Element(
-        "script",
-        children=[Text("if (a < b && c > d) { alert('hello &amp; friend'); }")],
-    )
-    assert str(node) == (
-        "<script>if (a < b && c > d) { alert('hello &amp; friend'); }</script>"
-    )
-
-
-def test_title_element_with_text_child():
-    node = Element("title", children=[Text("My & Awesome <Site>")])
-    assert str(node) == "<title>My & Awesome <Site></title>"
 
 
 def test_standard_element_with_element_children():

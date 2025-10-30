@@ -3,7 +3,18 @@ import string
 import typing as t
 from html.parser import HTMLParser
 
-from .nodes import VOID_ELEMENTS, Comment, DocumentType, Element, Fragment, Node, Text
+from markupsafe import Markup
+
+from .nodes import (
+    CONTENT_ELEMENTS,
+    VOID_ELEMENTS,
+    Comment,
+    DocumentType,
+    Element,
+    Fragment,
+    Node,
+    Text,
+)
 
 _FRAGMENT_TAG = f"t🐍f-{''.join(random.choices(string.ascii_lowercase, k=4))}-"
 
@@ -59,7 +70,7 @@ class NodeParser(HTMLParser):
         self.append_element_child(element)
 
     def handle_data(self, data: str) -> None:
-        text = Text(data)
+        text = Text(Markup(data) if self.in_content_element() else data)
         self.append_child(text)
 
     def handle_comment(self, data: str) -> None:
@@ -73,6 +84,11 @@ class NodeParser(HTMLParser):
             self.append_child(doctype)
         # For simplicity, we ignore other declarations.
         pass
+
+    def in_content_element(self) -> bool:
+        """Return True if the current context is within a content element."""
+        open_element = self.get_open_element()
+        return open_element is not None and open_element.tag in CONTENT_ELEMENTS
 
     def get_parent(self) -> Fragment | Element:
         """Return the current parent node to which new children should be added."""
