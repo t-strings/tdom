@@ -10,6 +10,10 @@ A 🤘 rockin' t-string HTML templating system for Python 3.14.
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/t-strings/tdom/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-online-blue.svg)](https://t-strings.github.io/tdom/)
 
+## NOTE WELL
+
+This is pre-alpha software. It is still under heavy development and the API may change without warning. We would love community feedback to help shape the direction of this project!
+
 ## Installation
 
 You'll need [Python 3.14](https://www.python.org/downloads/release/python-3140/), which was released in October 2025.
