@@ -1137,3 +1137,29 @@ def RequiresPositional(whoops: int, /) -> Template:  # pragma: no cover
 def test_component_requiring_positional_arg_fails():
     with pytest.raises(TypeError):
         _ = html(t"<{RequiresPositional} />")
+
+
+def test_replace_static_attr_str_str():
+    node = html(t'<div title="default" {dict(title="fresh")}></div>')
+    assert node == Element('div', {'title': 'fresh'})
+    assert str(node) == '<div title="fresh"></div>'
+
+def test_replace_static_attr_str_true():
+    node = html(t'<div title="default" {dict(title=True)}></div>')
+    assert node == Element('div', {'title': None})
+    assert str(node) == '<div title></div>'
+
+def test_replace_static_attr_true_str():
+    node = html(t'<div title {dict(title="fresh")}></div>')
+    assert node == Element('div', {'title': "fresh"})
+    assert str(node) == '<div title="fresh"></div>'
+
+def test_remove_static_attr_str_none():
+    node = html(t'<div title="default" {dict(title=None)}></div>')
+    assert node == Element('div')
+    assert str(node) == '<div></div>'
+
+def test_remove_static_attr_true_none():
+    node = html(t'<div title {dict(title=None)}></div>')
+    assert node == Element('div')
+    assert str(node) == '<div></div>'
