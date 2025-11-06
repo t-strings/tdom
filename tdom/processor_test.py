@@ -1163,3 +1163,9 @@ def test_remove_static_attr_true_none():
     node = html(t'<div title {dict(title=None)}></div>')
     assert node == Element('div')
     assert str(node) == '<div></div>'
+
+
+def test_other_static_attr_intact():
+    node = html(t'<img title="default" {dict(alt="fresh")}>')
+    assert node == Element('img', {'title': 'default', 'alt': 'fresh'})
+    assert str(node) == '<img title="default" alt="fresh" />'
