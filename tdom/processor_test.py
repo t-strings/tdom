@@ -621,6 +621,36 @@ def test_interpolated_data_attributes():
     )
 
 
+def test_data_attr_toggle_to_removed():
+    for v in False, None:
+        for node in [
+            html(t"<div data-selected data={dict(selected=v)}></div>"),
+            html(t'<div data-selected="on" data={dict(selected=v)}></div>')]:
+            assert node == Element('div')
+            assert str(node) == '<div></div>'
+
+
+def test_data_attr_toggle_to_str():
+    for node in [
+        html(t"<div data-selected data={dict(selected='yes')}></div>"),
+        html(t'<div data-selected="no" data={dict(selected="yes")}></div>'),
+        ]:
+        assert node == Element('div', {"data-selected": "yes"})
+        assert str(node) == '<div data-selected="yes"></div>'
+
+
+def test_data_attr_toggle_to_true():
+    node = html(t'<div data-selected="yes" data={dict(selected=True)}></div>')
+    assert node == Element('div', {"data-selected": None})
+    assert str(node) == '<div data-selected></div>'
+
+
+def test_data_attr_unrelated_unaffected():
+    node = html(t'<div data-selected data={dict(active=True)}></div>')
+    assert node == Element('div', {"data-selected": None, "data-active": None})
+    assert str(node) == '<div data-selected data-active></div>'
+
+
 def test_interpolated_data_attribute_multiple_placeholders():
     confusing = {"user-id": "user-123"}
     placeholders = {"role": "admin"}
