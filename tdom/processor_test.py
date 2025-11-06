@@ -692,6 +692,20 @@ def test_interpolated_style_attribute():
         == '<p style="color: red; font-weight: bold; font-size: 16px">Warning!</p>'
     )
 
+def test_clear_static_style():
+    node = html(t'<p style="font-color: red" {dict(style=None)}></p>')
+    assert node == Element("p")
+    assert str(node) == "<p></p>"
+
+def test_override_static_style_str_str():
+    node = html(t'<p style="font-color: red" {dict(style="font-size: 15px")}></p>')
+    assert node == Element("p", {"style": "font-size: 15px"})
+    assert str(node) == '<p style="font-size: 15px"></p>'
+
+def test_override_static_style_str_builder():
+    node = html(t'<p style="font-color: red" {dict(style={"font-size": "15px"})}></p>')
+    assert node == Element("p", {"style": "font-size: 15px"})
+    assert str(node) == '<p style="font-size: 15px"></p>'
 
 def test_interpolated_style_attribute_multiple_placeholders():
     styles1 = {"color": "red"}
