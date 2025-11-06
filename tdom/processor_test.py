@@ -608,7 +608,7 @@ def test_interpolated_attribute_value_multiple_placeholders_no_quotes():
 
 
 def test_interpolated_data_attributes():
-    data = {"user-id": 123, "role": "admin", "wild": True}
+    data = {"user-id": 123, "role": "admin", "wild": True, "false": False, "none": None}
     node = html(t"<div data={data}>User Info</div>")
     assert node == Element(
         "div",
