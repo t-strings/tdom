@@ -1,6 +1,7 @@
 import random
 import string
 import typing as t
+from collections import OrderedDict
 from html.parser import HTMLParser
 
 from markupsafe import Markup
@@ -31,7 +32,7 @@ class NodeParser(HTMLParser):
     def handle_starttag(
         self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
     ) -> None:
-        node = Element(tag, attrs=dict(attrs), children=[])
+        node = Element(tag, attrs=LastUpdatedOrderedDict(attrs), children=[])
         self.stack.append(node)
 
         # Unfortunately, Python's built-in HTMLParser has inconsistent behavior
@@ -167,3 +168,16 @@ def parse_html(input: str | t.Iterable[str]) -> Node:
         parser.feed(chunk)
     parser.close()
     return parser.get_node()
+
+
+class LastUpdatedOrderedDict(OrderedDict):
+    """
+    Store items in the order the keys were last added.
+    This differs from a regular dict which uses "insertion order".
+
+    @NOTE: This is directly from the python documentation
+    """
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.move_to_end(key)

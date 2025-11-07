@@ -60,6 +60,11 @@ def test_parse_element_with_attributes():
     )
 
 
+def test_parse_element_attribute_order():
+    node = parse_html('<a title="a" href="b" title="c"></a>')
+    assert list(node.attrs.items()) == [("href", "b"), ("title", "c")]
+
+
 def test_parse_comment():
     node = parse_html("<!-- This is a comment -->")
     assert node == Comment(" This is a comment ")
