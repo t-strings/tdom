@@ -62,6 +62,7 @@ def test_parse_element_with_attributes():
 
 def test_parse_element_attribute_order():
     node = parse_html('<a title="a" href="b" title="c"></a>')
+    assert isinstance(node, Element)
     assert list(node.attrs.items()) == [("href", "b"), ("title", "c")]
 
 
