@@ -1,3 +1,4 @@
+from enum import Enum, auto
 import random
 import re
 import string
@@ -209,6 +210,9 @@ def _instrument_and_parse(template: Template) -> Node:
 # --------------------------------------------------------------------------
 # Placeholder Substitution
 # --------------------------------------------------------------------------
+class AttrMarker(Enum):
+    # Use this to mark attributes parsed in that are bare/boolean true.
+    BARE_ATTR_NONE = auto()
 
 
 def _force_dict(value: t.Any, *, kind: str) -> dict:
@@ -230,7 +234,7 @@ def _process_aria_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
         elif sub_v is False:
             yield f"aria-{sub_k}", "false"
         elif sub_v is None:
-            pass
+            yield f"aria-{sub_k}", None
         else:
             yield f"aria-{sub_k}", str(sub_v)
 
@@ -239,28 +243,36 @@ def _process_data_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     """Produce data-* attributes based on the interpolated value for "data"."""
     d = _force_dict(value, kind="data")
     for sub_k, sub_v in d.items():
-        if sub_v is True:
-            yield f"data-{sub_k}", None
-        elif sub_v not in (False, None):
+        if sub_v in (True, False, None):
+            yield f"data-{sub_k}", sub_v
+        else:
             yield f"data-{sub_k}", str(sub_v)
 
 
 def _process_class_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     """Substitute a class attribute based on the interpolated value."""
-    yield ("class", classnames(value))
+    if value is None:
+        yield f"class", None
+    elif value is False:
+        # Explicitly ignore this value for "class" to support
+        # short-circuiting, ie. t"<div class={active and "active"} />"
+        pass
+    else:
+        yield ("class", classnames(value))
 
 
 def _process_style_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     """Substitute a style attribute based on the interpolated value."""
-    if isinstance(value, str):
+    if isinstance(value, str) or value is None:
         yield ("style", value)
         return
+
     try:
         d = _force_dict(value, kind="style")
         style_str = "; ".join(f"{k}: {v}" for k, v in d.items())
         yield ("style", style_str)
     except TypeError:
-        raise TypeError("'style' attribute value must be a string or dict") from None
+        raise TypeError("'style' attribute value must be a None, string or dict") from None
 
 
 def _substitute_spread_attrs(
@@ -275,7 +287,7 @@ def _substitute_spread_attrs(
     """
     d = _force_dict(value, kind="spread")
     for sub_k, sub_v in d.items():
-        yield from _process_attr(sub_k, sub_v)
+        yield from _process_dynamic_attr(sub_k, sub_v)
 
 
 # A collection of custom handlers for certain attribute names that have
@@ -289,31 +301,37 @@ CUSTOM_ATTR_PROCESSORS = {
 }
 
 
-def _process_attr(
+def _process_dynamic_attr(
     key: str,
     value: object,
 ) -> t.Iterable[tuple[str, object | None]]:
     """
-    Substitute a single attribute based on its key and the interpolated value.
+    Process a dynamically interpolated attribute that was either explicitly
+    named or loaded via a spread attribute.
 
     A single parsed attribute with a placeholder may result in multiple
     attributes in the final output, for instance if the value is a dict or
-    iterable of key-value pairs. Likewise, a value of False will result in
-    the attribute being omitted entirely; nothing is yielded in that case.
+    iterable of key-value pairs.
+
+    NOTE: Custom processors are responsible for processing the attributes they
+    generate, specifically they must apply markers when necessary.
     """
     # Special handling for certain attribute names that have special semantics
     if custom_processor := CUSTOM_ATTR_PROCESSORS.get(key):
         yield from custom_processor(value)
         return
 
-    # General handling for all other attributes:
-    match value:
-        case True:
-            yield (key, None)
-        case False | None:
-            pass
-        case _:
-            yield (key, value)
+    # General attribute handling.
+    yield (key, value)
+
+
+def _process_static_attr_value(
+    value: str|None,
+) -> str|AttrMarker:
+    """
+    Process statically parsed attributes before they are merged in.
+    """
+    return AttrMarker.BARE_ATTR_NONE if value is None else value
 
 
 def _substitute_interpolated_attrs(
@@ -330,7 +348,8 @@ def _substitute_interpolated_attrs(
         if value is not None:
             has_placeholders, new_value = _replace_placeholders(value, interpolations)
             if has_placeholders:
-                new_attrs[key] = new_value
+                for sub_k, sub_v in _process_dynamic_attr(key, new_value):
+                    new_attrs[sub_k] = sub_v
                 continue
 
         if (index := _find_placeholder(key)) is not None:
@@ -341,7 +360,7 @@ def _substitute_interpolated_attrs(
                 new_attrs[sub_k] = sub_v
         else:
             # Static attribute
-            new_attrs[key] = value
+            new_attrs[key] = _process_static_attr_value(value)
     return new_attrs
 
 
@@ -354,9 +373,12 @@ def _process_html_attrs(attrs: dict[str, object]) -> dict[str, str | None]:
     """
     processed_attrs: dict[str, str | None] = {}
     for key, value in attrs.items():
-        for sub_k, sub_v in _process_attr(key, value):
-            # Convert to string, preserving None
-            processed_attrs[sub_k] = str(sub_v) if sub_v is not None else None
+        if value in (True, AttrMarker.BARE_ATTR_NONE):
+            processed_attrs[key] = None
+        elif value in (False, None): # Explicitly omit these attributes.
+            continue
+        else:
+            processed_attrs[key] = value
     return processed_attrs
 
 
@@ -476,7 +498,13 @@ def _invoke_component(
     for attr_name, attr_value in new_attrs.items():
         snake_name = _kebab_to_snake(attr_name)
         if snake_name in callable_info.named_params or callable_info.kwargs:
-            kwargs[snake_name] = attr_value
+            if attr_value is AttrMarker.BARE_ATTR_NONE:
+                # Attributes parsed without a value will appear as boolean
+                # values to a component
+                # Ie. t'<input disabled>' implies ("disabled", True)
+                kwargs[snake_name] = True
+            else:
+                kwargs[snake_name] = attr_value
 
     # Add children if appropriate
     if "children" in callable_info.named_params or callable_info.kwargs:
