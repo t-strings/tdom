@@ -240,7 +240,7 @@ def _process_data_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
     d = _force_dict(value, kind="data")
     for sub_k, sub_v in d.items():
         if sub_v is True:
-            yield f"data-{sub_k}", None
+            yield f"data-{sub_k}", True
         elif sub_v not in (False, None):
             yield f"data-{sub_k}", str(sub_v)
 
