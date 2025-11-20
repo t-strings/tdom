@@ -235,7 +235,7 @@ def _process_aria_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
             yield f"aria-{sub_k}", str(sub_v)
 
 
-def _process_data_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_data_attr(value: object) -> t.Iterable[tuple[str, object | None]]:
     """Produce data-* attributes based on the interpolated value for "data"."""
     d = _force_dict(value, kind="data")
     for sub_k, sub_v in d.items():
