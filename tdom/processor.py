@@ -308,6 +308,19 @@ def _process_attr(
     yield (key, value)
 
 
+def _process_static_attr(
+    key: str, value: str | None
+) -> t.Iterable[tuple[str, object | None]]:
+    """
+    Bring static attributes, parsed from html but without interpolations, into the pipeline.
+    """
+    match value:
+        case None:
+            yield (key, True)
+        case _:
+            yield (key, value)
+
+
 def _substitute_interpolated_attrs(
     attrs: dict[str, str | None], interpolations: tuple[Interpolation, ...]
 ) -> dict[str, object | None]:
@@ -334,7 +347,8 @@ def _substitute_interpolated_attrs(
                 new_attrs[sub_k] = sub_v
         else:
             # Static attribute
-            new_attrs[key] = value
+            for sub_k, sub_v in _process_static_attr(key, value):
+                new_attrs[sub_k] = sub_v
     return new_attrs
 
 
