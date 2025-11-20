@@ -305,15 +305,7 @@ def _process_attr(
     if custom_processor := CUSTOM_ATTR_PROCESSORS.get(key):
         yield from custom_processor(value)
         return
-
-    # General handling for all other attributes:
-    match value:
-        case True:
-            yield (key, None)
-        case False | None:
-            pass
-        case _:
-            yield (key, value)
+    yield (key, value)
 
 
 def _substitute_interpolated_attrs(
@@ -355,8 +347,13 @@ def _process_html_attrs(attrs: dict[str, object]) -> dict[str, str | None]:
     processed_attrs: dict[str, str | None] = {}
     for key, value in attrs.items():
         for sub_k, sub_v in _process_attr(key, value):
-            # Convert to string, preserving None
-            processed_attrs[sub_k] = str(sub_v) if sub_v is not None else None
+            match sub_v:
+                case True:
+                    processed_attrs[sub_k] = None
+                case False | None:
+                    pass
+                case _:
+                    processed_attrs[sub_k] = str(sub_v)
     return processed_attrs
 
 
