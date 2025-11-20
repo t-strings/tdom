@@ -693,6 +693,14 @@ def test_style_attribute_non_str_non_dict():
         _ = html(t"<p style={styles}>Warning!</p>")
 
 
+def test_special_attrs_as_static():
+    node = html(t'<p aria="aria?" data="data?" class="class?" style="style?"></p>')
+    assert node == Element(
+        "p",
+        attrs={"aria": "aria?", "data": "data?", "class": "class?", "style": "style?"},
+    )
+
+
 # --------------------------------------------------------------------------
 # Function component interpolation tests
 # --------------------------------------------------------------------------
