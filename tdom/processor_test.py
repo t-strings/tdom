@@ -53,6 +53,13 @@ def test_parse_chain_of_void_elements():
     assert str(node) == '<br /><hr /><img src="image.png" /><br /><hr />'
 
 
+def test_static_boolean_attr_retained():
+    # Make sure a boolean attribute (bare attribute) is not omitted.
+    node = html(t"<input disabled>")
+    assert node == Element("input", {"disabled": None})
+    assert str(node) == "<input disabled />"
+
+
 def test_parse_element_with_text():
     node = html(t"<p>Hello, world!</p>")
     assert node == Element(
