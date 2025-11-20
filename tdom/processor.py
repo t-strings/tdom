@@ -322,7 +322,8 @@ def _substitute_interpolated_attrs(
         if value is not None:
             has_placeholders, new_value = _replace_placeholders(value, interpolations)
             if has_placeholders:
-                new_attrs[key] = new_value
+                for sub_k, sub_v in _process_attr(key, new_value):
+                    new_attrs[sub_k] = sub_v
                 continue
 
         if (index := _find_placeholder(key)) is not None:
@@ -346,14 +347,13 @@ def _process_html_attrs(attrs: dict[str, object]) -> dict[str, str | None]:
     """
     processed_attrs: dict[str, str | None] = {}
     for key, value in attrs.items():
-        for sub_k, sub_v in _process_attr(key, value):
-            match sub_v:
-                case True:
-                    processed_attrs[sub_k] = None
-                case False | None:
-                    pass
-                case _:
-                    processed_attrs[sub_k] = str(sub_v)
+        match value:
+            case True:
+                processed_attrs[key] = None
+            case False | None:
+                pass
+            case _:
+                processed_attrs[key] = str(value)
     return processed_attrs
 
 
