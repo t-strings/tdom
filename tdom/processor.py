@@ -235,12 +235,12 @@ def _process_aria_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
             yield f"aria-{sub_k}", str(sub_v)
 
 
-def _process_data_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_data_attr(value: object) -> t.Iterable[tuple[str, object | None]]:
     """Produce data-* attributes based on the interpolated value for "data"."""
     d = _force_dict(value, kind="data")
     for sub_k, sub_v in d.items():
         if sub_v is True:
-            yield f"data-{sub_k}", None
+            yield f"data-{sub_k}", True
         elif sub_v not in (False, None):
             yield f"data-{sub_k}", str(sub_v)
 
@@ -305,13 +305,18 @@ def _process_attr(
     if custom_processor := CUSTOM_ATTR_PROCESSORS.get(key):
         yield from custom_processor(value)
         return
+    yield (key, value)
 
-    # General handling for all other attributes:
+
+def _process_static_attr(
+    key: str, value: str | None
+) -> t.Iterable[tuple[str, object | None]]:
+    """
+    Bring static attributes, parsed from html but without interpolations, into the pipeline.
+    """
     match value:
-        case True:
-            yield (key, None)
-        case False | None:
-            pass
+        case None:
+            yield (key, True)
         case _:
             yield (key, value)
 
@@ -330,7 +335,8 @@ def _substitute_interpolated_attrs(
         if value is not None:
             has_placeholders, new_value = _replace_placeholders(value, interpolations)
             if has_placeholders:
-                new_attrs[key] = new_value
+                for sub_k, sub_v in _process_attr(key, new_value):
+                    new_attrs[sub_k] = sub_v
                 continue
 
         if (index := _find_placeholder(key)) is not None:
@@ -341,7 +347,8 @@ def _substitute_interpolated_attrs(
                 new_attrs[sub_k] = sub_v
         else:
             # Static attribute
-            new_attrs[key] = value
+            for sub_k, sub_v in _process_static_attr(key, value):
+                new_attrs[sub_k] = sub_v
     return new_attrs
 
 
@@ -354,9 +361,13 @@ def _process_html_attrs(attrs: dict[str, object]) -> dict[str, str | None]:
     """
     processed_attrs: dict[str, str | None] = {}
     for key, value in attrs.items():
-        for sub_k, sub_v in _process_attr(key, value):
-            # Convert to string, preserving None
-            processed_attrs[sub_k] = str(sub_v) if sub_v is not None else None
+        match value:
+            case True:
+                processed_attrs[key] = None
+            case False | None:
+                pass
+            case _:
+                processed_attrs[key] = str(value)
     return processed_attrs
 
 

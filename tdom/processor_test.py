@@ -53,6 +53,13 @@ def test_parse_chain_of_void_elements():
     assert str(node) == '<br /><hr /><img src="image.png" /><br /><hr />'
 
 
+def test_static_boolean_attr_retained():
+    # Make sure a boolean attribute (bare attribute) is not omitted.
+    node = html(t"<input disabled>")
+    assert node == Element("input", {"disabled": None})
+    assert str(node) == "<input disabled />"
+
+
 def test_parse_element_with_text():
     node = html(t"<p>Hello, world!</p>")
     assert node == Element(
@@ -693,6 +700,14 @@ def test_style_attribute_non_str_non_dict():
         _ = html(t"<p style={styles}>Warning!</p>")
 
 
+def test_special_attrs_as_static():
+    node = html(t'<p aria="aria?" data="data?" class="class?" style="style?"></p>')
+    assert node == Element(
+        "p",
+        attrs={"aria": "aria?", "data": "data?", "class": "class?", "style": "style?"},
+    )
+
+
 # --------------------------------------------------------------------------
 # Function component interpolation tests
 # --------------------------------------------------------------------------
@@ -1068,6 +1083,7 @@ def AttributeTypeComponent(
     data_none: None,
     data_float: float,
     data_dt: datetime.datetime,
+    **kws: dict[str, object | None],
 ) -> Template:
     """Component to test that we don't incorrectly convert attribute types."""
     assert isinstance(data_int, int)
@@ -1076,6 +1092,24 @@ def AttributeTypeComponent(
     assert data_none is None
     assert isinstance(data_float, float)
     assert isinstance(data_dt, datetime.datetime)
+    for kw, v_type in [
+        ("spread_true", True),
+        ("spread_false", False),
+        ("spread_int", int),
+        ("spread_none", None),
+        ("spread_float", float),
+        ("spread_dt", datetime.datetime),
+        ("spread_dict", dict),
+        ("spread_list", list),
+    ]:
+        if v_type in (True, False, None):
+            assert kw in kws and kws[kw] is v_type, (
+                f"{kw} should be {v_type} but got {kws=}"
+            )
+        else:
+            assert kw in kws and isinstance(kws[kw], v_type), (
+                f"{kw} should instance of {v_type} but got {kws=}"
+            )
     return t"Looks good!"
 
 
@@ -1086,10 +1120,20 @@ def test_attribute_type_component():
     a_none: None = None
     a_float: float = 3.14
     a_dt: datetime.datetime = datetime.datetime(2024, 1, 1, 12, 0, 0)
+    spread_attrs: dict[str, object | None] = {
+        "spread_true": True,
+        "spread_false": False,
+        "spread_none": None,
+        "spread_int": 0,
+        "spread_float": 0.0,
+        "spread_dt": datetime.datetime(2024, 1, 1, 12, 0, 1),
+        "spread_dict": dict(),
+        "spread_list": ["eggs", "milk"],
+    }
     node = html(
         t"<{AttributeTypeComponent} data-int={an_int} data-true={a_true} "
         t"data-false={a_false} data-none={a_none} data-float={a_float} "
-        t"data-dt={a_dt} />"
+        t"data-dt={a_dt} {spread_attrs}/>"
     )
     assert node == Text("Looks good!")
     assert str(node) == "Looks good!"
