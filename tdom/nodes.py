@@ -1,7 +1,12 @@
 from dataclasses import dataclass, field
 from string.templatelib import Template
 
-from .escaping import escape_html_comment, escape_html_script, escape_html_style, escape_html_text
+from .escaping import (
+    escape_html_comment,
+    escape_html_script,
+    escape_html_style,
+    escape_html_text,
+)
 
 
 # See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
@@ -189,7 +194,7 @@ class Element(Node):
 
     def _children_to_str(self):
         if not self.children:
-            return ''
+            return ""
         if self.tag in ("script", "style"):
             chunks = []
             for child in self.children:

@@ -28,7 +28,7 @@ def format_interpolation(interpolation: Interpolation) -> object:
     )
 
 
-escape_html_text = markup_escape # unify api for test of project
+escape_html_text = markup_escape  # unify api for test of project
 
 
 def escape_html_comment(text):
