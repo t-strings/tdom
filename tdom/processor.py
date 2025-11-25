@@ -10,7 +10,19 @@ from markupsafe import Markup
 
 from .callables import get_callable_info
 from .classnames import classnames
-from .nodes import Element, Fragment, Node, Text
+from .nodes import (
+    TNode,
+    TElement,
+    TFragment,
+    TText,
+    TComment,
+    Node,
+    Element,
+    Fragment,
+    Text,
+    Comment,
+    DocumentType,
+)
 from .parser import parse_html
 from .escaping import format_interpolation
 
@@ -205,7 +217,7 @@ def _substitute_attrs(
 
 
 def _substitute_and_flatten_children(
-    children: t.Iterable[Node], interpolations: tuple[Interpolation, ...]
+    children: t.Iterable[TNode], interpolations: tuple[Interpolation, ...]
 ) -> list[Node]:
     """Substitute placeholders in a list of children and flatten any fragments."""
     new_children: list[Node] = []
@@ -233,7 +245,9 @@ def _node_from_value(value: object) -> Node:
         case Node():
             return value
         case Template():
-            return html(value)
+            return html(value).get_node()
+        case HTMLProcessor():
+            return value.get_node()
         # Consider: falsey values, not just False and None?
         case False | None:
             return Fragment(children=[])
@@ -325,28 +339,108 @@ def _invoke_component(
     return _node_from_value(result)
 
 
-def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) -> Node:
+def _substitute_node(tnode: TNode, interpolations: tuple[Interpolation, ...]) -> Node:
     """Substitute placeholders in a node based on the corresponding interpolations."""
-    match p_node:
-        case Text(text) if (index := _find_placeholder(text)) is not None:
-            interpolation = interpolations[index]
-            value = format_interpolation(interpolation)
-            return _node_from_value(value)
-        case Element(tag=tag, attrs=attrs, children=children):
+    match tnode:
+        case TComment(text_t):
+            chunks = []
+            for part in text_t:
+                if isinstance(part, str):
+                    chunks.append(part)
+                else:
+                    chunks.append(str(format_interpolation(interpolations[part.value])))
+            return Comment("".join(chunks))
+        case TText(text_t):
+            parts = list(text_t)
+            if not parts or len(parts) == 1 and isinstance(parts[0], str):
+                return Text(parts[0])
+            else:
+                f = Fragment(children=[])
+                for part in parts:
+                    if isinstance(part, str):
+                        f.children.append(Text(part))
+                    else:
+                        res = _node_from_value(
+                            format_interpolation(interpolations[part.value])
+                        )
+                        if isinstance(res, Fragment):
+                            if res.children:
+                                f.children.extend(res.children)
+                        else:
+                            f.children.append(res)
+                if len(f.children) == 1:
+                    return f.children[0]
+                return f
+        case TElement(
+            tag=tag, attrs=attrs, children=children, component_info=component_info
+        ):
             new_children = _substitute_and_flatten_children(children, interpolations)
-            if (index := _find_placeholder(tag)) is not None:
+            if component_info is not None:
                 component_attrs = _substitute_interpolated_attrs(attrs, interpolations)
                 return _invoke_component(
-                    component_attrs, new_children, interpolations[index]
+                    component_attrs,
+                    new_children,
+                    interpolations[component_info.starttag_interpolation_index],
                 )
             else:
                 html_attrs = _substitute_attrs(attrs, interpolations)
                 return Element(tag=tag, attrs=html_attrs, children=new_children)
-        case Fragment(children=children):
+        case TFragment(children=children):
             new_children = _substitute_and_flatten_children(children, interpolations)
             return Fragment(children=new_children)
+        case DocumentType():
+            return tnode
         case _:
-            return p_node
+            raise TypeError("Cannot resolve unknown tnode {tnode}")
+
+
+@dataclass
+class HTMLProcessor:
+    """SHIM to make html() work."""
+
+    node: Node
+
+    container_tag: str | None = None
+
+    def __str__(self):
+        return str(self.node)
+
+    def get_node(self):
+        if isinstance(self.node, Fragment) and len(self.node.children) == 1:
+            return self.node.children[0]
+        return self.node
+
+    def __eq__(self, other: object):
+        match other:
+            case Node():
+                return self.get_node() == other
+            case HTMLProcessor():
+                return self.get_node() == other.get_node()
+            case _:
+                raise NotImplementedError(
+                    "We can only be compared against another Node() or HTMLProcessor()."
+                )
+
+
+@dataclass
+class CachedTemplate:
+    """Attempt to cache template just by its strings."""
+
+    template: Template
+
+    def __hash__(self):
+        return hash(self.template.strings)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, CachedTemplate)
+            and self.template.strings == other.template.strings
+        )
+
+
+@lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
+def _parse_html(cached_template):
+    return parse_html(cached_template.template)
 
 
 # --------------------------------------------------------------------------
@@ -354,9 +448,10 @@ def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) ->
 # --------------------------------------------------------------------------
 
 
-def html(template: Template) -> Node:
+def html(template: Template) -> HTMLProcessor:
     """Parse a t-string and return a tree of Nodes."""
     # Parse the HTML, returning a tree of nodes with placeholders
     # where interpolations go.
-    p_node = _instrument_and_parse(template)
-    return _substitute_node(p_node, template.interpolations)
+    tnode = _parse_html(CachedTemplate(template))
+    node = _substitute_node(tnode, template.interpolations)
+    return HTMLProcessor(node)
