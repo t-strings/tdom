@@ -11,39 +11,11 @@ from .callables import CallableInfo, get_callable_info
 from .classnames import classnames
 from .nodes import Element, Fragment, Node, Text
 from .parser import parse_html
-from .utils import format_interpolation as base_format_interpolation
 
 
 @t.runtime_checkable
 class HasHTMLDunder(t.Protocol):
     def __html__(self) -> str: ...  # pragma: no cover
-
-
-# --------------------------------------------------------------------------
-# Value formatting
-# --------------------------------------------------------------------------
-
-
-def _format_safe(value: object, format_spec: str) -> str:
-    """Use Markup() to mark a value as safe HTML."""
-    assert format_spec == "safe"
-    return Markup(value)
-
-
-def _format_unsafe(value: object, format_spec: str) -> str:
-    """Convert a value to a plain string, forcing it to be treated as unsafe."""
-    assert format_spec == "unsafe"
-    return str(value)
-
-
-CUSTOM_FORMATTERS = (("safe", _format_safe), ("unsafe", _format_unsafe))
-
-
-def format_interpolation(interpolation: Interpolation) -> object:
-    return base_format_interpolation(
-        interpolation,
-        formatters=CUSTOM_FORMATTERS,
-    )
 
 
 # --------------------------------------------------------------------------
