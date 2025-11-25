@@ -1,5 +1,3 @@
-import random
-import string
 import typing as t
 from collections import OrderedDict
 from html.parser import HTMLParser
@@ -16,8 +14,12 @@ from .nodes import (
     Node,
     Text,
 )
-
-_FRAGMENT_TAG = f"t🐍f-{''.join(random.choices(string.ascii_lowercase, k=4))}-"
+from .placeholders import (
+    _placeholder as construct_placeholder,
+    _find_placeholder as deconstruct_placeholder,
+    placeholders_to_template,
+    _FRAGMENT_TAG,
+)
 
 
 class NodeParser(HTMLParser):
