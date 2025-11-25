@@ -2,6 +2,7 @@ import sys
 import typing as t
 from collections.abc import Iterable
 from dataclasses import dataclass
+from collections import OrderedDict
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
 
@@ -11,6 +12,7 @@ from .callables import get_callable_info
 from .classnames import classnames
 from .nodes import Element, Fragment, Node, Text
 from .parser import parse_html
+from .escaping import format_interpolation
 
 
 @t.runtime_checkable
@@ -133,44 +135,50 @@ def _process_static_attr(
             yield (key, value)
 
 
+class LastUpdatedOrderedDict(OrderedDict):
+    "Store items in the order the keys were last added"
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.move_to_end(key)
+
+
 def _substitute_interpolated_attrs(
-    attrs: dict[str, str | None], interpolations: tuple[Interpolation, ...]
+    attrs: tuple[tuple[int | str, ...], ...],
+    interpolations: tuple[Interpolation, ...],
 ) -> dict[str, object | None]:
     """
     Replace placeholder values in attributes with their interpolated values.
-
-    This only handles step (1): value substitution. No special processing
-    of attribute names or value types is performed.
     """
-    new_attrs: dict[str, object | None] = {}
-    for key, value in attrs.items():
-        if value is not None:
-            has_placeholders, new_value = _replace_placeholders(value, interpolations)
-            if has_placeholders:
-                for sub_k, sub_v in _process_attr(key, new_value):
+    new_attrs: dict[str, object | None] = LastUpdatedOrderedDict()
+    for attr in attrs:
+        match attr:
+            case [int()]:  # spread
+                interpolation = interpolations[attr[0]]
+                spread_value = format_interpolation(interpolation)
+                for sub_k, sub_v in _substitute_spread_attrs(spread_value):
                     new_attrs[sub_k] = sub_v
-                continue
-
-        if (index := _find_placeholder(key)) is not None:
-            # Spread attributes
-            interpolation = interpolations[index]
-            spread_value = format_interpolation(interpolation)
-            for sub_k, sub_v in _substitute_spread_attrs(spread_value):
-                new_attrs[sub_k] = sub_v
-        else:
-            # Static attribute
-            for sub_k, sub_v in _process_static_attr(key, value):
-                new_attrs[sub_k] = sub_v
+            case [str()]:  # bare attr
+                new_attrs[attr[0]] = True
+            case [str(), str()]:  # static attr
+                new_attrs[attr[0]] = attr[1]
+            case [str(), int()]:  # exact match
+                new_value = format_interpolation(interpolations[attr[1]])
+                for sub_k, sub_v in _process_attr(attr[0], new_value):
+                    new_attrs[sub_k] = sub_v
+            case [str(), str() | int(), _, *_]:  # general template
+                new_attrs[attr[0]] = "".join(
+                    part
+                    if isinstance(part, str)
+                    else str(format_interpolation(interpolations[part]))
+                    for part in attr[1:]
+                )
+            case _:
+                raise ValueError(f"Unknown attr format {attr}")
     return new_attrs
 
 
-def _process_html_attrs(attrs: dict[str, object]) -> dict[str, str | None]:
-    """
-    Process attributes for HTML elements.
-
-    This handles steps (2) and (3): special attribute name handling and
-    value type processing (True -> None, False -> omit, etc.)
-    """
+def _process_html_attrs(attrs: dict[str, object | None]) -> dict[str, str | None]:
     processed_attrs: dict[str, str | None] = {}
     for key, value in attrs.items():
         match value:
@@ -184,7 +192,8 @@ def _process_html_attrs(attrs: dict[str, object]) -> dict[str, str | None]:
 
 
 def _substitute_attrs(
-    attrs: dict[str, str | None], interpolations: tuple[Interpolation, ...]
+    attrs: tuple[tuple[str | int, ...], ...],
+    interpolations: tuple[Interpolation, ...],
 ) -> dict[str, str | None]:
     """
     Substitute placeholders in attributes for HTML elements.
