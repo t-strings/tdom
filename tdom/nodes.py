@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
-from markupsafe import escape
+from .escaping import escape_html_comment, escape_html_script, escape_html_style, escape_html_text
+
 
 # See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
 VOID_ELEMENTS = frozenset(
