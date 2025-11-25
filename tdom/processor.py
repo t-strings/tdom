@@ -7,7 +7,7 @@ from string.templatelib import Interpolation, Template
 
 from markupsafe import Markup
 
-from .callables import CallableInfo, get_callable_info
+from .callables import get_callable_info
 from .classnames import classnames
 from .nodes import Element, Fragment, Node, Text
 from .parser import parse_html
@@ -16,79 +16,6 @@ from .parser import parse_html
 @t.runtime_checkable
 class HasHTMLDunder(t.Protocol):
     def __html__(self) -> str: ...  # pragma: no cover
-
-
-# --------------------------------------------------------------------------
-# Instrumentation, Parsing, and Caching
-# --------------------------------------------------------------------------
-def _instrument(
-    strings: tuple[str, ...], callable_infos: tuple[CallableInfo | None, ...]
-) -> t.Iterable[str]:
-    """
-    Join the strings with placeholders in between where interpolations go.
-
-    This is used to prepare the template string for parsing, so that we can
-    later substitute the actual interpolated values into the parse tree.
-
-    The placeholders are chosen to be unlikely to collide with typical HTML
-    content.
-    """
-    count = len(strings)
-
-    callable_placeholders: dict[int, str] = {}
-
-    for i, s in enumerate(strings):
-        yield s
-        # There are always count-1 placeholders between count strings.
-        if i < count - 1:
-            placeholder = _placeholder(i)
-
-            # Special case for component callables: if the interpolation
-            # is a callable, we need to make sure that any matching closing
-            # tag uses the same placeholder.
-            callable_info = callable_infos[i]
-            if callable_info:
-                placeholder = callable_placeholders.setdefault(
-                    callable_info.id, placeholder
-                )
-
-            yield placeholder
-
-
-@lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
-def _instrument_and_parse_internal(
-    strings: tuple[str, ...], callable_infos: tuple[CallableInfo | None, ...]
-) -> Node:
-    """
-    Instrument the strings and parse the resulting HTML.
-
-    The result is cached to avoid re-parsing the same template multiple times.
-    """
-    instrumented = _instrument(strings, callable_infos)
-    return parse_html(instrumented)
-
-
-def _callable_info(value: object) -> CallableInfo | None:
-    """Return a unique identifier for a callable, or None if not callable."""
-    return get_callable_info(value) if callable(value) else None
-
-
-def _instrument_and_parse(template: Template) -> Node:
-    """Instrument and parse a template, returning a tree of Nodes."""
-    # This is a thin wrapper around the cached internal function that does the
-    # actual work. This exists to handle the syntax we've settled on for
-    # component invocation, namely that callables are directly included as
-    # interpolations both in the open *and* the close tags. We need to make
-    # sure that matching tags... match!
-    #
-    # If we used `tdom`'s approach of component closing tags of <//> then we
-    # wouldn't have to do this. But I worry that tdom's syntax is harder to read
-    # (it's easy to miss the closing tag) and may prove unfamiliar for
-    # users coming from other templating systems.
-    callable_infos = tuple(
-        _callable_info(interpolation.value) for interpolation in template.interpolations
-    )
-    return _instrument_and_parse_internal(template.strings, callable_infos)
 
 
 # --------------------------------------------------------------------------
