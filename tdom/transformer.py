@@ -38,18 +38,21 @@ class EndTag:
     end_tag: str
 
 
-BREAK_ITR = 'break_itr'
-
-
 class Interpolator(t.Protocol):
 
-    def __call__(self, render_api, struct_cache, q, bf, last_container_tag, template, value) -> RenderQueueItem:
+    def __call__(self, render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
         """
         Populates an interpolation or returns iterator to decende into.
 
         If recursion is required then pushes current iterator
         render_api
+            The current render api, provides various helper methods to the interpolator.
         struct_cache
+            The struct cache, this is mainly needed because it is not bound to the render api
+            and this might change.  If we want to run a new template through the render api we need
+            the cache to pass in which is kind of kludgy.  Maybe the render_api should be more of a
+            render_session or something that binds the cache and the render service together.  OR
+            we can just pass around 50 params...
         q
             A list-like queue of iterators paired with the container tag the results are in.
         bf
@@ -58,31 +61,35 @@ class Interpolator(t.Protocol):
             The last HTML tag known for this interpolation, this cannot always be 100% accurate.
         template
             The "values" template that is being used to fulfill interpolations.
-        value
-            The value of the "structure" template interpolation or a standalone value usually
-            from a user supplied iterator.
+        ip_info
+            The information provided in the structured template interpolation OR from another source,
+            for example a value from a user provided iterator.
 
+        Returns a render queue item when the main iteration loops needs to be paused and restarted to descend.
         """
         pass
 
+
 type InterpolationInfo = object | None
+
+
 type RenderQueueItem = tuple[str | None, Iteratable[tuple[Interpolator, Template, InterpolationInfo]]]
 
 
-def interpolate_comment(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem:
+def interpolate_comment(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, comment_t = ip_info
     assert container_tag == '<!--'
     bf.append(render_api.escape_html_comment(render_api.resolve_text_without_recursion(template, container_tag, comment_t)))
 
 
-def interpolate_attrs(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem:
+def interpolate_attrs(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, attrs = ip_info
     attrs = render_api.resolve_attrs(render_api.interpolate_attrs(attrs, template))
     attrs_str = ''.join(f' {k}' if v is True else f' {k}="{render_api.escape_html_text(v)}"' for k, v in attrs.items() if v is not None and v is not False)
     bf.append(attrs_str)
 
 
-def interpolate_component(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem:
+def interpolate_component(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     """
     - Extract embedded template or use empty template.
     - Transform embedded template into struct template.
@@ -106,27 +113,34 @@ def interpolate_component(render_api, struct_cache, q, bf, last_container_tag, t
         return (container_tag, iter(render_api.walk_template(bf, result_template, render_api.process_template(result_template, struct_cache))))
 
 
-def interpolate_raw_text(render_api, struct_cache, q, bf, last_container_tag, template, value) -> RenderQueueItem:
+def interpolate_raw_text(render_api, struct_cache, q, bf, last_container_tag, template, value) -> RenderQueueItem | None:
     container_tag, content_t = value
     bf.append(render_api.escape_html_content_in_tag(container_tag, render_api.resolve_text_without_recursion(template, container_tag, content_t)))
 
 
-def interpolate_escapable_raw_text(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem:
+def interpolate_escapable_raw_text(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, content_t = ip_info
     bf.append(render_api.escape_html_text(render_api.resolve_text_without_recursion(template, container_tag, content_t)))
 
 
-def interpolate_struct_text(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem:
+def interpolate_struct_text(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, ip_index = ip_info
+    # @TODO: We just completely ignore any conversion or format_spec here.
+    # This is actually a much larger problem/decision of how can a user give us more information about what to do
+    # with their input AND should that be a one-off OR cached with the structured template forever.
+    # For example
+    #   - The 3rd interpolation will always be a html-aware Template string
+    #   - The 4th interpolation will be an iterator of html-aware Template strings
+    #   - The 5th interpolation will be an iterator of strings to render and escape.
     value = template.interpolations[ip_index].value # data provided to a parsed t-string
     return interpolate_text(render_api, struct_cache, q, bf, last_container_tag, template, (container_tag, value))
 
 
-def interpolate_user_text(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem:
+def interpolate_user_text(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     return interpolate_text(render_api, struct_cache, q, bf, last_container_tag, template, ip_info)
 
 
-def interpolate_text(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem:
+def interpolate_text(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, value = ip_info
     if container_tag is None:
         container_tag = last_container_tag
@@ -209,7 +223,7 @@ class TransformService:
         """
         Stream template parts back out so they can be consolidated into a new metadata-aware template.
         """
-        q = [(last_container_tag, root)]
+        q: list[tuple(str | None, TNode | EndTag)] = [(last_container_tag, root)]
         while q:
             last_container_tag, tnode = q.pop()
             match tnode:
@@ -303,7 +317,7 @@ class RenderService:
 
     escape_html_content_in_tag: Callable = default_escape_html_content_in_tag
 
-    def render_template(self, template, struct_cache=None, last_container_tag=None):
+    def render_template(self, template, struct_cache=None, last_container_tag=None) -> str:
         """
         Iterate left to right and pause and push new iterators when descending depth-first.
 
@@ -334,7 +348,7 @@ class RenderService:
                     break
         return ''.join(bf)
 
-    def resolve_text_without_recursion(self, template, container_tag, content_t):
+    def resolve_text_without_recursion(self, template, container_tag, content_t) -> str:
         parts = list(content_t)
         exact = len(parts) == 1 and len(content_t.interpolations) == 1
         if exact:
@@ -379,7 +393,6 @@ class RenderService:
 
     def interpolate_attrs(self, attrs, template) -> Generator[tuple[str, object|None]]:
         """ Plug `template` values into any attribute interpolations. """
-        # @TODO: This should probably be using the processor to resolve these.
         for attr in attrs:
             match attr:
                 case [str()]:
@@ -489,3 +502,4 @@ class RenderService:
 
 def render_service_factory():
     return RenderService(transform_api=TransformService())
+
