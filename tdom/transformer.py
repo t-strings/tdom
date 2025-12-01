@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 from string.templatelib import Interpolation, Template
 from io import StringIO, BufferedWriter
 from typing import Callable
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 import typing as t
 from collections import deque
 
@@ -131,21 +131,27 @@ def interpolate_text(render_api, struct_cache, q, bf, last_container_tag, templa
     if container_tag is None:
         container_tag = last_container_tag
 
-    if isinstance(value, Template):
-        return (container_tag, iter(render_api.walk_template(bf, value, render_api.process_template(value, struct_cache))))
-    elif hasattr(value, '__iter__'):
-        return (container_tag, (((interpolate_user_text, template, (None, v)) for v in iter(value))))
-    elif value is False or value is None:
-        # Do nothing here, we don't even need to yield ''.
-        return
-    else:
-        if container_tag not in ('style', 'script', 'title', 'textarea', '<!--'):
-            if hasattr(value, '__html__'):
-                bf.append(value.__html__())
-            else:
-                bf.append(render_api.escape_html_text(value))
+    #
+    # Try to optimize past this block if the value is a str.
+    #
+    if not isinstance(value, str):
+        if isinstance(value, Template):
+            return (container_tag, iter(render_api.walk_template(bf, value, render_api.process_template(value, struct_cache))))
+        elif isinstance(value, Sequence):
+            return (container_tag, (((interpolate_user_text, template, (None, v)) for v in iter(value))))
+        elif value is False or value is None:
+            # Do nothing here, we don't even need to yield ''.
+            return
+
+    if container_tag not in ('style', 'script', 'title', 'textarea', '<!--'):
+        if hasattr(value, '__html__'):
+            bf.append(value.__html__())
         else:
-            bf.append(render_api.escape_html_content_in_tag(container_tag, str(value)))
+            bf.append(render_api.escape_html_text(value))
+    else:
+        # @TODO: How could this happen?
+        raise ValueError(f'We cannot escape text within {container_tag} when multiple interpolations could occur.')
+        #bf.append(render_api.escape_html_content_in_tag(container_tag, str(value)))
 
 
 @dataclass
@@ -373,6 +379,7 @@ class RenderService:
 
     def interpolate_attrs(self, attrs, template) -> Generator[tuple[str, object|None]]:
         """ Plug `template` values into any attribute interpolations. """
+        # @TODO: This should probably be using the processor to resolve these.
         for attr in attrs:
             match attr:
                 case [str()]:
@@ -391,6 +398,7 @@ class RenderService:
                     raise ValueError(f'Unrecognized attr format {attr}')
 
     def resolve_attrs(self, attrs) -> dict[str, object|None]:
+        # @TODO: This should be using the processor to resolve these.
         new_attrs = LastUpdatedOrderedDict()
         klass = {}
         for k, v in attrs:
