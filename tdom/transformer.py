@@ -76,7 +76,7 @@ def interpolate_comment(render_api, struct_cache, q, bf, last_container_tag, tem
 
 
 def interpolate_attrs(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem:
-    constainer_tag, attrs = ip_info
+    container_tag, attrs = ip_info
     attrs = render_api.resolve_attrs(render_api.interpolate_attrs(attrs, template))
     attrs_str = ''.join(f' {k}' if v is True else f' {k}="{render_api.escape_html_text(v)}"' for k, v in attrs.items() if v is not None and v is not False)
     bf.append(attrs_str)
@@ -129,7 +129,7 @@ def interpolate_user_text(render_api, struct_cache, q, bf, last_container_tag, t
 def interpolate_text(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem:
     container_tag, value = ip_info
     if container_tag is None:
-        container_tag = last_constainer_tag
+        container_tag = last_container_tag
 
     if isinstance(value, Template):
         return (container_tag, iter(render_api.walk_template(bf, value, render_api.process_template(value, struct_cache))))
