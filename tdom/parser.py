@@ -3,8 +3,6 @@ from string.templatelib import Template, Interpolation
 from collections.abc import Iterable
 from html.parser import HTMLParser
 
-from markupsafe import Markup
-
 from .nodes import (
     VOID_ELEMENTS,
     TComment,
