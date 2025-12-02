@@ -1,74 +1,134 @@
 import pytest
-from markupsafe import Markup
+from string.templatelib import Template, Interpolation
 
-from .nodes import Comment, DocumentType, Element, Fragment, Text
+from .nodes import (
+    TComment,
+    DocumentType,
+    TElement,
+    TFragment,
+    TText,
+    ComponentInfo,
+)
 from .parser import parse_html
+
+
+class TestHelpers:
+    """
+    Helpers to create what we think the template nodes and their properties
+    should look like after they were parsed out from a Template().
+    """
+
+    def to_template(self, *parts, format_spec=""):
+        """Shorthand to convert str() to strings and int() to interpolations and then unpack into Template()."""
+        return Template(
+            *(
+                [
+                    part if isinstance(part, str) else Interpolation(part, "", None, "")
+                    for part in parts
+                ]
+            )
+        )
+
+    def text(self, *parts, format_spec=""):
+        return TText(self.to_template(*parts, format_spec=format_spec))
+
+    def comment(self, *parts, format_spec=""):
+        return TComment(self.to_template(*parts, format_spec=format_spec))
+
+    def el(self, tag, attrs=(), children=[], component_info=None):
+        return TElement(tag, attrs, children, component_info)
+
+    def attr(self, k: str, values_index: int):
+        """An interpolated attribute, ie. `alt={alt}`."""
+        return (k, values_index)
+
+    def attr_t(self, k: str, *template_parts: str | int):
+        """A templated attribute, ie. `alt="A picture of {alt}`."""
+        return (k, *template_parts)
+
+    def attr_spread(self, values_index: int):
+        """A spread attribute, ie. `<div {attrs}>`."""
+        return (values_index,)  # 1-tuple of int
+
+    def attr_bare(self, k: str):
+        """A regular attribute without a value, ie. `<input disabled>`."""
+        return (k,)  # 1-tuple of str
+
+    def attr_value(self, k: str, v: str):
+        """A regular attribute with a value, ie. `alt="The ocean."`."""
+        return (k, v)
+
+
+th = TestHelpers()
 
 
 def test_parse_empty():
     node = parse_html("")
-    assert node == Text("")
+    assert node == TFragment()
 
 
-def test_parse_text():
+def test_parse_text_simple():
     node = parse_html("Hello, world!")
-    assert node == Text("Hello, world!")
+    assert node == th.text("Hello, world!")
 
 
 def test_parse_text_with_entities():
     node = parse_html("Panini&apos;s")
-    assert node == Text("Panini's")
+    assert node == th.text("Panini's")
 
 
 def test_parse_void_element():
     node = parse_html("<br>")
-    assert node == Element("br")
+    assert node == th.el("br")
 
 
 def test_parse_void_element_self_closed():
     node = parse_html("<br />")
-    assert node == Element("br")
+    assert node == th.el("br")
 
 
 def test_parse_uppercase_void_element():
     node = parse_html("<BR>")
-    assert node == Element("br")
+    assert node == th.el("br")
 
 
 def test_parse_standard_element_with_text():
     node = parse_html("<div>Hello, world!</div>")
-    assert node == Element("div", children=[Text("Hello, world!")])
+    assert node == th.el("div", children=[th.text("Hello, world!")])
 
 
 def test_parse_nested_elements():
     node = parse_html("<div><span>Nested</span> content</div>")
-    assert node == Element(
+    assert node == th.el(
         "div",
         children=[
-            Element("span", children=[Text("Nested")]),
-            Text(" content"),
+            th.el("span", children=[th.text("Nested")]),
+            th.text(" content"),
         ],
     )
 
 
 def test_parse_element_with_attributes():
     node = parse_html('<a href="https://example.com" target="_blank">Link</a>')
-    assert node == Element(
+    assert node == th.el(
         "a",
-        attrs={"href": "https://example.com", "target": "_blank"},
-        children=[Text("Link")],
+        attrs=(("href", "https://example.com"), ("target", "_blank")),
+        children=[th.text("Link")],
     )
 
 
 def test_parse_element_attribute_order():
     node = parse_html('<a title="a" href="b" title="c"></a>')
-    assert isinstance(node, Element)
-    assert list(node.attrs.items()) == [("href", "b"), ("title", "c")]
+    assert isinstance(node, TElement) and node.attrs == (
+        ("title", "a"),
+        ("href", "b"),
+        ("title", "c"),
+    )
 
 
 def test_parse_comment():
     node = parse_html("<!-- This is a comment -->")
-    assert node == Comment(" This is a comment ")
+    assert node == th.comment(" This is a comment ")
 
 
 def test_parse_doctype():
@@ -78,39 +138,39 @@ def test_parse_doctype():
 
 def test_parse_explicit_fragment_empty():
     node = parse_html("<></>")
-    assert node == Fragment(children=[])
+    assert node == TFragment(children=[])
 
 
 def test_parse_explicit_fragment_with_content():
     node = parse_html("<><div>Item 1</div><div>Item 2</div></>")
-    assert node == Fragment(
+    assert node == TFragment(
         children=[
-            Element("div", children=[Text("Item 1")]),
-            Element("div", children=[Text("Item 2")]),
+            th.el("div", children=[th.text("Item 1")]),
+            th.el("div", children=[th.text("Item 2")]),
         ]
     )
 
 
 def test_parse_explicit_fragment_with_text():
     node = parse_html("<>Hello, <span>world</span>!</>")
-    assert node == Fragment(
+    assert node == TFragment(
         children=[
-            Text("Hello, "),
-            Element("span", children=[Text("world")]),
-            Text("!"),
+            th.text("Hello, "),
+            th.el("span", children=[th.text("world")]),
+            th.text("!"),
         ]
     )
 
 
 def test_parse_explicit_fragment_nested():
     node = parse_html("<div><>Nested <span>fragment</span></></div>")
-    assert node == Element(
+    assert node == th.el(
         "div",
         children=[
-            Fragment(
+            TFragment(
                 children=[
-                    Text("Nested "),
-                    Element("span", children=[Text("fragment")]),
+                    th.text("Nested "),
+                    th.el("span", children=[th.text("fragment")]),
                 ]
             )
         ],
@@ -119,15 +179,15 @@ def test_parse_explicit_fragment_nested():
 
 def test_parse_multiple_voids():
     node = parse_html("<br><hr><hr /><hr /><br /><br><br>")
-    assert node == Fragment(
+    assert node == TFragment(
         children=[
-            Element("br"),
-            Element("hr"),
-            Element("hr"),
-            Element("hr"),
-            Element("br"),
-            Element("br"),
-            Element("br"),
+            th.el("br"),
+            th.el("hr"),
+            th.el("hr"),
+            th.el("hr"),
+            th.el("br"),
+            th.el("br"),
+            th.el("br"),
         ]
     )
 
@@ -137,79 +197,74 @@ def test_parse_mixed_content():
         '<!DOCTYPE html><!-- Comment --><div class="container">'
         "Hello, <br class='funky' />world <!-- neato -->!</div>"
     )
-    assert node == Fragment(
+    assert node == TFragment(
         children=[
             DocumentType("html"),
-            Comment(" Comment "),
-            Element(
+            th.comment(" Comment "),
+            th.el(
                 "div",
-                attrs={"class": "container"},
+                attrs=(("class", "container"),),
                 children=[
-                    Text("Hello, "),
-                    Element("br", attrs={"class": "funky"}),
-                    Text("world "),
-                    Comment(" neato "),
-                    Text("!"),
+                    th.text("Hello, "),
+                    th.el("br", attrs=(("class", "funky"),)),
+                    th.text("world "),
+                    th.comment(" neato "),
+                    th.text("!"),
                 ],
             ),
         ]
     )
 
 
-def test_parse_entities_are_escaped():
+def test_parse_entities_are_unescaped():
     node = parse_html("<p>&lt;/p&gt;</p>")
-    assert node == Element(
+    assert node == th.el(
         "p",
-        children=[Text("</p>")],
+        children=[th.text("</p>")],
     )
-    assert str(node) == "<p>&lt;/p&gt;</p>"
+    # @TODO: Confirm tests exist for entity escaping.
 
 
 def test_parse_script_tag_content():
     node = parse_html("<script>if (a < b && c > d) { alert('wow'); }</script>")
-    assert node == Element(
+    assert node == th.el(
         "script",
-        children=[Text(Markup("if (a < b && c > d) { alert('wow'); }"))],
+        children=[th.text("if (a < b && c > d) { alert('wow'); }")],
     )
-    assert str(node) == ("<script>if (a < b && c > d) { alert('wow'); }</script>")
 
 
 def test_parse_script_with_entities():
     # The <script> tag (and <style>) tag uses the CDATA content model.
     node = parse_html("<script>var x = 'a &amp; b';</script>")
-    assert node == Element(
+    assert node == th.el(
         "script",
-        children=[Text(Markup("var x = 'a &amp; b';"))],
+        children=[th.text("var x = 'a &amp; b';")],
     )
-    assert str(node) == "<script>var x = 'a &amp; b';</script>"
 
 
 def test_parse_textarea_tag_content():
     node = parse_html("<textarea>if (a < b && c > d) { alert('wow'); }</textarea>")
-    assert node == Element(
+    assert node == th.el(
         "textarea",
-        children=[Text(Markup("if (a < b && c > d) { alert('wow'); }"))],
+        children=[th.text("if (a < b && c > d) { alert('wow'); }")],
     )
-    assert str(node) == "<textarea>if (a < b && c > d) { alert('wow'); }</textarea>"
 
 
 def test_parse_textarea_with_entities():
     # The <textarea> (and <title>) tag uses the RCDATA content model.
     node = parse_html("<textarea>var x = 'a &amp; b';</textarea>")
-    assert node == Element(
+    assert node == th.el(
         "textarea",
-        children=[Text(Markup("var x = 'a & b';"))],
+        children=[th.text("var x = 'a & b';")],
     )
-    assert str(node) == "<textarea>var x = 'a & b';</textarea>"
 
 
 def test_parse_title_unusual():
     node = parse_html("<title>My & Awesome <Site></title>")
-    assert node == Element(
+    assert node == th.el(
         "title",
-        children=[Text(Markup("My & Awesome <Site>"))],
+        children=[th.text("My & Awesome <Site>")],
     )
-    assert str(node) == "<title>My & Awesome <Site></title>"
 
 
 def test_parse_mismatched_tags():
@@ -229,10 +284,10 @@ def test_parse_unexpected_closing_tag():
 
 def test_nested_self_closing_tags():
     node = parse_html("<div></div><br>")
-    assert node == Fragment(
+    assert node == TFragment(
         children=[
-            Element("div"),
-            Element("br"),
+            th.el("div"),
+            th.el("br"),
         ]
     )
 
@@ -240,18 +295,113 @@ def test_nested_self_closing_tags():
 def test_parse_html_iter_preserves_chunks():
     chunks = [
         "<div>",
-        "Hello ",
-        "there, ",
+        "Hello ",  # (1)
+        "there, ",  # (2): (1) and (2) are merged, not sure the purpose of this test.
         "<span>world</span>",
         "!</div>",
     ]
     node = parse_html(chunks)
-    assert node == Element(
+    assert node == th.el(
         "div",
         children=[
-            Text("Hello "),
-            Text("there, "),
-            Element("span", children=[Text("world")]),
-            Text("!"),
+            th.text("Hello "),
+            th.text("there, "),
+            th.el("span", children=[th.text("world")]),
+            th.text("!"),
+        ],
+    )
+
+
+def test_parse_dynamic_attr():
+    src = "example"
+    node = parse_html(t"<a href={src}></a>")
+    assert node == th.el("a", attrs=(th.attr("href", 0),))
+
+
+def test_parse_dynamic_attr_spread():
+    attrs = dict(src="example")
+    node = parse_html(t"<a {attrs}></a>")
+    assert isinstance(node, TElement) and node == th.el("a", attrs=(th.attr_spread(0),))
+
+
+def test_parse_dynamic_attr_template():
+    src = "example"
+    node = parse_html(t'<a href="/{src}"></a>')
+    assert node == th.el("a", attrs=(th.attr_t("href", "/", 0),))
+
+
+def test_parse_attrs_mixed():
+    src = "example"
+    attrs = {"target": "_blank"}
+    blurb = "This example is great!"
+    node = parse_html(
+        t'<a title="A great example." href="/{src}" attributionsrc={True} {attrs}>Check this out! {blurb}</a>'
+    )
+    assert node == th.el(
+        "a",
+        attrs=(
+            ("title", "A great example."),
+            th.attr_t("href", "/", 0),
+            th.attr("attributionsrc", 1),
+            th.attr_spread(2),
+        ),
+        children=[th.text("Check this out! ", 3)],
+    )
+
+
+def test_parse_component_basic():
+    def DivWrapper(attrs, embedded_t):
+        return t"<div>{embedded_t}</div>"
+
+    node = parse_html(t"<body><{DivWrapper}></{DivWrapper}></body>")
+    assert node == th.el(
+        "body",
+        children=[
+            th.el(
+                "component-at-0",
+                component_info=ComponentInfo(
+                    0, 1, strings_slice_begin=1, strings_slice_end=2
+                ),
+            )
+        ],
+    )
+
+
+def test_parse_component_xhtml_close():
+    def DivWrapper(attrs, embedded_t):
+        return t"<div>{embedded_t}</div>"
+
+    node = parse_html(t"<body><{DivWrapper} /></body>")
+    assert node == th.el(
+        "body", children=[th.el("component-at-0", component_info=ComponentInfo(0, 0))]
+    )
+
+
+def test_parse_component_attrs():
+    def DivWrapper(attrs, embedded_t):
+        wrap_t = t"<div style={attrs.get('style', None) or None}>{embedded_t}</div>"
+        if attrs.get("doubletime"):
+            wrap_t = t"<div>{wrap_t}</div>"
+        return wrap_t
+
+    title = "Wrap it up"
+    config = {"doubletime": True}
+    node = parse_html(
+        t'<body><{DivWrapper} style="background-color: red" title={title} {config}></{DivWrapper}></body>'
+    )
+    assert node == th.el(
+        "body",
+        children=[
+            th.el(
+                "component-at-0",
+                attrs=(
+                    ("style", "background-color: red"),
+                    th.attr("title", 1),
+                    th.attr_spread(2),
+                ),
+                component_info=ComponentInfo(
+                    0, 3, strings_slice_begin=3, strings_slice_end=4
+                ),
+            ),
         ],
     )
