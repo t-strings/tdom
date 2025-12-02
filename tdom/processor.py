@@ -400,8 +400,6 @@ class HTMLProcessor:
 
     node: Node
 
-    container_tag: str | None = None
-
     def __str__(self):
         return str(self.node)
 
