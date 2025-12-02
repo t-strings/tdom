@@ -67,7 +67,7 @@ def _process_data_attr(value: object) -> t.Iterable[tuple[str, object | None]]:
     for sub_k, sub_v in d.items():
         if sub_v is True:
             yield f"data-{sub_k}", True
-        elif sub_v not in (False, None):
+        elif sub_v is not False and sub_v is not None:
             yield f"data-{sub_k}", str(sub_v)
 
 
