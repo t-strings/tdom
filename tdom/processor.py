@@ -245,9 +245,7 @@ def _node_from_value(value: object) -> Node:
         case Node():
             return value
         case Template():
-            return html(value).get_node()
-        case HTMLProcessor():
-            return value.get_node()
+            return html(value)
         # Consider: falsey values, not just False and None?
         case False | None:
             return Fragment(children=[])
@@ -395,32 +393,6 @@ def _substitute_node(tnode: TNode, interpolations: tuple[Interpolation, ...]) ->
 
 
 @dataclass
-class HTMLProcessor:
-    """SHIM to make html() work."""
-
-    node: Node
-
-    def __str__(self):
-        return str(self.node)
-
-    def get_node(self):
-        if isinstance(self.node, Fragment) and len(self.node.children) == 1:
-            return self.node.children[0]
-        return self.node
-
-    def __eq__(self, other: object):
-        match other:
-            case Node():
-                return self.get_node() == other
-            case HTMLProcessor():
-                return self.get_node() == other.get_node()
-            case _:
-                raise NotImplementedError(
-                    "We can only be compared against another Node() or HTMLProcessor()."
-                )
-
-
-@dataclass
 class CachedTemplate:
     """Attempt to cache template just by its strings."""
 
@@ -446,10 +418,9 @@ def _parse_html(cached_template):
 # --------------------------------------------------------------------------
 
 
-def html(template: Template) -> HTMLProcessor:
+def html(template: Template) -> Node:
     """Parse a t-string and return a tree of Nodes."""
     # Parse the HTML, returning a tree of nodes with placeholders
     # where interpolations go.
     tnode = _parse_html(CachedTemplate(template))
-    node = _substitute_node(tnode, template.interpolations)
-    return HTMLProcessor(node)
+    return _substitute_node(tnode, template.interpolations)
