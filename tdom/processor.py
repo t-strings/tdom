@@ -171,27 +171,14 @@ def _instrument(
 
 
 @lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
-def _instrument_and_parse_internal(
-    strings: tuple[str, ...], callable_infos: tuple[CallableInfo | None, ...]
-) -> Node:
+def _instrument_and_parse(cached_template: CachedTemplate) -> Node:
     """
     Instrument the strings and parse the resulting HTML.
 
     The result is cached to avoid re-parsing the same template multiple times.
     """
-    instrumented = _instrument(strings, callable_infos)
-    return parse_html(instrumented)
-
-
-def _callable_info(value: object) -> CallableInfo | None:
-    """Return a unique identifier for a callable, or None if not callable."""
-    return get_callable_info(value) if callable(value) else None
-
-
-def _instrument_and_parse(template: Template) -> Node:
-    """Instrument and parse a template, returning a tree of Nodes."""
-    # This is a thin wrapper around the cached internal function that does the
-    # actual work. This exists to handle the syntax we've settled on for
+    template = cached_template.template
+    # This exists to handle the syntax we've settled on for
     # component invocation, namely that callables are directly included as
     # interpolations both in the open *and* the close tags. We need to make
     # sure that matching tags... match!
@@ -203,7 +190,31 @@ def _instrument_and_parse(template: Template) -> Node:
     callable_infos = tuple(
         _callable_info(interpolation.value) for interpolation in template.interpolations
     )
-    return _instrument_and_parse_internal(template.strings, callable_infos)
+    instrumented = _instrument(template.strings, callable_infos)
+    return parse_html(instrumented)
+
+
+def _callable_info(value: object) -> CallableInfo | None:
+    """Return a unique identifier for a callable, or None if not callable."""
+    return get_callable_info(value) if callable(value) else None
+
+
+@dataclass
+class CachedTemplate:
+    """
+    Wrap a template to make it hashable for use in lru_cache, etc.
+    """
+
+    template: Template
+
+    def __hash__(self):
+        return hash(self.template.strings)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, CachedTemplate)
+            and self.template.strings == other.template.strings
+        )
 
 
 # --------------------------------------------------------------------------
@@ -537,5 +548,5 @@ def html(template: Template) -> Node:
     """Parse a t-string and return a tree of Nodes."""
     # Parse the HTML, returning a tree of nodes with placeholders
     # where interpolations go.
-    p_node = _instrument_and_parse(template)
+    p_node = _instrument_and_parse(CachedTemplate(template))
     return _substitute_node(p_node, template.interpolations)

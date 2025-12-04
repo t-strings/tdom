@@ -2,12 +2,13 @@ import datetime
 import typing as t
 from dataclasses import dataclass, field
 from string.templatelib import Interpolation, Template
+from functools import lru_cache
 
 import pytest
 from markupsafe import Markup
 
 from .nodes import Element, Fragment, Node, Text
-from .processor import _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX, html
+from .processor import _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX, html, CachedTemplate
 
 # --------------------------------------------------------------------------
 # Basic HTML parsing tests
@@ -1151,3 +1152,51 @@ def RequiresPositional(whoops: int, /) -> Template:  # pragma: no cover
 def test_component_requiring_positional_arg_fails():
     with pytest.raises(TypeError):
         _ = html(t"<{RequiresPositional} />")
+
+
+def test_cached_template_in_lru_cache():
+    @lru_cache(maxsize=512)
+    def get_template_length(cached_template):
+        return len(cached_template.template.strings)
+
+    info = get_template_length.cache_info()
+    assert info.hits == 0 and info.misses == 0
+
+    def get_info(template):
+        res = get_template_length(CachedTemplate(template))
+        return (res, get_template_length.cache_info())
+
+    letter_int_t = t"a{0}b{1}c"
+    res, info = get_info(letter_int_t)
+    assert res == 3 and info.hits == 0 and info.misses == 1, (
+        "First use of template should be a miss."
+    )
+    res, info = get_info(letter_int_t)
+    assert res == 3 and info.hits == 1 and info.misses == 1, (
+        "Exact same template should be a hit."
+    )
+    letter_bool_t = t"a{True}b{False}c"
+    res, info = get_info(letter_bool_t)
+    assert res == 3 and info.hits == 2 and info.misses == 1, (
+        "Different interpolations should still be a hit."
+    )
+    int_int_t = t"0{0}1{1}2"
+    res, info = get_info(int_int_t)
+    assert res == 3 and info.hits == 2 and info.misses == 2, (
+        "New string values but the same interpolations should still be a miss."
+    )
+
+
+def test_cached_template_eq():
+    letter_int_ct = CachedTemplate(t"a{0}b{1}c")
+    short_letter_int_ct = CachedTemplate(t"a{0}b{1}")
+    letter_lambda_ct = CachedTemplate(t"a{(lambda x: x**2)}b{(lambda y: y / 3)}c")
+    assert letter_int_ct == letter_lambda_ct and letter_int_ct != short_letter_int_ct, (
+        "The interpolation types should not affect equality, only the strings."
+    )
+    assert (
+        letter_int_ct.template.interpolations[0].value == 0
+        and letter_int_ct.template.interpolations[1].value == 1
+        and letter_lambda_ct.template.interpolations[0].value(3) == 9
+        and letter_lambda_ct.template.interpolations[1].value(3) == 1
+    )
