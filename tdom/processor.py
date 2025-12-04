@@ -171,21 +171,41 @@ def _instrument(
 
 
 @lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
-def _instrument_and_parse_internal(
-    strings: tuple[str, ...], callable_infos: tuple[CallableInfo | None, ...]
-) -> Node:
+def _instrument_and_parse_internal(cached_template: CachedTemplate) -> Node:
     """
     Instrument the strings and parse the resulting HTML.
 
     The result is cached to avoid re-parsing the same template multiple times.
     """
-    instrumented = _instrument(strings, callable_infos)
+    template = cached_template.template
+    callable_infos = tuple(
+        _callable_info(interpolation.value) for interpolation in template.interpolations
+    )
+    instrumented = _instrument(template.strings, callable_infos)
     return parse_html(instrumented)
 
 
 def _callable_info(value: object) -> CallableInfo | None:
     """Return a unique identifier for a callable, or None if not callable."""
     return get_callable_info(value) if callable(value) else None
+
+
+@dataclass
+class CachedTemplate:
+    """
+    Wrap a template to make it hashable for use in lru_cache, etc.
+    """
+
+    template: Template
+
+    def __hash__(self):
+        return hash(self.template.strings)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, CachedTemplate)
+            and self.template.strings == other.template.strings
+        )
 
 
 def _instrument_and_parse(template: Template) -> Node:
@@ -200,10 +220,8 @@ def _instrument_and_parse(template: Template) -> Node:
     # wouldn't have to do this. But I worry that tdom's syntax is harder to read
     # (it's easy to miss the closing tag) and may prove unfamiliar for
     # users coming from other templating systems.
-    callable_infos = tuple(
-        _callable_info(interpolation.value) for interpolation in template.interpolations
-    )
-    return _instrument_and_parse_internal(template.strings, callable_infos)
+    cached_template = CachedTemplate(template)
+    return _instrument_and_parse_internal(cached_template)
 
 
 # --------------------------------------------------------------------------
