@@ -33,34 +33,18 @@ class NodeParser(HTMLParser):
         self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
     ) -> None:
         node = Element(tag, attrs=LastUpdatedOrderedDict(attrs), children=[])
-        self.stack.append(node)
-
-        # Unfortunately, Python's built-in HTMLParser has inconsistent behavior
-        # with void elements. In particular, it calls handle_endtag() for them
-        # only if they explicitly self-close (e.g., <br />). But in the HTML
-        # spec itself, *there is no distinction* between <br> and <br />.
-        # So we need to handle this case ourselves.
-        #
-        # See https://github.com/python/cpython/issues/69445
         if tag in VOID_ELEMENTS:
-            # Always call handle_endtag for void elements. If it happens
-            # to be self-closed in the input, handle_endtag() will effectively
-            # be called twice. We ignore the second call there.
-            self.handle_endtag(tag)
+            self.append_element_child(node)
+        else:
+            self.stack.append(node)
+
+    def handle_startendtag(
+        self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
+    ) -> None:
+        node = Element(tag, attrs=LastUpdatedOrderedDict(attrs), children=[])
+        self.append_element_child(node)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in VOID_ELEMENTS:
-            # Special case: handle Python issue #69445 (see comment above).
-            most_recent_closed = self.get_most_recent_closed_element()
-            if most_recent_closed and most_recent_closed.tag == tag:
-                # Ignore this call; we've already closed it.
-                return
-            open_element = self.get_open_element()
-            if open_element and open_element.tag == tag:
-                _ = self.stack.pop()
-                self.append_element_child(open_element)
-                return
-
         if not self.stack:
             raise ValueError(f"Unexpected closing tag </{tag}> with no open element.")
 
@@ -98,13 +82,6 @@ class NodeParser(HTMLParser):
     def get_open_element(self) -> Element | None:
         """Return the currently open Element, if any."""
         return self.stack[-1] if self.stack else None
-
-    def get_most_recent_closed_element(self) -> Element | None:
-        """Return the most recently closed Element, if any."""
-        parent = self.get_parent()
-        if parent.children and isinstance(parent.children[-1], Element):
-            return parent.children[-1]
-        return None
 
     def append_element_child(self, child: Element) -> None:
         parent = self.get_parent()
