@@ -171,13 +171,22 @@ def _instrument(
 
 
 @lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
-def _instrument_and_parse_internal(cached_template: CachedTemplate) -> Node:
+def _instrument_and_parse(cached_template: CachedTemplate) -> Node:
     """
     Instrument the strings and parse the resulting HTML.
 
     The result is cached to avoid re-parsing the same template multiple times.
     """
     template = cached_template.template
+    # This exists to handle the syntax we've settled on for
+    # component invocation, namely that callables are directly included as
+    # interpolations both in the open *and* the close tags. We need to make
+    # sure that matching tags... match!
+    #
+    # If we used `tdom`'s approach of component closing tags of <//> then we
+    # wouldn't have to do this. But I worry that tdom's syntax is harder to read
+    # (it's easy to miss the closing tag) and may prove unfamiliar for
+    # users coming from other templating systems.
     callable_infos = tuple(
         _callable_info(interpolation.value) for interpolation in template.interpolations
     )
@@ -206,22 +215,6 @@ class CachedTemplate:
             isinstance(other, CachedTemplate)
             and self.template.strings == other.template.strings
         )
-
-
-def _instrument_and_parse(template: Template) -> Node:
-    """Instrument and parse a template, returning a tree of Nodes."""
-    # This is a thin wrapper around the cached internal function that does the
-    # actual work. This exists to handle the syntax we've settled on for
-    # component invocation, namely that callables are directly included as
-    # interpolations both in the open *and* the close tags. We need to make
-    # sure that matching tags... match!
-    #
-    # If we used `tdom`'s approach of component closing tags of <//> then we
-    # wouldn't have to do this. But I worry that tdom's syntax is harder to read
-    # (it's easy to miss the closing tag) and may prove unfamiliar for
-    # users coming from other templating systems.
-    cached_template = CachedTemplate(template)
-    return _instrument_and_parse_internal(cached_template)
 
 
 # --------------------------------------------------------------------------
@@ -555,5 +548,5 @@ def html(template: Template) -> Node:
     """Parse a t-string and return a tree of Nodes."""
     # Parse the HTML, returning a tree of nodes with placeholders
     # where interpolations go.
-    p_node = _instrument_and_parse(template)
+    p_node = _instrument_and_parse(CachedTemplate(template))
     return _substitute_node(p_node, template.interpolations)
