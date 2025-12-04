@@ -237,6 +237,15 @@ def test_self_closing_tags():
     )
 
 
+def test_nested_self_closing_tags():
+    node = parse_html("<div><br><div /><br></div>")
+    assert node == Element(
+        "div", children=[Element("br"), Element("div"), Element("br")]
+    )
+    node = parse_html("<div><div /></div>")
+    assert node == Element("div", children=[Element("div")])
+
+
 def test_self_closing_tags_unexpected_closing_tag():
     with pytest.raises(ValueError):
         _ = parse_html("<div /></div>")
