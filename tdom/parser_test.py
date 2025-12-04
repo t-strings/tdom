@@ -227,14 +227,24 @@ def test_parse_unexpected_closing_tag():
         _ = parse_html("Unopened</div>")
 
 
-def test_nested_self_closing_tags():
-    node = parse_html("<div></div><br>")
+def test_self_closing_tags():
+    node = parse_html("<div/><p></p>")
     assert node == Fragment(
         children=[
             Element("div"),
-            Element("br"),
+            Element("p"),
         ]
     )
+
+
+def test_self_closing_tags_unexpected_closing_tag():
+    with pytest.raises(ValueError):
+        _ = parse_html("<div /></div>")
+
+
+def test_self_closing_void_tags_unexpected_closing_tag():
+    with pytest.raises(ValueError):
+        _ = parse_html("<input /></input>")
 
 
 def test_parse_html_iter_preserves_chunks():
