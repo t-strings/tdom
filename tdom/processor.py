@@ -138,7 +138,7 @@ def _replace_placeholders(
 
 def _instrument(
     strings: tuple[str, ...], callable_infos: tuple[CallableInfo | None, ...]
-) -> t.Iterable[str]:
+) -> tuple[list[str], dict[str, int]]:
     """
     Join the strings with placeholders in between where interpolations go.
 
@@ -150,24 +150,24 @@ def _instrument(
     """
     count = len(strings)
 
-    callable_placeholders: dict[int, str] = {}
+    placeholder_callables: dict[str, int] = {}
 
+    parts = []
     for i, s in enumerate(strings):
-        yield s
+        parts.append(s)
         # There are always count-1 placeholders between count strings.
         if i < count - 1:
             placeholder = _placeholder(i)
 
             # Special case for component callables: if the interpolation
             # is a callable, we need to make sure that any matching closing
-            # tag uses the same placeholder.
+            # tag's placeholder is the same callable
             callable_info = callable_infos[i]
             if callable_info:
-                placeholder = callable_placeholders.setdefault(
-                    callable_info.id, placeholder
-                )
+                placeholder_callables[placeholder] = callable_info.id
 
-            yield placeholder
+            parts.append(placeholder)
+    return parts, placeholder_callables
 
 
 @lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
@@ -190,8 +190,8 @@ def _instrument_and_parse(cached_template: CachedTemplate) -> Node:
     callable_infos = tuple(
         _callable_info(interpolation.value) for interpolation in template.interpolations
     )
-    instrumented = _instrument(template.strings, callable_infos)
-    return parse_html(instrumented)
+    instrumented, placeholder_callables = _instrument(template.strings, callable_infos)
+    return parse_html(instrumented, placeholder_callables=placeholder_callables)
 
 
 def _callable_info(value: object) -> CallableInfo | None:
@@ -522,9 +522,26 @@ def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) ->
             interpolation = interpolations[index]
             value = format_interpolation(interpolation)
             return _node_from_value(value)
-        case Element(tag=tag, attrs=attrs, children=children):
+        case Element(
+            tag=tag, attrs=attrs, children=children, component_info=component_info
+        ):
             new_children = _substitute_and_flatten_children(children, interpolations)
             if (index := _find_placeholder(tag)) is not None:
+                if component_info is None:
+                    raise TypeError(
+                        "Only callables can be used for interpolations located in tags."
+                    )
+                elif component_info.endtag is not None:
+                    end_index = _find_placeholder(component_info.endtag)
+                    if end_index is None:
+                        # Avoid typecheck errors.
+                        raise ValueError(
+                            "The endtag of a component must be an interpolation."
+                        )
+                    elif interpolations[index].value != interpolations[end_index].value:
+                        raise ValueError(
+                            "The endtag interpolation's value should match the starttag interpolation's value."
+                        )
                 component_attrs = _substitute_interpolated_attrs(attrs, interpolations)
                 return _invoke_component(
                     component_attrs, new_children, interpolations[index]
