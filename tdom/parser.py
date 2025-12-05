@@ -15,6 +15,7 @@ from .nodes import (
     Fragment,
     Node,
     Text,
+    ComponentInfo,
 )
 
 _FRAGMENT_TAG = f"t🐍f-{''.join(random.choices(string.ascii_lowercase, k=4))}-"
@@ -23,11 +24,16 @@ _FRAGMENT_TAG = f"t🐍f-{''.join(random.choices(string.ascii_lowercase, k=4))}-
 class NodeParser(HTMLParser):
     root: Fragment
     stack: list[Element]
+    placeholder_callables: dict[str, int]
 
-    def __init__(self):
+    def __init__(self, placeholder_callables: dict[str, int] | None = None):
         super().__init__()
         self.root = Fragment(children=[])
         self.stack = []
+        if placeholder_callables is None:
+            self.placeholder_callables = {}
+        else:
+            self.placeholder_callables = placeholder_callables
 
     def handle_starttag(
         self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
@@ -42,6 +48,8 @@ class NodeParser(HTMLParser):
         self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
     ) -> None:
         node = Element(tag, attrs=LastUpdatedOrderedDict(attrs), children=[])
+        if node.tag in self.placeholder_callables:
+            node.component_info = ComponentInfo(endtag=None)
         self.append_element_child(node)
 
     def handle_endtag(self, tag: str) -> None:
@@ -49,9 +57,15 @@ class NodeParser(HTMLParser):
             raise ValueError(f"Unexpected closing tag </{tag}> with no open element.")
 
         element = self.stack.pop()
-        if element.tag != tag:
+        if element.tag != tag and (
+            element.tag not in self.placeholder_callables
+            or self.placeholder_callables[element.tag]
+            != self.placeholder_callables[tag]
+        ):
             raise ValueError(f"Mismatched closing tag </{tag}> for <{element.tag}>.")
 
+        if element.tag in self.placeholder_callables:
+            element.component_info = ComponentInfo(endtag=tag)
         self.append_element_child(element)
 
     def handle_data(self, data: str) -> None:
@@ -130,7 +144,9 @@ class NodeParser(HTMLParser):
         super().feed(data)
 
 
-def parse_html(input: str | t.Iterable[str]) -> Node:
+def parse_html(
+    input: str | t.Iterable[str], placeholder_callables: dict[str, int] | None = None
+) -> Node:
     """
     Parse a string, or sequence of HTML string chunks, into a Node tree.
 
@@ -139,7 +155,7 @@ def parse_html(input: str | t.Iterable[str]) -> Node:
     This is particularly useful if you want to keep specific text chunks
     separate in the resulting Node tree.
     """
-    parser = NodeParser()
+    parser = NodeParser(placeholder_callables=placeholder_callables)
     iterable = [input] if isinstance(input, str) else input
     for chunk in iterable:
         parser.feed(chunk)

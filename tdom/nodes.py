@@ -77,11 +77,17 @@ class DocumentType(Node):
         return f"<!DOCTYPE {self.text}>"
 
 
+@dataclass
+class ComponentInfo:
+    endtag: str | None
+
+
 @dataclass(slots=True)
 class Element(Node):
     tag: str
     attrs: dict[str, str | None] = field(default_factory=dict)
     children: list[Node] = field(default_factory=list)
+    component_info: ComponentInfo | None = None
 
     def __post_init__(self):
         """Ensure all preconditions are met."""
