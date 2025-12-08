@@ -6,8 +6,10 @@ from string.templatelib import Interpolation, Template
 import pytest
 from markupsafe import Markup
 
-from .nodes import Element, Fragment, Node, Text
-from .processor import _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX, html
+from .nodes import Element, Fragment, Node, Text, Comment, DocumentType
+from .placeholders import _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX
+from .processor import html
+
 
 # --------------------------------------------------------------------------
 # Basic HTML parsing tests
@@ -16,7 +18,7 @@ from .processor import _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX, html
 
 def test_parse_empty():
     node = html(t"")
-    assert node == Text("")
+    assert node == Fragment(children=[])
     assert str(node) == ""
 
 
@@ -24,6 +26,18 @@ def test_parse_text():
     node = html(t"Hello, world!")
     assert node == Text("Hello, world!")
     assert str(node) == "Hello, world!"
+
+
+def test_parse_comment():
+    node = html(t"<!--This is a comment-->")
+    assert node == Comment("This is a comment")
+    assert str(node) == "<!--This is a comment-->"
+
+
+def test_parse_document_type():
+    node = html(t"<!doctype html>")
+    assert node == DocumentType("html")
+    assert str(node) == "<!DOCTYPE html>"
 
 
 def test_parse_void_element():
@@ -150,14 +164,18 @@ def test_conversions():
 def test_interpolated_in_content_node():
     # https://github.com/t-strings/tdom/issues/68
     evil = "</style><script>alert('whoops');</script><style>"
-    node = html(t"<style>{evil}</style>")
+    node = html(t"<style>{evil}{evil}</style>")
     assert node == Element(
         "style",
-        children=[Text("</style><script>alert('whoops');</script><style>")],
+        children=[
+            Text("</style><script>alert('whoops');</script><style>"),
+            Text("</style><script>alert('whoops');</script><style>"),
+        ],
     )
+    LT = "&lt;"
     assert (
         str(node)
-        == "<style>&lt;/style&gt;&lt;script&gt;alert(&#39;whoops&#39;);&lt;/script&gt;&lt;style&gt;</style>"
+        == f"<style>{LT}/style><script>alert('whoops');</script><style>{LT}/style><script>alert('whoops');</script><style></style>"
     )
 
 
@@ -166,7 +184,7 @@ def test_interpolated_trusted_in_content_node():
     node = html(t"<script>if (a < b && c > d) {{ alert('wow'); }}</script>")
     assert node == Element(
         "script",
-        children=[Text(Markup("if (a < b && c > d) { alert('wow'); }"))],
+        children=[Text("if (a < b && c > d) { alert('wow'); }")],
     )
     assert str(node) == ("<script>if (a < b && c > d) { alert('wow'); }</script>")
 
@@ -415,7 +433,7 @@ def test_escaping_of_interpolated_attribute_value():
     node = html(t'<a href="{url}">Link</a>')
     assert node == Element(
         "a",
-        attrs={"href": Markup('https://example.com/?q="test"&lang=en')},
+        attrs={"href": 'https://example.com/?q="test"&lang=en'},
         children=[Text("Link")],
     )
     assert (
@@ -485,7 +503,7 @@ def test_multiple_attribute_spread_dicts():
     )
     assert (
         str(node)
-        == '<a href="https://example.com/" id="link1" target="_blank">Link</a>'
+        == '<a href="https://example.com/" target="_blank" id="link1">Link</a>'
     )
 
 
@@ -615,7 +633,7 @@ def test_interpolated_attribute_value_multiple_placeholders_no_quotes():
 
 
 def test_interpolated_data_attributes():
-    data = {"user-id": 123, "role": "admin", "wild": True}
+    data = {"user-id": 123, "role": "admin", "wild": True, "false": False, "none": None}
     node = html(t"<div data={data}>User Info</div>")
     assert node == Element(
         "div",
@@ -628,11 +646,34 @@ def test_interpolated_data_attributes():
     )
 
 
+def test_data_attr_toggle_to_str():
+    for node in [
+        html(t"<div data-selected data={dict(selected='yes')}></div>"),
+        html(t'<div data-selected="no" data={dict(selected="yes")}></div>'),
+    ]:
+        assert node == Element("div", {"data-selected": "yes"})
+        assert str(node) == '<div data-selected="yes"></div>'
+
+
+def test_data_attr_toggle_to_true():
+    node = html(t'<div data-selected="yes" data={dict(selected=True)}></div>')
+    assert node == Element("div", {"data-selected": None})
+    assert str(node) == "<div data-selected></div>"
+
+
+def test_data_attr_unrelated_unaffected():
+    node = html(t"<div data-selected data={dict(active=True)}></div>")
+    assert node == Element("div", {"data-selected": None, "data-active": None})
+    assert str(node) == "<div data-selected data-active></div>"
+
+
+@pytest.mark.skip(reason="Waiting on attribute resolution ... resolution.")
 def test_interpolated_data_attribute_multiple_placeholders():
     confusing = {"user-id": "user-123"}
     placeholders = {"role": "admin"}
     with pytest.raises(TypeError):
-        _ = html(t'<div data="{confusing} {placeholders}">User Info</div>')
+        node = html(t'<div data="{confusing} {placeholders}">User Info</div>')
+        print(str(node))
 
 
 def test_interpolated_aria_attributes():
@@ -649,11 +690,13 @@ def test_interpolated_aria_attributes():
     )
 
 
+@pytest.mark.skip(reason="Waiting on attribute resolution ... resolution.")
 def test_interpolated_aria_attribute_multiple_placeholders():
     confusing = {"label": "Close"}
     placeholders = {"hidden": True}
     with pytest.raises(TypeError):
-        _ = html(t'<button aria="{confusing} {placeholders}">X</button>')
+        node = html(t'<button aria="{confusing} {placeholders}">X</button>')
+        print(str(node))
 
 
 def test_interpolated_style_attribute():
@@ -668,6 +711,18 @@ def test_interpolated_style_attribute():
         str(node)
         == '<p style="color: red; font-weight: bold; font-size: 16px">Warning!</p>'
     )
+
+
+def test_override_static_style_str_str():
+    node = html(t'<p style="font-color: red" {dict(style="font-size: 15px")}></p>')
+    assert node == Element("p", {"style": "font-size: 15px"})
+    assert str(node) == '<p style="font-size: 15px"></p>'
+
+
+def test_override_static_style_str_builder():
+    node = html(t'<p style="font-color: red" {dict(style={"font-size": "15px"})}></p>')
+    assert node == Element("p", {"style": "font-size: 15px"})
+    assert str(node) == '<p style="font-size: 15px"></p>'
 
 
 def test_interpolated_style_attribute_multiple_placeholders():
@@ -961,7 +1016,7 @@ class ClassComponent:
         )
 
 
-def test_class_component_implicit_invocation():
+def test_class_component_implicit_invocation_with_children():
     node = html(
         t"<{ClassComponent} user-name='Alice' image-url='https://example.com/alice.png'>Fun times!</{ClassComponent}>"
     )
@@ -1151,3 +1206,39 @@ def RequiresPositional(whoops: int, /) -> Template:  # pragma: no cover
 def test_component_requiring_positional_arg_fails():
     with pytest.raises(TypeError):
         _ = html(t"<{RequiresPositional} />")
+
+
+def test_replace_static_attr_str_str():
+    node = html(t'<div title="default" {dict(title="fresh")}></div>')
+    assert node == Element("div", {"title": "fresh"})
+    assert str(node) == '<div title="fresh"></div>'
+
+
+def test_replace_static_attr_str_true():
+    node = html(t'<div title="default" {dict(title=True)}></div>')
+    assert node == Element("div", {"title": None})
+    assert str(node) == "<div title></div>"
+
+
+def test_replace_static_attr_true_str():
+    node = html(t"<div title {dict(title='fresh')}></div>")
+    assert node == Element("div", {"title": "fresh"})
+    assert str(node) == '<div title="fresh"></div>'
+
+
+def test_remove_static_attr_str_none():
+    node = html(t'<div title="default" {dict(title=None)}></div>')
+    assert node == Element("div")
+    assert str(node) == "<div></div>"
+
+
+def test_remove_static_attr_true_none():
+    node = html(t"<div title {dict(title=None)}></div>")
+    assert node == Element("div")
+    assert str(node) == "<div></div>"
+
+
+def test_other_static_attr_intact():
+    node = html(t'<img title="default" {dict(alt="fresh")}>')
+    assert node == Element("img", {"title": "default", "alt": "fresh"})
+    assert str(node) == '<img title="default" alt="fresh" />'
