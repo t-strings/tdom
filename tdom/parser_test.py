@@ -23,7 +23,7 @@ def test_parse_text():
 
 def test_parse_text_with_entities():
     node = TemplateParser.parse(t"Panini&apos;s")
-    assert node == TText.static("Panini&apos;s")
+    assert node == TText.static("Panini's")
 
 
 def test_parse_void_element():
@@ -134,7 +134,7 @@ def test_parse_entities_are_escaped():
     node = TemplateParser.parse(t"<p>&lt;/p&gt;</p>")
     assert node == TElement(
         "p",
-        children=[TText.static("&lt;/p&gt;")],
+        children=[TText.static("</p>")],
     )
 
 
@@ -174,7 +174,6 @@ def test_parse_textarea_with_entities():
         "textarea",
         children=[TText.static("var x = 'a & b';")],
     )
-    assert str(node) == "<textarea>var x = 'a & b';</textarea>"
 
 
 def test_parse_title_unusual():

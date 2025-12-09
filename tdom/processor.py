@@ -13,7 +13,7 @@ from markupsafe import Markup
 from .callables import CallableInfo, get_callable_info
 from .classnames import classnames
 from .nodes import Element, Fragment, Node, Text
-from .parser import parse_html
+from .parser import TemplateParser
 from .utils import format_interpolation as base_format_interpolation
 
 
@@ -180,7 +180,7 @@ def _instrument_and_parse_internal(
     The result is cached to avoid re-parsing the same template multiple times.
     """
     instrumented = _instrument(strings, callable_infos)
-    return parse_html(instrumented)
+    return TemplateParser.parse(instrumented)
 
 
 def _callable_info(value: object) -> CallableInfo | None:
