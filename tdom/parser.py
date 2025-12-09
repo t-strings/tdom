@@ -84,8 +84,12 @@ class TElement(TNode):
 
 @dataclass(slots=True)
 class TComponent(TNode):
-    start_tag_index: int
-    end_tag_index: int = -1
+    start_i_index: int
+    """The interpolation index for the component's starting tag name."""
+
+    end_i_index: int = -1
+    """The interpolation index for the component's ending tag name, if any."""
+
     attrs: list[TAttribute] = field(default_factory=list)
     children: list[TNode] = field(default_factory=list)
 
@@ -143,17 +147,26 @@ class TemplateParser(HTMLParser):
             )
         return TSpreadAttribute(name_i_index=name_ref.i_indexes[0])
 
-    def _make_element(
-        self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
-    ) -> TElement:
+    def _make_tag(self, tag: str, attrs: t.Sequence[tuple[str, str | None]]) -> TTag:
         """Build a TElement from a raw tag and attribute list."""
         tattrs = [self._make_attribute(a) for a in attrs]
-        return TElement(tag=tag, attrs=tattrs, children=[])
+        tag_ref = self.placeholder_state.remove_placeholders(tag)
+        if tag_ref.is_static:
+            return TElement(tag=tag, attrs=tattrs, children=[])
+        if not tag_ref.is_singleton:
+            raise ValueError(
+                "Component element tags must have exactly one interpolation."
+            )
+        return TComponent(
+            start_i_index=tag_ref.i_indexes[0],
+            attrs=tattrs,
+            children=[],
+        )
 
     def handle_starttag(
         self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
     ) -> None:
-        node = self._make_element(tag, attrs)
+        node = self._make_tag(tag, attrs)
         if tag in VOID_ELEMENTS:
             self.append_element_child(node)
         else:
@@ -162,7 +175,7 @@ class TemplateParser(HTMLParser):
     def handle_startendtag(
         self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
     ) -> None:
-        node = self._make_element(tag, attrs)
+        node = self._make_tag(tag, attrs)
         self.append_element_child(node)
 
     def handle_endtag(self, tag: str) -> None:
@@ -176,8 +189,19 @@ class TemplateParser(HTMLParser):
                     f"Mismatched closing tag </{tag}> for <{element.tag}>."
                 )
         else:
-            # TODO: handle TComponentElement end tags here.
-            raise NotImplementedError("Component elements are not yet supported.")
+            # HERE BE DRAGONS:
+            #
+            # Ignore the end tag in parsing; if it doesn't match, we'll
+            # catch later, when we resolve and render the TComponent.
+            #
+            # This allows us to avoid caching based on interpolation values
+            # at a higher layer, which we think is a good trade-off for now.
+            tag_ref = self.placeholder_state.remove_placeholders(tag)
+            if not tag_ref.is_singleton:
+                raise ValueError(
+                    "Component element closing tags must have exactly one interpolation."
+                )
+            element.end_i_index = tag_ref.i_indexes[0]
 
         self.append_element_child(element)
 

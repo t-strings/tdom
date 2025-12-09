@@ -2,6 +2,7 @@ import pytest
 
 from .parser import (
     TComment,
+    TComponent,
     TDocumentType,
     TElement,
     TemplateParser,
@@ -281,3 +282,38 @@ def test_spread_attribute():
         attrs=[TSpreadAttribute(name_i_index=0)],
         children=[],
     )
+
+
+def test_component_element_self_closing():
+    def Component():
+        pass
+
+    node = TemplateParser.parse(t"<{Component} />")
+    assert node == TComponent(start_i_index=0)
+
+
+def test_component_element_with_closing_tag():
+    def Component():
+        pass
+
+    node = TemplateParser.parse(t"<{Component}></{Component}>")
+    assert node == TComponent(start_i_index=0, end_i_index=1)
+
+
+def test_component_element_special_case_mismatched_closing_tag_still_parses():
+    def Component1():
+        pass
+
+    def Component2():
+        pass
+
+    node = TemplateParser.parse(t"<{Component1}></{Component2}>")
+    assert node == TComponent(start_i_index=0, end_i_index=1)
+
+
+def test_component_element_invalid_closing_tag():
+    def Component():
+        pass
+
+    with pytest.raises(ValueError):
+        _ = TemplateParser.parse(t"<{Component}></div>")
