@@ -170,7 +170,7 @@ def _resolve_t_attrs(
                 for sub_k, sub_v in _substitute_spread_attrs(spread_value):
                     new_attrs[sub_k] = sub_v
             case _:
-                assert False, f"Unknown TAttribute type: {type(attr).__name__}"
+                raise ValueError(f"Unknown TAttribute type: {type(attr).__name__}")
     return new_attrs
 
 
@@ -384,7 +384,7 @@ def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) ->
         ):
             start_interpolation = interpolations[start_i_index]
             end_interpolation = (
-                interpolations[end_i_index] if end_i_index != -1 else None
+                None if end_i_index is None else interpolations[end_i_index]
             )
             resolved_attrs = _resolve_t_attrs(t_attrs, interpolations)
             resolved_children = _substitute_and_flatten_children(
@@ -396,14 +396,14 @@ def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) ->
                 end_interpolation is not None
                 and end_interpolation.value != start_interpolation.value
             ):
-                raise ValueError("Mismatched component start and end callables.")
+                raise TypeError("Mismatched component start and end callables.")
             return _invoke_component(
                 attrs=resolved_attrs,
                 children=resolved_children,
                 interpolation=start_interpolation,
             )
         case _:
-            assert False, f"Unknown TNode type: {type(t_node).__name__}"
+            raise ValueError(f"Unknown TNode type: {type(t_node).__name__}")
 
 
 # --------------------------------------------------------------------------

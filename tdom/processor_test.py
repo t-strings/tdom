@@ -1138,3 +1138,10 @@ def RequiresPositional(whoops: int, /) -> Template:  # pragma: no cover
 def test_component_requiring_positional_arg_fails():
     with pytest.raises(TypeError):
         _ = html(t"<{RequiresPositional} />")
+
+
+def test_mismatched_component_closing_tag_fails():
+    with pytest.raises(TypeError):
+        _ = html(
+            t"<{FunctionComponent} first=1 second={99} third-arg='comp1'>Hello</{ClassComponent}>"
+        )

@@ -100,7 +100,7 @@ class TComponent(TNode):
     start_i_index: int
     """The interpolation index for the component's starting tag name."""
 
-    end_i_index: int = -1
+    end_i_index: int | None = None
     """The interpolation index for the component's ending tag name, if any."""
 
     attrs: list[TAttribute] = field(default_factory=list)
