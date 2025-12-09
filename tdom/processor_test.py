@@ -7,7 +7,8 @@ import pytest
 from markupsafe import Markup
 
 from .nodes import Element, Fragment, Node, Text
-from .processor import _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX, html
+from .placeholders import _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX
+from .processor import html
 
 # --------------------------------------------------------------------------
 # Basic HTML parsing tests

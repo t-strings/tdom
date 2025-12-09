@@ -1,4 +1,5 @@
 import typing as t
+from collections import OrderedDict
 from string.templatelib import Interpolation, Template
 
 
@@ -114,3 +115,11 @@ class CachableTemplate:
 
     def __hash__(self) -> int:
         return hash(self.template.strings)
+
+
+class LastUpdatedOrderedDict(OrderedDict):
+    "Store items in the order the keys were last updated."
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.move_to_end(key)

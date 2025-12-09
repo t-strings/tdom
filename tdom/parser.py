@@ -70,17 +70,22 @@ class TText(TNode):
 
 
 @dataclass(slots=True)
-class TFragment(TNode):
-    children: list[TNode]
-
-
-@dataclass(slots=True)
 class TComment(TNode):
     ref: TemplateRef
 
     @classmethod
     def static(cls, text: str) -> t.Self:
         return cls(TemplateRef.static(text))
+
+
+@dataclass(slots=True)
+class TDocumentType(TNode):
+    text: str
+
+
+@dataclass(slots=True)
+class TFragment(TNode):
+    children: list[TNode]
 
 
 @dataclass(slots=True)
@@ -103,11 +108,6 @@ class TComponent(TNode):
 
 
 type TTag = TElement | TComponent
-
-
-@dataclass(slots=True)
-class TDocumentType(TNode):
-    text: str
 
 
 # ------------------------------------------------------

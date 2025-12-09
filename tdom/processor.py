@@ -13,9 +13,12 @@ from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
 from .parser import (
     TAttribute,
     TComment,
+    TComponent,
     TDocumentType,
     TElement,
     TemplateParser,
+    TFragment,
+    TInterpolatedAttribute,
     TLiteralAttribute,
     TNode,
     TSpreadAttribute,
@@ -23,7 +26,7 @@ from .parser import (
     TText,
 )
 from .placeholders import TemplateRef
-from .utils import CachableTemplate, template_from_parts
+from .utils import CachableTemplate, LastUpdatedOrderedDict, template_from_parts
 
 
 @t.runtime_checkable
@@ -40,6 +43,9 @@ def _callable_info(value: object) -> CallableInfo | None:
     """Return a unique identifier for a callable, or None if not callable."""
     return get_callable_info(value) if callable(value) else None
 
+
+type AttributesDict = dict[str, object]
+type HTMLAttributesDict = dict[str, str | None]
 
 # --------------------------------------------------------------------------
 # Placeholder Substitution
@@ -156,75 +162,70 @@ def _process_static_attr(
             yield (key, value)
 
 
-def _substitute_interpolated_attrs(
-    attrs: dict[str, str | None], interpolations: tuple[Interpolation, ...]
-) -> dict[str, object | None]:
+def _resolve_tattrs(
+    attrs: t.Sequence[TAttribute], interpolations: tuple[Interpolation, ...]
+) -> AttributesDict:
     """
     Replace placeholder values in attributes with their interpolated values.
 
-    This only handles step (1): value substitution. No special processing
-    of attribute names or value types is performed.
+    The values returned are not yet processed for HTML output; that is handled
+    in a later step.
     """
-    new_attrs: dict[str, object | None] = {}
-    for key, value in attrs.items():
-        if value is not None:
-            has_placeholders, new_value = _replace_placeholders(value, interpolations)
-            if has_placeholders:
-                for sub_k, sub_v in _process_attr(key, new_value):
+    new_attrs: AttributesDict = LastUpdatedOrderedDict()
+    for attr in attrs:
+        match attr:
+            case TLiteralAttribute(name=name, value=value):
+                new_attrs[name] = True if value is None else value
+            case TInterpolatedAttribute(name=name, value_i_index=i_index):
+                interpolation = interpolations[i_index]
+                attr_value = format_interpolation(interpolation)
+                for sub_k, sub_v in _process_attr(name, attr_value):
                     new_attrs[sub_k] = sub_v
-                continue
-
-        if (index := _find_placeholder(key)) is not None:
-            # Spread attributes
-            interpolation = interpolations[index]
-            spread_value = format_interpolation(interpolation)
-            for sub_k, sub_v in _substitute_spread_attrs(spread_value):
-                new_attrs[sub_k] = sub_v
-        else:
-            # Static attribute
-            for sub_k, sub_v in _process_static_attr(key, value):
-                new_attrs[sub_k] = sub_v
+            case TTemplatedAttribute(name=name, ref=ref):
+                attr_t = _resolve_ref(ref, interpolations)
+                attr_value = render_template_as_f(attr_t)
+                new_attrs[name] = attr_value
+            case TSpreadAttribute(i_index=i_index):
+                interpolation = interpolations[i_index]
+                spread_value = format_interpolation(interpolation)
+                for sub_k, sub_v in _substitute_spread_attrs(spread_value):
+                    new_attrs[sub_k] = sub_v
     return new_attrs
 
 
-def _process_html_attrs(attrs: dict[str, object]) -> dict[str, str | None]:
-    """
-    Process attributes for HTML elements.
-
-    This handles steps (2) and (3): special attribute name handling and
-    value type processing (True -> None, False -> omit, etc.)
-    """
-    processed_attrs: dict[str, str | None] = {}
+def _resolve_html_attrs(attrs: AttributesDict) -> HTMLAttributesDict:
+    """Resolve attribute values for HTML output."""
+    html_attrs: HTMLAttributesDict = {}
     for key, value in attrs.items():
         match value:
             case True:
-                processed_attrs[key] = None
+                html_attrs[key] = None
             case False | None:
                 pass
             case _:
-                processed_attrs[key] = str(value)
-    return processed_attrs
+                html_attrs[key] = str(value)
+    return html_attrs
 
 
-def _substitute_attrs(
-    attrs: dict[str, str | None], interpolations: tuple[Interpolation, ...]
-) -> dict[str, str | None]:
+def _resolve_attrs(
+    attrs: t.Sequence[TAttribute], interpolations: tuple[Interpolation, ...]
+) -> HTMLAttributesDict:
     """
     Substitute placeholders in attributes for HTML elements.
 
     This is the full pipeline: interpolation + HTML processing.
     """
-    interpolated_attrs = _substitute_interpolated_attrs(attrs, interpolations)
-    return _process_html_attrs(interpolated_attrs)
+    interpolated_attrs = _resolve_tattrs(attrs, interpolations)
+    return _resolve_html_attrs(interpolated_attrs)
 
 
 def _substitute_and_flatten_children(
-    children: t.Iterable[Node], interpolations: tuple[Interpolation, ...]
+    children: t.Iterable[TNode], interpolations: tuple[Interpolation, ...]
 ) -> list[Node]:
     """Substitute placeholders in a list of children and flatten any fragments."""
     new_children: list[Node] = []
     for child in children:
-        substituted = _substitute_node(child, interpolations)
+        substituted = _resolve_tnode(child, interpolations)
         if isinstance(substituted, Fragment):
             # This can happen if an interpolation results in a Fragment, for
             # instance if it is iterable.
@@ -272,8 +273,8 @@ def _kebab_to_snake(name: str) -> str:
 
 
 def _invoke_component(
-    new_attrs: dict[str, object | None],
-    new_children: list[Node],
+    attrs: AttributesDict,
+    children: list[Node],
     interpolation: Interpolation,
 ) -> Node:
     """
@@ -319,14 +320,14 @@ def _invoke_component(
     kwargs: dict[str, object] = {}
 
     # Add all supported attributes
-    for attr_name, attr_value in new_attrs.items():
+    for attr_name, attr_value in attrs.items():
         snake_name = _kebab_to_snake(attr_name)
         if snake_name in callable_info.named_params or callable_info.kwargs:
             kwargs[snake_name] = attr_value
 
     # Add children if appropriate
     if "children" in callable_info.named_params or callable_info.kwargs:
-        kwargs["children"] = tuple(new_children)
+        kwargs["children"] = tuple(children)
 
     # Check to make sure we've fully satisfied the callable's requirements
     missing = callable_info.required_named_params - kwargs.keys()
@@ -339,28 +340,6 @@ def _invoke_component(
     return _node_from_value(result)
 
 
-def _resolve_attrs(
-    attrs: list[TAttribute], interpolations: tuple[Interpolation, ...]
-) -> dict[str, str | None]:
-    """Resolve a list of TAttributes into a dict of attributes."""
-    # TODO: need to implement real merge rules here, handling of special-case
-    # attributes, etc.
-    resolved_attrs: dict[str, str | None] = {}
-    for attr in attrs:
-        match attr:
-            case TLiteralAttribute(name=name, value=value):
-                resolved_attrs[name] = value
-            case TTemplatedAttribute(name=name, ref=ref):
-                attr_t = _resolve_ref(ref, interpolations)
-                attr_value = render_template_as_f(attr_t)
-                resolved_attrs[name] = attr_value
-            case TSpreadAttribute(name_i_index=index):
-                spread_value = format_interpolation(interpolations[index])
-                for sub_k, sub_v in _substitute_spread_attrs(spread_value):
-                    resolved_attrs[sub_k] = sub_v
-    return resolved_attrs
-
-
 def _resolve_ref(
     ref: TemplateRef, interpolations: tuple[Interpolation, ...]
 ) -> Template:
@@ -368,7 +347,7 @@ def _resolve_ref(
     return template_from_parts(ref.strings, resolved)
 
 
-def _resolve(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> Node:
+def _resolve_tnode(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> Node:
     """Resolve a TNode tree into a Node tree by processing interpolations."""
     match t_node:
         case TText(ref=ref):
@@ -381,28 +360,43 @@ def _resolve(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> Node:
             return Comment(comment)
         case TDocumentType(text=text):
             return DocumentType(text)
+        case TFragment(children=children):
+            resolved_children = [
+                _resolve_tnode(child, interpolations) for child in children
+            ]
+            return Fragment(children=resolved_children)
         case TElement(tag=tag, attrs=attrs, children=children):
             resolved_attrs = _resolve_attrs(attrs, interpolations)
-            resolved_children = [_resolve(child, interpolations) for child in children]
+            resolved_children = [
+                _resolve_tnode(child, interpolations) for child in children
+            ]
             return Element(tag=tag, attrs=resolved_attrs, children=resolved_children)
-        case Fragment(children=children):
-            resolved_children = [_resolve(child, interpolations) for child in children]
-            return Fragment(children=resolved_children)
-        case Element(tag=tag, attrs=attrs, children=children):
-            new_children = _substitute_and_flatten_children(children, interpolations)
-            if (index := _find_placeholder(tag)) is not None:
-                component_attrs = _substitute_interpolated_attrs(attrs, interpolations)
-                return _invoke_component(
-                    component_attrs, new_children, interpolations[index]
-                )
-            else:
-                html_attrs = _substitute_attrs(attrs, interpolations)
-                return Element(tag=tag, attrs=html_attrs, children=new_children)
-        case Fragment(children=children):
-            new_children = _substitute_and_flatten_children(children, interpolations)
-            return Fragment(children=new_children)
+        case TComponent(
+            start_i_index=start_i_index,
+            end_i_index=end_i_index,
+            attrs=attrs,
+            children=children,
+        ):
+            start_interpolation = interpolations[start_i_index]
+            end_interpolation = (
+                interpolations[end_i_index] if end_i_index != -1 else None
+            )
+            resolved_attrs = _resolve_tattrs(attrs, interpolations)
+            resolved_children = [
+                _resolve_tnode(child, interpolations) for child in children
+            ]
+            if (
+                end_interpolation is not None
+                and end_interpolation.value != start_interpolation.value
+            ):
+                raise ValueError("Mismatched component start and end callables.")
+            return _invoke_component(
+                attrs=resolved_attrs,
+                children=resolved_children,
+                interpolation=start_interpolation,
+            )
         case _:
-            return p_node
+            raise TypeError(f"Unknown TNode type: {type(t_node).__name__}")
 
 
 # --------------------------------------------------------------------------
@@ -411,9 +405,7 @@ def _resolve(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> Node:
 
 
 def html(template: Template) -> Node:
-    """Parse a t-string and return a tree of Nodes."""
-    # Parse the HTML, returning a tree of nodes with placeholders
-    # where interpolations go.
+    """Parse a t-string, substitue values, return a tree of Nodes."""
     cachable = CachableTemplate(template)
-    t_node = _parse_and_cache(cachable)
-    return _resolve(t_node, template.interpolations)
+    tnode = _parse_and_cache(cachable)
+    return _resolve_tnode(tnode, template.interpolations)
