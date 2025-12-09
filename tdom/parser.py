@@ -1,8 +1,7 @@
 import typing as t
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
-
-from markupsafe import Markup
+from string.templatelib import Template
 
 from .nodes import (
     CONTENT_ELEMENTS,
@@ -57,6 +56,10 @@ class TText(TNode):
     def empty(cls) -> t.Self:
         return cls(TemplateRef.empty())
 
+    @classmethod
+    def static(cls, text: str) -> t.Self:
+        return cls(TemplateRef.static(text))
+
 
 @dataclass(slots=True)
 class TFragment(TNode):
@@ -67,22 +70,27 @@ class TFragment(TNode):
 class TComment(TNode):
     ref: TemplateRef
 
-
-@dataclass(slots=True)
-class TElementBase(TNode):
-    attrs: list[TAttribute]
-    children: list[TNode]
+    @classmethod
+    def static(cls, text: str) -> t.Self:
+        return cls(TemplateRef.static(text))
 
 
 @dataclass(slots=True)
-class TElement(TElementBase):
+class TElement(TNode):
     tag: str
+    attrs: list[TAttribute] = field(default_factory=list)
+    children: list[TNode] = field(default_factory=list)
 
 
 @dataclass(slots=True)
-class TComponentElement(TElementBase):
+class TComponent(TNode):
     start_tag_index: int
     end_tag_index: int = -1
+    attrs: list[TAttribute] = field(default_factory=list)
+    children: list[TNode] = field(default_factory=list)
+
+
+type TTag = TElement | TComponent
 
 
 @dataclass(slots=True)
@@ -97,7 +105,7 @@ class TDocumentType(TNode):
 
 class TemplateParser(HTMLParser):
     root: TFragment
-    stack: list[TElementBase]
+    stack: list[TTag]
     placeholder_state: PlaceholderState
 
     def __init__(self):
@@ -174,16 +182,18 @@ class TemplateParser(HTMLParser):
         self.append_element_child(element)
 
     def handle_data(self, data: str) -> None:
-        text = TText(Markup(data) if self.in_content_element() else data)
+        ref = self.placeholder_state.remove_placeholders(data)
+        text = TText(ref)
         self.append_child(text)
 
     def handle_comment(self, data: str) -> None:
-        comment = TComment(data)
+        ref = self.placeholder_state.remove_placeholders(data)
+        comment = TComment(ref)
         self.append_child(comment)
 
     def handle_decl(self, decl: str) -> None:
-        placeholders = list(self.placeholder_state.remove_optional_placeholders(decl))
-        if placeholders:
+        ref = self.placeholder_state.remove_placeholders(decl)
+        if not ref.is_static:
             raise ValueError("Interpolations are not allowed in declarations.")
         if not decl.upper().startswith("DOCTYPE"):
             raise NotImplementedError(
@@ -200,15 +210,15 @@ class TemplateParser(HTMLParser):
             isinstance(open_element, TElement) and open_element.tag in CONTENT_ELEMENTS
         )
 
-    def get_parent(self) -> TFragment | TElementBase:
+    def get_parent(self) -> TFragment | TTag:
         """Return the current parent node to which new children should be added."""
         return self.stack[-1] if self.stack else self.root
 
-    def get_open_element(self) -> TElementBase | None:
+    def get_open_element(self) -> TTag | None:
         """Return the currently open Element, if any."""
         return self.stack[-1] if self.stack else None
 
-    def append_element_child(self, child: TElementBase) -> None:
+    def append_element_child(self, child: TTag) -> None:
         parent = self.get_parent()
         # node: TElement | TFragment = child
         # # Special case: if the element is a Fragment, convert it to a Fragment node.

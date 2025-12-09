@@ -1,155 +1,129 @@
 import pytest
-from markupsafe import Markup
 
-from .nodes import Comment, DocumentType, Element, Fragment, Text
-from .parser import parse_html
+from .parser import (
+    TComment,
+    TDocumentType,
+    TElement,
+    TemplateParser,
+    TFragment,
+    TLiteralAttribute,
+    TText,
+)
 
 
 def test_parse_empty():
-    node = parse_html("")
-    assert node == Text("")
+    node = TemplateParser.parse(t"")
+    assert node == TText.empty()
 
 
 def test_parse_text():
-    node = parse_html("Hello, world!")
-    assert node == Text("Hello, world!")
+    node = TemplateParser.parse(t"Hello, world!")
+    assert node == TText.static("Hello, world!")
 
 
 def test_parse_text_with_entities():
-    node = parse_html("Panini&apos;s")
-    assert node == Text("Panini's")
+    node = TemplateParser.parse(t"Panini&apos;s")
+    assert node == TText.static("Panini&apos;s")
 
 
 def test_parse_void_element():
-    node = parse_html("<br>")
-    assert node == Element("br")
+    node = TemplateParser.parse(t"<br>")
+    assert node == TElement("br")
 
 
 def test_parse_void_element_self_closed():
-    node = parse_html("<br />")
-    assert node == Element("br")
+    node = TemplateParser.parse(t"<br />")
+    assert node == TElement("br")
 
 
 def test_parse_uppercase_void_element():
-    node = parse_html("<BR>")
-    assert node == Element("br")
+    node = TemplateParser.parse(t"<BR>")
+    assert node == TElement("br")
 
 
 def test_parse_standard_element_with_text():
-    node = parse_html("<div>Hello, world!</div>")
-    assert node == Element("div", children=[Text("Hello, world!")])
+    node = TemplateParser.parse(t"<div>Hello, world!</div>")
+    assert node == TElement("div", children=[TText.static("Hello, world!")])
 
 
 def test_parse_nested_elements():
-    node = parse_html("<div><span>Nested</span> content</div>")
-    assert node == Element(
+    node = TemplateParser.parse(t"<div><span>Nested</span> content</div>")
+    assert node == TElement(
         "div",
         children=[
-            Element("span", children=[Text("Nested")]),
-            Text(" content"),
+            TElement("span", children=[TText.static("Nested")]),
+            TText.static(" content"),
         ],
     )
 
 
 def test_parse_element_with_attributes():
-    node = parse_html('<a href="https://example.com" target="_blank">Link</a>')
-    assert node == Element(
+    node = TemplateParser.parse(
+        t'<a href="https://example.com" target="_blank">Link</a>'
+    )
+    assert node == TElement(
         "a",
-        attrs={"href": "https://example.com", "target": "_blank"},
-        children=[Text("Link")],
+        attrs=[
+            TLiteralAttribute("href", "https://example.com"),
+            TLiteralAttribute("target", "_blank"),
+        ],
+        children=[TText.static("Link")],
     )
 
 
 def test_parse_element_attribute_order():
-    node = parse_html('<a title="a" href="b" title="c"></a>')
-    assert isinstance(node, Element)
-    assert list(node.attrs.items()) == [("href", "b"), ("title", "c")]
+    node = TemplateParser.parse(t'<a title="a" href="b" title="c"></a>')
+    assert isinstance(node, TElement)
+    assert node.attrs == [
+        TLiteralAttribute("title", "a"),
+        TLiteralAttribute("href", "b"),
+        TLiteralAttribute("title", "c"),
+    ]
 
 
 def test_parse_comment():
-    node = parse_html("<!-- This is a comment -->")
-    assert node == Comment(" This is a comment ")
+    node = TemplateParser.parse(t"<!-- This is a comment -->")
+    assert node == TComment.static(" This is a comment ")
 
 
 def test_parse_doctype():
-    node = parse_html("<!DOCTYPE html>")
-    assert node == DocumentType("html")
-
-
-def test_parse_explicit_fragment_empty():
-    node = parse_html("<></>")
-    assert node == Fragment(children=[])
-
-
-def test_parse_explicit_fragment_with_content():
-    node = parse_html("<><div>Item 1</div><div>Item 2</div></>")
-    assert node == Fragment(
-        children=[
-            Element("div", children=[Text("Item 1")]),
-            Element("div", children=[Text("Item 2")]),
-        ]
-    )
-
-
-def test_parse_explicit_fragment_with_text():
-    node = parse_html("<>Hello, <span>world</span>!</>")
-    assert node == Fragment(
-        children=[
-            Text("Hello, "),
-            Element("span", children=[Text("world")]),
-            Text("!"),
-        ]
-    )
-
-
-def test_parse_explicit_fragment_nested():
-    node = parse_html("<div><>Nested <span>fragment</span></></div>")
-    assert node == Element(
-        "div",
-        children=[
-            Fragment(
-                children=[
-                    Text("Nested "),
-                    Element("span", children=[Text("fragment")]),
-                ]
-            )
-        ],
-    )
+    node = TemplateParser.parse(t"<!DOCTYPE html>")
+    assert node == TDocumentType("html")
 
 
 def test_parse_multiple_voids():
-    node = parse_html("<br><hr><hr /><hr /><br /><br><br>")
-    assert node == Fragment(
+    node = TemplateParser.parse(t"<br><hr><hr /><hr /><br /><br><br>")
+    assert node == TFragment(
         children=[
-            Element("br"),
-            Element("hr"),
-            Element("hr"),
-            Element("hr"),
-            Element("br"),
-            Element("br"),
-            Element("br"),
+            TElement("br"),
+            TElement("hr"),
+            TElement("hr"),
+            TElement("hr"),
+            TElement("br"),
+            TElement("br"),
+            TElement("br"),
         ]
     )
 
 
 def test_parse_mixed_content():
-    node = parse_html(
-        '<!DOCTYPE html><!-- Comment --><div class="container">'
-        "Hello, <br class='funky' />world <!-- neato -->!</div>"
+    node = TemplateParser.parse(
+        t'<!DOCTYPE html><!-- Comment --><div class="container">'
+        t"Hello, <br class='funky' />world <!-- neato -->!</div>"
     )
-    assert node == Fragment(
+    assert node == TFragment(
         children=[
-            DocumentType("html"),
-            Comment(" Comment "),
-            Element(
+            TDocumentType("html"),
+            TComment.static(" Comment "),
+            TElement(
                 "div",
-                attrs={"class": "container"},
+                attrs=[TLiteralAttribute("class", "container")],
                 children=[
-                    Text("Hello, "),
-                    Element("br", attrs={"class": "funky"}),
-                    Text("world "),
-                    Comment(" neato "),
-                    Text("!"),
+                    TText.static("Hello, "),
+                    TElement("br", attrs=[TLiteralAttribute("class", "funky")]),
+                    TText.static("world "),
+                    TComment.static(" neato "),
+                    TText.static("!"),
                 ],
             ),
         ]
@@ -157,120 +131,99 @@ def test_parse_mixed_content():
 
 
 def test_parse_entities_are_escaped():
-    node = parse_html("<p>&lt;/p&gt;</p>")
-    assert node == Element(
+    node = TemplateParser.parse(t"<p>&lt;/p&gt;</p>")
+    assert node == TElement(
         "p",
-        children=[Text("</p>")],
+        children=[TText.static("&lt;/p&gt;")],
     )
-    assert str(node) == "<p>&lt;/p&gt;</p>"
 
 
 def test_parse_script_tag_content():
-    node = parse_html("<script>if (a < b && c > d) { alert('wow'); }</script>")
-    assert node == Element(
-        "script",
-        children=[Text(Markup("if (a < b && c > d) { alert('wow'); }"))],
+    node = TemplateParser.parse(
+        t"<script>if (a < b && c > d) {{ alert('wow'); }}</script>"
     )
-    assert str(node) == ("<script>if (a < b && c > d) { alert('wow'); }</script>")
+    assert node == TElement(
+        "script",
+        children=[TText.static("if (a < b && c > d) { alert('wow'); }")],
+    )
 
 
 def test_parse_script_with_entities():
     # The <script> tag (and <style>) tag uses the CDATA content model.
-    node = parse_html("<script>var x = 'a &amp; b';</script>")
-    assert node == Element(
+    node = TemplateParser.parse(t"<script>var x = 'a &amp; b';</script>")
+    assert node == TElement(
         "script",
-        children=[Text(Markup("var x = 'a &amp; b';"))],
+        children=[TText.static("var x = 'a &amp; b';")],
     )
-    assert str(node) == "<script>var x = 'a &amp; b';</script>"
 
 
 def test_parse_textarea_tag_content():
-    node = parse_html("<textarea>if (a < b && c > d) { alert('wow'); }</textarea>")
-    assert node == Element(
-        "textarea",
-        children=[Text(Markup("if (a < b && c > d) { alert('wow'); }"))],
+    node = TemplateParser.parse(
+        t"<textarea>if (a < b && c > d) {{ alert('wow'); }}</textarea>"
     )
-    assert str(node) == "<textarea>if (a < b && c > d) { alert('wow'); }</textarea>"
+    assert node == TElement(
+        "textarea",
+        children=[TText.static("if (a < b && c > d) { alert('wow'); }")],
+    )
 
 
 def test_parse_textarea_with_entities():
     # The <textarea> (and <title>) tag uses the RCDATA content model.
-    node = parse_html("<textarea>var x = 'a &amp; b';</textarea>")
-    assert node == Element(
+    node = TemplateParser.parse(t"<textarea>var x = 'a &amp; b';</textarea>")
+    assert node == TElement(
         "textarea",
-        children=[Text(Markup("var x = 'a & b';"))],
+        children=[TText.static("var x = 'a & b';")],
     )
     assert str(node) == "<textarea>var x = 'a & b';</textarea>"
 
 
 def test_parse_title_unusual():
-    node = parse_html("<title>My & Awesome <Site></title>")
-    assert node == Element(
+    node = TemplateParser.parse(t"<title>My & Awesome <Site></title>")
+    assert node == TElement(
         "title",
-        children=[Text(Markup("My & Awesome <Site>"))],
+        children=[TText.static("My & Awesome <Site>")],
     )
-    assert str(node) == "<title>My & Awesome <Site></title>"
 
 
 def test_parse_mismatched_tags():
     with pytest.raises(ValueError):
-        _ = parse_html("<div><span>Mismatched</div></span>")
+        _ = TemplateParser.parse(t"<div><span>Mismatched</div></span>")
 
 
 def test_parse_unclosed_tag():
     with pytest.raises(ValueError):
-        _ = parse_html("<div>Unclosed")
+        _ = TemplateParser.parse(t"<div>Unclosed")
 
 
 def test_parse_unexpected_closing_tag():
     with pytest.raises(ValueError):
-        _ = parse_html("Unopened</div>")
+        _ = TemplateParser.parse(t"Unopened</div>")
 
 
 def test_self_closing_tags():
-    node = parse_html("<div/><p></p>")
-    assert node == Fragment(
+    node = TemplateParser.parse(t"<div/><p></p>")
+    assert node == TFragment(
         children=[
-            Element("div"),
-            Element("p"),
+            TElement("div"),
+            TElement("p"),
         ]
     )
 
 
 def test_nested_self_closing_tags():
-    node = parse_html("<div><br><div /><br></div>")
-    assert node == Element(
-        "div", children=[Element("br"), Element("div"), Element("br")]
+    node = TemplateParser.parse(t"<div><br><div /><br></div>")
+    assert node == TElement(
+        "div", children=[TElement("br"), TElement("div"), TElement("br")]
     )
-    node = parse_html("<div><div /></div>")
-    assert node == Element("div", children=[Element("div")])
+    node = TemplateParser.parse(t"<div><div /></div>")
+    assert node == TElement("div", children=[TElement("div")])
 
 
 def test_self_closing_tags_unexpected_closing_tag():
     with pytest.raises(ValueError):
-        _ = parse_html("<div /></div>")
+        _ = TemplateParser.parse(t"<div /></div>")
 
 
 def test_self_closing_void_tags_unexpected_closing_tag():
     with pytest.raises(ValueError):
-        _ = parse_html("<input /></input>")
-
-
-def test_parse_html_iter_preserves_chunks():
-    chunks = [
-        "<div>",
-        "Hello ",
-        "there, ",
-        "<span>world</span>",
-        "!</div>",
-    ]
-    node = parse_html(chunks)
-    assert node == Element(
-        "div",
-        children=[
-            Text("Hello "),
-            Text("there, "),
-            Element("span", children=[Text("world")]),
-            Text("!"),
-        ],
-    )
+        _ = TemplateParser.parse(t"<input /></input>")
