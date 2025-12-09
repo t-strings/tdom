@@ -200,20 +200,24 @@ def _resolve_attrs(
     return _resolve_html_attrs(interpolated_attrs)
 
 
+def _flatten_nodes(nodes: t.Iterable[Node]) -> list[Node]:
+    """Flatten a list of Nodes, expanding any Fragments."""
+    flat: list[Node] = []
+    for node in nodes:
+        if isinstance(node, Fragment):
+            flat.extend(node.children)
+        else:
+            flat.append(node)
+    return flat
+
+
 def _substitute_and_flatten_children(
     children: t.Iterable[TNode], interpolations: tuple[Interpolation, ...]
 ) -> list[Node]:
     """Substitute placeholders in a list of children and flatten any fragments."""
-    new_children: list[Node] = []
-    for child in children:
-        substituted = _resolve_t_node(child, interpolations)
-        if isinstance(substituted, Fragment):
-            # This can happen if an interpolation results in a Fragment, for
-            # instance if it is iterable.
-            new_children.extend(substituted.children)
-        else:
-            new_children.append(substituted)
-    return new_children
+    resolved = [_resolve_t_node(child, interpolations) for child in children]
+    flat = _flatten_nodes(resolved)
+    return flat
 
 
 def _node_from_value(value: object) -> Node:
@@ -335,23 +339,18 @@ def _resolve_t_text_ref(
     if ref.is_static:
         return Text(ref.strings[0])
 
-    parts: list[Node] = []
-    text_t = _resolve_ref(ref, interpolations)
-
-    for part in text_t:
+    def to_node(part: str | Interpolation) -> Node:
         if isinstance(part, str):
-            parts.append(Text(part))
-        else:
-            res = _node_from_value(format_interpolation(part))
-            if isinstance(res, Fragment):
-                parts.extend(res.children)
-            else:
-                parts.append(res)
+            return Text(part)
+        return _node_from_value(format_interpolation(part))
 
-    if len(parts) == 1 and isinstance(parts[0], Text):
-        return parts[0]
+    parts = [to_node(part) for part in _resolve_ref(ref, interpolations)]
+    flat = _flatten_nodes(parts)
 
-    return Fragment(children=parts)
+    if len(flat) == 1 and isinstance(flat[0], Text):
+        return flat[0]
+
+    return Fragment(children=flat)
 
 
 def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> Node:
