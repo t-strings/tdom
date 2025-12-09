@@ -317,3 +317,11 @@ def test_component_element_invalid_closing_tag():
 
     with pytest.raises(ValueError):
         _ = TemplateParser.parse(t"<{Component}></div>")
+
+
+def test_component_element_invalid_opening_tag():
+    def Component():
+        pass
+
+    with pytest.raises(ValueError):
+        _ = TemplateParser.parse(t"<div></{Component}>")
