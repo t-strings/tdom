@@ -6,7 +6,7 @@ from string.templatelib import Interpolation, Template
 
 from markupsafe import Markup
 
-from .callables import CallableInfo, get_callable_info
+from .callables import get_callable_info
 from .classnames import classnames
 from .escaping import format_interpolation, render_template_as_f
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
@@ -39,12 +39,9 @@ def _parse_and_cache(cachable: CachableTemplate) -> TNode:
     return TemplateParser.parse(cachable.template)
 
 
-def _callable_info(value: object) -> CallableInfo | None:
-    """Return a unique identifier for a callable, or None if not callable."""
-    return get_callable_info(value) if callable(value) else None
-
-
+type Attribute = tuple[str, object]
 type AttributesDict = dict[str, object]
+type HTMLAttribute = tuple[str, str | None]
 type HTMLAttributesDict = dict[str, str | None]
 
 # --------------------------------------------------------------------------
@@ -62,7 +59,7 @@ def _force_dict(value: t.Any, *, kind: str) -> dict:
         ) from None
 
 
-def _process_aria_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
     """Produce aria-* attributes based on the interpolated value for "aria"."""
     d = _force_dict(value, kind="aria")
     for sub_k, sub_v in d.items():
@@ -76,7 +73,7 @@ def _process_aria_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
             yield f"aria-{sub_k}", str(sub_v)
 
 
-def _process_data_attr(value: object) -> t.Iterable[tuple[str, object | None]]:
+def _process_data_attr(value: object) -> t.Iterable[Attribute]:
     """Produce data-* attributes based on the interpolated value for "data"."""
     d = _force_dict(value, kind="data")
     for sub_k, sub_v in d.items():
@@ -86,12 +83,12 @@ def _process_data_attr(value: object) -> t.Iterable[tuple[str, object | None]]:
             yield f"data-{sub_k}", str(sub_v)
 
 
-def _process_class_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_class_attr(value: object) -> t.Iterable[HTMLAttribute]:
     """Substitute a class attribute based on the interpolated value."""
     yield ("class", classnames(value))
 
 
-def _process_style_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
+def _process_style_attr(value: object) -> t.Iterable[HTMLAttribute]:
     """Substitute a style attribute based on the interpolated value."""
     if isinstance(value, str):
         yield ("style", value)
@@ -104,9 +101,7 @@ def _process_style_attr(value: object) -> t.Iterable[tuple[str, str | None]]:
         raise TypeError("'style' attribute value must be a string or dict") from None
 
 
-def _substitute_spread_attrs(
-    value: object,
-) -> t.Iterable[tuple[str, object | None]]:
+def _substitute_spread_attrs(value: object) -> t.Iterable[Attribute]:
     """
     Substitute a spread attribute based on the interpolated value.
 
@@ -130,10 +125,7 @@ CUSTOM_ATTR_PROCESSORS = {
 }
 
 
-def _process_attr(
-    key: str,
-    value: object,
-) -> t.Iterable[tuple[str, object | None]]:
+def _process_attr(key: str, value: object) -> t.Iterable[Attribute]:
     """
     Substitute a single attribute based on its key and the interpolated value.
 
@@ -147,19 +139,6 @@ def _process_attr(
         yield from custom_processor(value)
         return
     yield (key, value)
-
-
-def _process_static_attr(
-    key: str, value: str | None
-) -> t.Iterable[tuple[str, object | None]]:
-    """
-    Bring static attributes, parsed from html but without interpolations, into the pipeline.
-    """
-    match value:
-        case None:
-            yield (key, True)
-        case _:
-            yield (key, value)
 
 
 def _resolve_tattrs(
@@ -319,7 +298,7 @@ def _invoke_component(
             "Component callables cannot have required positional arguments."
         )
 
-    kwargs: dict[str, object] = {}
+    kwargs: AttributesDict = {}
 
     # Add all supported attributes
     for attr_name, attr_value in attrs.items():
