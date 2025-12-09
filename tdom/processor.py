@@ -141,7 +141,7 @@ def _process_attr(key: str, value: object) -> t.Iterable[Attribute]:
     yield (key, value)
 
 
-def _resolve_tattrs(
+def _resolve_t_attrs(
     attrs: t.Sequence[TAttribute], interpolations: tuple[Interpolation, ...]
 ) -> AttributesDict:
     """
@@ -196,7 +196,7 @@ def _resolve_attrs(
 
     This is the full pipeline: interpolation + HTML processing.
     """
-    interpolated_attrs = _resolve_tattrs(attrs, interpolations)
+    interpolated_attrs = _resolve_t_attrs(attrs, interpolations)
     return _resolve_html_attrs(interpolated_attrs)
 
 
@@ -324,7 +324,7 @@ def _invoke_component(
 def _resolve_ref(
     ref: TemplateRef, interpolations: tuple[Interpolation, ...]
 ) -> Template:
-    resolved = [interpolations[ref.i_indexes[at]] for at in range(len(ref.i_indexes))]
+    resolved = [interpolations[i_index] for i_index in ref.i_indexes]
     return template_from_parts(ref.strings, resolved)
 
 
@@ -379,14 +379,14 @@ def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) ->
         case TComponent(
             start_i_index=start_i_index,
             end_i_index=end_i_index,
-            attrs=attrs,
+            attrs=t_attrs,
             children=children,
         ):
             start_interpolation = interpolations[start_i_index]
             end_interpolation = (
                 interpolations[end_i_index] if end_i_index != -1 else None
             )
-            resolved_tattrs = _resolve_tattrs(attrs, interpolations)
+            resolved_attrs = _resolve_t_attrs(t_attrs, interpolations)
             resolved_children = _substitute_and_flatten_children(
                 children, interpolations
             )
@@ -398,7 +398,7 @@ def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) ->
             ):
                 raise ValueError("Mismatched component start and end callables.")
             return _invoke_component(
-                attrs=resolved_tattrs,
+                attrs=resolved_attrs,
                 children=resolved_children,
                 interpolation=start_interpolation,
             )
