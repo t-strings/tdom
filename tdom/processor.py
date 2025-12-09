@@ -355,20 +355,23 @@ def _resolve_t_text_ref(
     """Resolve a TText ref into Text or Fragment by processing interpolations."""
     if ref.is_static:
         return Text(ref.strings[0])
-    parts = []
+
+    parts: list[Node] = []
     text_t = _resolve_ref(ref, interpolations)
+
     for part in text_t:
         if isinstance(part, str):
             parts.append(Text(part))
         else:
             res = _node_from_value(format_interpolation(part))
             if isinstance(res, Fragment):
-                if res.children:
-                    parts.extend(res.children)
+                parts.extend(res.children)
             else:
                 parts.append(res)
-    if len(parts) == 1:
+
+    if len(parts) == 1 and isinstance(parts[0], Text):
         return parts[0]
+
     return Fragment(children=parts)
 
 
