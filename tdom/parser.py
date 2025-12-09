@@ -1,7 +1,5 @@
-import random
-import string
 import typing as t
-from collections import OrderedDict
+from dataclasses import dataclass
 from html.parser import HTMLParser
 
 from markupsafe import Markup
@@ -9,30 +7,145 @@ from markupsafe import Markup
 from .nodes import (
     CONTENT_ELEMENTS,
     VOID_ELEMENTS,
-    Comment,
-    DocumentType,
-    Element,
-    Fragment,
-    Node,
-    Text,
 )
+from .placeholders import PlaceholderState, TemplateRef
 
-_FRAGMENT_TAG = f"t🐍f-{''.join(random.choices(string.ascii_lowercase, k=4))}-"
+# ------------------------------------------------------
+# Semantic attribute types
+# ------------------------------------------------------
 
 
-class NodeParser(HTMLParser):
-    root: Fragment
-    stack: list[Element]
+@dataclass(slots=True)
+class TLiteralAttribute:
+    name: str
+    value: str | None
+
+
+@dataclass(slots=True)
+class TTemplatedAttribute:
+    name: str
+    value_ref: TemplateRef
+
+
+@dataclass(slots=True)
+class TSpreadAttribute:
+    name_i_index: int
+
+
+type TAttribute = TLiteralAttribute | TTemplatedAttribute | TSpreadAttribute
+
+
+# ------------------------------------------------------
+# Semantic node types
+# ------------------------------------------------------
+
+
+@dataclass(slots=True)
+class TNode:
+    def __html__(self) -> str:
+        raise NotImplementedError("Cannot render TNode to HTML directly.")
+
+    def __str__(self) -> str:
+        raise NotImplementedError("Cannot render TNode to string directly.")
+
+
+@dataclass(slots=True)
+class TText(TNode):
+    ref: TemplateRef
+
+    @classmethod
+    def empty(cls) -> t.Self:
+        return cls(TemplateRef.empty())
+
+
+@dataclass(slots=True)
+class TFragment(TNode):
+    children: list[TNode]
+
+
+@dataclass(slots=True)
+class TComment(TNode):
+    ref: TemplateRef
+
+
+@dataclass(slots=True)
+class TElementBase(TNode):
+    attrs: list[TAttribute]
+    children: list[TNode]
+
+
+@dataclass(slots=True)
+class TElement(TElementBase):
+    tag: str
+
+
+@dataclass(slots=True)
+class TComponentElement(TElementBase):
+    start_tag_index: int
+    end_tag_index: int = -1
+
+
+@dataclass(slots=True)
+class TDocumentType(TNode):
+    text: str
+
+
+# ------------------------------------------------------
+# HTML parser
+# ------------------------------------------------------
+
+
+class TemplateParser(HTMLParser):
+    root: TFragment
+    stack: list[TElementBase]
+    placeholder_state: PlaceholderState
 
     def __init__(self):
         super().__init__()
-        self.root = Fragment(children=[])
+        self.root = TFragment(children=[])
         self.stack = []
+        self.placeholder_state = PlaceholderState()
+
+    def _make_attribute(self, a: tuple[str, str | None]) -> TAttribute:
+        """Build a TAttribute from a raw attribute tuple."""
+
+        name, value = a
+        name_ref = self.placeholder_state.remove_placeholders(name)
+        value_ref = (
+            self.placeholder_state.remove_placeholders(value)
+            if value is not None
+            else None
+        )
+
+        # CONSIDER: allow templating a name? A name *and* a value? I mean,
+        # why not?
+
+        if name_ref.is_static:
+            if value_ref is None or value_ref.is_static:
+                return TLiteralAttribute(name=name, value=value)
+            else:
+                return TTemplatedAttribute(name=name, value_ref=value_ref)
+        if value_ref is not None:
+            raise ValueError(
+                "Attribute names cannot contain interpolations if the value is also interpolated."
+            )
+        if not name_ref.is_singleton:
+            raise ValueError(
+                "Spread attributes must have exactly one interpolation in the name."
+            )
+        return TSpreadAttribute(name_i_index=name_ref.i_indexes[0])
+
+    def _make_element(
+        self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
+    ) -> TElement:
+        """Build a TElement from a raw tag and attribute list."""
+        tattrs = [self._make_attribute(a) for a in attrs]
+        return TElement(tag=tag, attrs=tattrs, children=[])
 
     def handle_starttag(
         self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
     ) -> None:
-        node = Element(tag, attrs=LastUpdatedOrderedDict(attrs), children=[])
+        node = self._make_element(tag, attrs)
         if tag in VOID_ELEMENTS:
             self.append_element_child(node)
         else:
@@ -41,7 +154,7 @@ class NodeParser(HTMLParser):
     def handle_startendtag(
         self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
     ) -> None:
-        node = Element(tag, attrs=LastUpdatedOrderedDict(attrs), children=[])
+        node = self._make_element(tag, attrs)
         self.append_element_child(node)
 
     def handle_endtag(self, tag: str) -> None:
@@ -49,52 +162,64 @@ class NodeParser(HTMLParser):
             raise ValueError(f"Unexpected closing tag </{tag}> with no open element.")
 
         element = self.stack.pop()
-        if element.tag != tag:
-            raise ValueError(f"Mismatched closing tag </{tag}> for <{element.tag}>.")
+        if isinstance(element, TElement):
+            if element.tag != tag:
+                raise ValueError(
+                    f"Mismatched closing tag </{tag}> for <{element.tag}>."
+                )
+        else:
+            # TODO: handle TComponentElement end tags here.
+            raise NotImplementedError("Component elements are not yet supported.")
 
         self.append_element_child(element)
 
     def handle_data(self, data: str) -> None:
-        text = Text(Markup(data) if self.in_content_element() else data)
+        text = TText(Markup(data) if self.in_content_element() else data)
         self.append_child(text)
 
     def handle_comment(self, data: str) -> None:
-        comment = Comment(data)
+        comment = TComment(data)
         self.append_child(comment)
 
     def handle_decl(self, decl: str) -> None:
-        if decl.upper().startswith("DOCTYPE"):
-            doctype_content = decl[7:].strip()
-            doctype = DocumentType(doctype_content)
-            self.append_child(doctype)
-        # For simplicity, we ignore other declarations.
-        pass
+        placeholders = list(self.placeholder_state.remove_optional_placeholders(decl))
+        if placeholders:
+            raise ValueError("Interpolations are not allowed in declarations.")
+        if not decl.upper().startswith("DOCTYPE"):
+            raise NotImplementedError(
+                "Only DOCTYPE declarations are currently supported."
+            )
+        doctype_content = decl[7:].strip()
+        doctype = TDocumentType(doctype_content)
+        self.append_child(doctype)
 
     def in_content_element(self) -> bool:
         """Return True if the current context is within a content element."""
         open_element = self.get_open_element()
-        return open_element is not None and open_element.tag in CONTENT_ELEMENTS
+        return (
+            isinstance(open_element, TElement) and open_element.tag in CONTENT_ELEMENTS
+        )
 
-    def get_parent(self) -> Fragment | Element:
+    def get_parent(self) -> TFragment | TElementBase:
         """Return the current parent node to which new children should be added."""
         return self.stack[-1] if self.stack else self.root
 
-    def get_open_element(self) -> Element | None:
+    def get_open_element(self) -> TElementBase | None:
         """Return the currently open Element, if any."""
         return self.stack[-1] if self.stack else None
 
-    def append_element_child(self, child: Element) -> None:
+    def append_element_child(self, child: TElementBase) -> None:
         parent = self.get_parent()
-        node: Element | Fragment = child
-        # Special case: if the element is a Fragment, convert it to a Fragment node.
-        if child.tag == _FRAGMENT_TAG:
-            assert not child.attrs, (
-                "Fragment elements should never be able to have attributes."
-            )
-            node = Fragment(children=child.children)
-        parent.children.append(node)
+        # node: TElement | TFragment = child
+        # # Special case: if the element is a Fragment, convert it to a Fragment node.
+        # if child.tag == _FRAGMENT_TAG:
+        #     assert not child.attrs, (
+        #         "Fragment elements should never be able to have attributes."
+        #     )
+        #     node = Fragment(children=child.children)
+        parent.children.append(child)
 
-    def append_child(self, child: Fragment | Text | Comment | DocumentType) -> None:
+    def append_child(self, child: TFragment | TText | TComment | TDocumentType) -> None:
         parent = self.get_parent()
         parent.children.append(child)
 
@@ -103,9 +228,8 @@ class NodeParser(HTMLParser):
             raise ValueError("Invalid HTML structure: unclosed tags remain.")
         super().close()
 
-    def get_node(self) -> Node:
+    def get_tnode(self) -> TNode:
         """Get the Node tree parsed from the input HTML."""
-        # CONSIDER: Should we invert things and offer streaming parsing?
         assert not self.stack, "Did you forget to call close()?"
         if len(self.root.children) > 1:
             # The parse structure results in multiple root elements, so we
@@ -118,43 +242,34 @@ class NodeParser(HTMLParser):
         else:
             # Special case: the parse structure is empty; we treat
             # this as an empty Text Node.
-            return Text("")
+            return TText.empty()
 
-    def feed(self, data: str) -> None:
-        # Special case: handle custom fragment syntax <>...</>
-        # by replacing it with a unique tag name that is unlikely
-        # to appear in normal HTML.
-        data = data.replace("<>", f"<{_FRAGMENT_TAG}>").replace(
-            "</>", f"</{_FRAGMENT_TAG}>"
-        )
-        super().feed(data)
+    def feed_str(self, s: str) -> None:
+        """Feed a string part of a Template to the parser."""
+        self.feed(s)
 
+    def feed_interpolation(self, index: int) -> None:
+        placeholder = self.placeholder_state.add_placeholder(index)
+        self.feed(placeholder)
 
-def parse_html(input: str | t.Iterable[str]) -> Node:
-    """
-    Parse a string, or sequence of HTML string chunks, into a Node tree.
+    def feed_template(self, t: Template) -> None:
+        """Feed a Template's content to the parser."""
+        index = 0
+        for part in t:
+            if isinstance(part, str):
+                self.feed_str(part)
+            else:
+                self.feed_interpolation(index)
+                index += 1
 
-    If a single string is provided, it is parsed as a whole. If an iterable
-    of strings is provided, each string is fed to the parser in sequence.
-    This is particularly useful if you want to keep specific text chunks
-    separate in the resulting Node tree.
-    """
-    parser = NodeParser()
-    iterable = [input] if isinstance(input, str) else input
-    for chunk in iterable:
-        parser.feed(chunk)
-    parser.close()
-    return parser.get_node()
-
-
-class LastUpdatedOrderedDict(OrderedDict):
-    """
-    Store items in the order the keys were last added.
-    This differs from a regular dict which uses "insertion order".
-
-    @NOTE: This is directly from the python documentation
-    """
-
-    def __setitem__(self, key, value):
-        super().__setitem__(key, value)
-        self.move_to_end(key)
+    @staticmethod
+    def parse(t: Template) -> TNode:
+        """
+        Parse a Template containing valid HTML and substitutions and return
+        a TNode tree representing its structure. This cachable structure can later
+        be resolved against actual interpolation values to produce a Node tree.
+        """
+        parser = TemplateParser()
+        parser.feed_template(t)
+        parser.close()
+        return parser.get_tnode()

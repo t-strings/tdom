@@ -1,6 +1,11 @@
 from dataclasses import dataclass, field
 
-from markupsafe import escape
+from .escaping import (
+    escape_html_comment,
+    escape_html_script,
+    escape_html_style,
+    escape_html_text,
+)
 
 # See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
 VOID_ELEMENTS = frozenset(
@@ -45,7 +50,7 @@ class Text(Node):
 
     def __str__(self) -> str:
         # Use markupsafe's escape to handle HTML escaping
-        return escape(self.text)
+        return escape_html_text(self.text)
 
     def __eq__(self, other: object) -> bool:
         # This is primarily of use for testing purposes. We only consider
@@ -66,7 +71,7 @@ class Comment(Node):
     text: str
 
     def __str__(self) -> str:
-        return f"<!--{self.text}-->"
+        return f"<!--{escape_html_comment(self.text)}-->"
 
 
 @dataclass(slots=True)
@@ -100,16 +105,38 @@ class Element(Node):
     def is_content(self) -> bool:
         return self.tag in CONTENT_ELEMENTS
 
+    def _children_to_str(self):
+        if not self.children:
+            return ""
+        if self.tag in ("script", "style"):
+            chunks = []
+            for child in self.children:
+                if isinstance(child, Text):
+                    chunks.append(child.text)
+                else:
+                    raise ValueError(
+                        "Cannot serialize non-text content inside a script tag."
+                    )
+            raw_children_str = "".join(chunks)
+            if self.tag == "script":
+                return escape_html_script(raw_children_str)
+            elif self.tag == "style":
+                return escape_html_style(raw_children_str)
+            else:
+                raise ValueError("Unsupported tag for single-level bulk escaping.")
+        else:
+            return "".join(str(child) for child in self.children)
+
     def __str__(self) -> str:
         # We use markupsafe's escape to handle HTML escaping of attribute values
         # which means it's possible to mark them as safe if needed.
         attrs_str = "".join(
-            f" {key}" if value is None else f' {key}="{escape(value)}"'
+            f" {key}" if value is None else f' {key}="{escape_html_text(value)}"'
             for key, value in self.attrs.items()
         )
         if self.is_void:
             return f"<{self.tag}{attrs_str} />"
         if not self.children:
             return f"<{self.tag}{attrs_str}></{self.tag}>"
-        children_str = "".join(str(child) for child in self.children)
+        children_str = self._children_to_str()
         return f"<{self.tag}{attrs_str}>{children_str}</{self.tag}>"
