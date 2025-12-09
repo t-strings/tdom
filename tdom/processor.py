@@ -227,7 +227,7 @@ def _substitute_and_flatten_children(
     """Substitute placeholders in a list of children and flatten any fragments."""
     new_children: list[Node] = []
     for child in children:
-        substituted = _resolve_tnode(child, interpolations)
+        substituted = _resolve_t_node(child, interpolations)
         if isinstance(substituted, Fragment):
             # This can happen if an interpolation results in a Fragment, for
             # instance if it is iterable.
@@ -349,10 +349,10 @@ def _resolve_ref(
     return template_from_parts(ref.strings, resolved)
 
 
-def _resolve_text_ref(
+def _resolve_t_text_ref(
     ref: TemplateRef, interpolations: tuple[Interpolation, ...]
 ) -> Text | Fragment:
-    """Resolve a TText node into Text or Fragment by processing interpolations."""
+    """Resolve a TText ref into Text or Fragment by processing interpolations."""
     if ref.is_static:
         return Text(ref.strings[0])
     parts = []
@@ -372,11 +372,11 @@ def _resolve_text_ref(
     return Fragment(children=parts)
 
 
-def _resolve_tnode(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> Node:
+def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> Node:
     """Resolve a TNode tree into a Node tree by processing interpolations."""
     match t_node:
         case TText(ref=ref):
-            return _resolve_text_ref(ref, interpolations)
+            return _resolve_t_text_ref(ref, interpolations)
         case TComment(ref=ref):
             comment_t = _resolve_ref(ref, interpolations)
             comment = render_template_as_f(comment_t)
@@ -432,5 +432,5 @@ def _resolve_tnode(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> 
 def html(template: Template) -> Node:
     """Parse an HTML t-string, substitue values, and return a tree of Nodes."""
     cachable = CachableTemplate(template)
-    tnode = _parse_and_cache(cachable)
-    return _resolve_tnode(tnode, template.interpolations)
+    t_node = _parse_and_cache(cachable)
+    return _resolve_t_node(t_node, template.interpolations)
