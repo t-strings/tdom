@@ -1,10 +1,6 @@
-import random
-import re
-import string
 import sys
 import typing as t
 from collections.abc import Iterable
-from dataclasses import dataclass
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
 
@@ -13,8 +9,7 @@ from markupsafe import Markup
 from .callables import CallableInfo, get_callable_info
 from .classnames import classnames
 from .nodes import Element, Fragment, Node, Text
-from .parser import TemplateParser
-from .utils import format_interpolation as base_format_interpolation
+from .parser import TemplateParser, TNode
 
 
 @t.runtime_checkable
@@ -23,187 +18,35 @@ class HasHTMLDunder(t.Protocol):
 
 
 # --------------------------------------------------------------------------
-# Value formatting
+# Parsing and Caching
 # --------------------------------------------------------------------------
 
 
-def _format_safe(value: object, format_spec: str) -> str:
-    """Use Markup() to mark a value as safe HTML."""
-    assert format_spec == "safe"
-    return Markup(value)
+class CachableTemplate:
+    template: Template
 
+    # CONSIDER: what about interpolation format specs, convsersions, etc.?
 
-def _format_unsafe(value: object, format_spec: str) -> str:
-    """Convert a value to a plain string, forcing it to be treated as unsafe."""
-    assert format_spec == "unsafe"
-    return str(value)
+    def __init__(self, template: Template) -> None:
+        self.template = template
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CachableTemplate):
+            return NotImplemented
+        return self.template.strings == other.template.strings
 
-CUSTOM_FORMATTERS = (("safe", _format_safe), ("unsafe", _format_unsafe))
-
-
-def format_interpolation(interpolation: Interpolation) -> object:
-    return base_format_interpolation(
-        interpolation,
-        formatters=CUSTOM_FORMATTERS,
-    )
-
-
-# --------------------------------------------------------------------------
-# Instrumentation, Parsing, and Caching
-# --------------------------------------------------------------------------
-
-_PLACEHOLDER_PREFIX = f"t🐍{''.join(random.choices(string.ascii_lowercase, k=2))}-"
-_PLACEHOLDER_SUFFIX = f"-{''.join(random.choices(string.ascii_lowercase, k=2))}🐍t"
-_PLACEHOLDER_PATTERN = re.compile(
-    re.escape(_PLACEHOLDER_PREFIX) + r"(\d+)" + re.escape(_PLACEHOLDER_SUFFIX)
-)
-
-
-def _placeholder(i: int) -> str:
-    """Generate a placeholder for the i-th interpolation."""
-    return f"{_PLACEHOLDER_PREFIX}{i}{_PLACEHOLDER_SUFFIX}"
-
-
-@dataclass(frozen=True, slots=True)
-class _PlaceholderMatch:
-    start: int
-    end: int
-    index: int | None
-
-
-def _find_placeholder(s: str) -> int | None:
-    """
-    If the string is exactly one placeholder, return its index. Otherwise, None.
-    """
-    match = _PLACEHOLDER_PATTERN.fullmatch(s)
-    return int(match.group(1)) if match else None
-
-
-def _find_all_placeholders(s: str) -> t.Iterable[_PlaceholderMatch]:
-    """
-    Find all placeholders in a string, returning their positions and indices.
-
-    If there is non-placeholder text in the string, its position is also
-    returned with index None.
-    """
-    matches = list(_PLACEHOLDER_PATTERN.finditer(s))
-    last_end = 0
-    for match in matches:
-        if match.start() > last_end:
-            yield _PlaceholderMatch(last_end, match.start(), None)
-        index = int(match.group(1))
-        yield _PlaceholderMatch(match.start(), match.end(), index)
-        last_end = match.end()
-    if last_end < len(s):
-        yield _PlaceholderMatch(last_end, len(s), None)
-
-
-def _replace_placeholders(
-    value: str, interpolations: tuple[Interpolation, ...]
-) -> tuple[bool, object]:
-    """
-    Replace any placeholders embedded within a string attribute value.
-
-    If there are no placeholders, return False and the original string.
-
-    If there is exactly one placeholder and nothing else, return True and the
-    corresponding interpolation value.
-
-    If there are multiple placeholders or surrounding text, return True and
-    a concatenated string with all placeholders replaced and interpolations
-    formatted and converted to strings.
-    """
-    matches = tuple(_find_all_placeholders(value))
-
-    # Case 1: No placeholders found
-    if len(matches) == 1 and matches[0].index is None:
-        return False, value
-
-    # Case 2: Single placeholder and no surrounding text
-    if len(matches) == 1 and matches[0].index is not None:
-        index = matches[0].index
-        formatted = format_interpolation(interpolations[index])
-        return True, formatted
-
-    # Case 3: Multiple placeholders or surrounding text
-    parts = [
-        value[match.start : match.end]
-        if match.index is None
-        else str(format_interpolation(interpolations[match.index]))
-        for match in matches
-    ]
-    return True, "".join(parts)
-
-
-def _instrument(
-    strings: tuple[str, ...], callable_infos: tuple[CallableInfo | None, ...]
-) -> t.Iterable[str]:
-    """
-    Join the strings with placeholders in between where interpolations go.
-
-    This is used to prepare the template string for parsing, so that we can
-    later substitute the actual interpolated values into the parse tree.
-
-    The placeholders are chosen to be unlikely to collide with typical HTML
-    content.
-    """
-    count = len(strings)
-
-    callable_placeholders: dict[int, str] = {}
-
-    for i, s in enumerate(strings):
-        yield s
-        # There are always count-1 placeholders between count strings.
-        if i < count - 1:
-            placeholder = _placeholder(i)
-
-            # Special case for component callables: if the interpolation
-            # is a callable, we need to make sure that any matching closing
-            # tag uses the same placeholder.
-            callable_info = callable_infos[i]
-            if callable_info:
-                placeholder = callable_placeholders.setdefault(
-                    callable_info.id, placeholder
-                )
-
-            yield placeholder
+    def __hash__(self) -> int:
+        return hash(self.template.strings)
 
 
 @lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
-def _instrument_and_parse_internal(
-    strings: tuple[str, ...], callable_infos: tuple[CallableInfo | None, ...]
-) -> Node:
-    """
-    Instrument the strings and parse the resulting HTML.
-
-    The result is cached to avoid re-parsing the same template multiple times.
-    """
-    instrumented = _instrument(strings, callable_infos)
-    return TemplateParser.parse(instrumented)
+def _parse(cachable: CachableTemplate) -> TNode:
+    return TemplateParser.parse(cachable.template)
 
 
 def _callable_info(value: object) -> CallableInfo | None:
     """Return a unique identifier for a callable, or None if not callable."""
     return get_callable_info(value) if callable(value) else None
-
-
-def _instrument_and_parse(template: Template) -> Node:
-    """Instrument and parse a template, returning a tree of Nodes."""
-    # This is a thin wrapper around the cached internal function that does the
-    # actual work. This exists to handle the syntax we've settled on for
-    # component invocation, namely that callables are directly included as
-    # interpolations both in the open *and* the close tags. We need to make
-    # sure that matching tags... match!
-    #
-    # If we used `tdom`'s approach of component closing tags of <//> then we
-    # wouldn't have to do this. But I worry that tdom's syntax is harder to read
-    # (it's easy to miss the closing tag) and may prove unfamiliar for
-    # users coming from other templating systems.
-    callable_infos = tuple(
-        _callable_info(interpolation.value) for interpolation in template.interpolations
-    )
-    return _instrument_and_parse_internal(template.strings, callable_infos)
 
 
 # --------------------------------------------------------------------------
@@ -537,5 +380,6 @@ def html(template: Template) -> Node:
     """Parse a t-string and return a tree of Nodes."""
     # Parse the HTML, returning a tree of nodes with placeholders
     # where interpolations go.
-    p_node = _instrument_and_parse(template)
-    return _substitute_node(p_node, template.interpolations)
+    cachable = CachableTemplate(template)
+    t_node = _parse(template)
+    return _resolve(t_node, template.interpolations)
