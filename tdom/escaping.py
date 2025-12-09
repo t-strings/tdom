@@ -1,5 +1,5 @@
 import re
-from string.templatelib import Interpolation
+from string.templatelib import Interpolation, Template
 
 from markupsafe import Markup
 from markupsafe import escape as markup_escape
@@ -27,6 +27,17 @@ def format_interpolation(interpolation: Interpolation) -> object:
         interpolation,
         formatters=CUSTOM_FORMATTERS,
     )
+
+
+def render_template_as_f(template: Template) -> str:
+    """Fully render a template by formatting its interpolations."""
+    parts: list[str] = []
+    for part in template:
+        if isinstance(part, str):
+            parts.append(part)
+        else:
+            parts.append(str(format_interpolation(part)))
+    return "".join(parts)
 
 
 escape_html_text = markup_escape  # unify api for test of project

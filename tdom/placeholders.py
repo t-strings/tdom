@@ -3,9 +3,6 @@ import re
 import string
 import typing as t
 from dataclasses import dataclass
-from string.templatelib import Interpolation, Template
-
-from .utils import template_from_parts
 
 _PLACEHOLDER_PREFIX = f"t🐍{''.join(random.choices(string.ascii_lowercase, k=2))}-"
 _PLACEHOLDER_SUFFIX = f"-{''.join(random.choices(string.ascii_lowercase, k=2))}🐍t"
@@ -90,12 +87,6 @@ class TemplateRef:
             raise ValueError(
                 "PlaceholderRef must have one more string than interpolation indexes."
             )
-
-    def resolve(self, interpolations: t.Sequence[Interpolation]) -> Template:
-        interpolations = [
-            interpolations[self.i_indexes[at]] for at in range(len(self.i_indexes))
-        ]
-        return template_from_parts(self.strings, interpolations)
 
 
 class PlaceholderState:

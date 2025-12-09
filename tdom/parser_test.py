@@ -7,6 +7,7 @@ from .parser import (
     TElement,
     TemplateParser,
     TFragment,
+    TInterpolatedAttribute,
     TLiteralAttribute,
     TSpreadAttribute,
     TTemplatedAttribute,
@@ -243,13 +244,27 @@ def test_literal_attributes():
     )
 
 
+def test_interpolated_attributes():
+    value1 = 42
+    value2 = 99
+    node = TemplateParser.parse(t'<div value1="{value1}" value2={value2} />')
+    assert node == TElement(
+        "div",
+        attrs=[
+            TInterpolatedAttribute("value1", 0),
+            TInterpolatedAttribute("value2", 1),
+        ],
+        children=[],
+    )
+
+
 def test_templated_attributes():
     value1 = 42
     value2 = 99
     node = TemplateParser.parse(
-        t'<div value1="{value1}" value2="neato-{value2}-wow" />'
+        t'<div value1="{value1}-burrito" value2="neato-{value2}-wow" />'
     )
-    value1_ref = TemplateRef.singleton(0)
+    value1_ref = TemplateRef(strings=("", "-burrito"), i_indexes=(0,))
     value2_ref = TemplateRef(strings=("neato-", "-wow"), i_indexes=(1,))
     assert node == TElement(
         "div",
@@ -279,7 +294,7 @@ def test_spread_attribute():
     node = TemplateParser.parse(t"<div {props} />")
     assert node == TElement(
         "div",
-        attrs=[TSpreadAttribute(name_i_index=0)],
+        attrs=[TSpreadAttribute(i_index=0)],
         children=[],
     )
 

@@ -97,3 +97,20 @@ def template_from_parts(
     )
     flat = [x for pair in zip(strings, interpolations) for x in pair] + [strings[-1]]
     return Template(*flat)
+
+
+class CachableTemplate:
+    template: Template
+
+    # CONSIDER: what about interpolation format specs, convsersions, etc.?
+
+    def __init__(self, template: Template) -> None:
+        self.template = template
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CachableTemplate):
+            return NotImplemented
+        return self.template.strings == other.template.strings
+
+    def __hash__(self) -> int:
+        return hash(self.template.strings)

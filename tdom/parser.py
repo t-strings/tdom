@@ -21,6 +21,12 @@ class TLiteralAttribute:
 
 
 @dataclass(slots=True)
+class TInterpolatedAttribute:
+    name: str
+    value_i_index: int
+
+
+@dataclass(slots=True)
 class TTemplatedAttribute:
     name: str
     value_ref: TemplateRef
@@ -28,10 +34,12 @@ class TTemplatedAttribute:
 
 @dataclass(slots=True)
 class TSpreadAttribute:
-    name_i_index: int
+    i_index: int
 
 
-type TAttribute = TLiteralAttribute | TTemplatedAttribute | TSpreadAttribute
+type TAttribute = (
+    TLiteralAttribute | TTemplatedAttribute | TInterpolatedAttribute | TSpreadAttribute
+)
 
 
 # ------------------------------------------------------
@@ -135,6 +143,10 @@ class TemplateParser(HTMLParser):
         if name_ref.is_static:
             if value_ref is None or value_ref.is_static:
                 return TLiteralAttribute(name=name, value=value)
+            elif value_ref.is_singleton:
+                return TInterpolatedAttribute(
+                    name=name, value_i_index=value_ref.i_indexes[0]
+                )
             else:
                 return TTemplatedAttribute(name=name, value_ref=value_ref)
         if value_ref is not None:
@@ -145,7 +157,7 @@ class TemplateParser(HTMLParser):
             raise ValueError(
                 "Spread attributes must have exactly one interpolation in the name."
             )
-        return TSpreadAttribute(name_i_index=name_ref.i_indexes[0])
+        return TSpreadAttribute(i_index=name_ref.i_indexes[0])
 
     def _make_tag(self, tag: str, attrs: t.Sequence[tuple[str, str | None]]) -> TTag:
         """Build a TElement from a raw tag and attribute list."""

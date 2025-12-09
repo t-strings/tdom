@@ -8,8 +8,22 @@ from markupsafe import Markup
 
 from .callables import CallableInfo, get_callable_info
 from .classnames import classnames
-from .nodes import Element, Fragment, Node, Text
-from .parser import TemplateParser, TNode
+from .escaping import format_interpolation, render_template_as_f
+from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
+from .parser import (
+    TAttribute,
+    TComment,
+    TDocumentType,
+    TElement,
+    TemplateParser,
+    TLiteralAttribute,
+    TNode,
+    TSpreadAttribute,
+    TTemplatedAttribute,
+    TText,
+)
+from .placeholders import TemplateRef
+from .utils import CachableTemplate, template_from_parts
 
 
 @t.runtime_checkable
@@ -17,30 +31,8 @@ class HasHTMLDunder(t.Protocol):
     def __html__(self) -> str: ...  # pragma: no cover
 
 
-# --------------------------------------------------------------------------
-# Parsing and Caching
-# --------------------------------------------------------------------------
-
-
-class CachableTemplate:
-    template: Template
-
-    # CONSIDER: what about interpolation format specs, convsersions, etc.?
-
-    def __init__(self, template: Template) -> None:
-        self.template = template
-
-    def __eq__(self, other: object) -> bool:
-        if not isinstance(other, CachableTemplate):
-            return NotImplemented
-        return self.template.strings == other.template.strings
-
-    def __hash__(self) -> int:
-        return hash(self.template.strings)
-
-
 @lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
-def _parse(cachable: CachableTemplate) -> TNode:
+def _parse_and_cache(cachable: CachableTemplate) -> TNode:
     return TemplateParser.parse(cachable.template)
 
 
@@ -347,13 +339,55 @@ def _invoke_component(
     return _node_from_value(result)
 
 
-def _substitute_node(p_node: Node, interpolations: tuple[Interpolation, ...]) -> Node:
-    """Substitute placeholders in a node based on the corresponding interpolations."""
-    match p_node:
-        case Text(text) if (index := _find_placeholder(text)) is not None:
-            interpolation = interpolations[index]
-            value = format_interpolation(interpolation)
-            return _node_from_value(value)
+def _resolve_attrs(
+    attrs: list[TAttribute], interpolations: tuple[Interpolation, ...]
+) -> dict[str, str | None]:
+    """Resolve a list of TAttributes into a dict of attributes."""
+    # TODO: need to implement real merge rules here, handling of special-case
+    # attributes, etc.
+    resolved_attrs: dict[str, str | None] = {}
+    for attr in attrs:
+        match attr:
+            case TLiteralAttribute(name=name, value=value):
+                resolved_attrs[name] = value
+            case TTemplatedAttribute(name=name, ref=ref):
+                attr_t = _resolve_ref(ref, interpolations)
+                attr_value = render_template_as_f(attr_t)
+                resolved_attrs[name] = attr_value
+            case TSpreadAttribute(name_i_index=index):
+                spread_value = format_interpolation(interpolations[index])
+                for sub_k, sub_v in _substitute_spread_attrs(spread_value):
+                    resolved_attrs[sub_k] = sub_v
+    return resolved_attrs
+
+
+def _resolve_ref(
+    ref: TemplateRef, interpolations: tuple[Interpolation, ...]
+) -> Template:
+    resolved = [interpolations[ref.i_indexes[at]] for at in range(len(ref.i_indexes))]
+    return template_from_parts(ref.strings, resolved)
+
+
+def _resolve(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> Node:
+    """Resolve a TNode tree into a Node tree by processing interpolations."""
+    match t_node:
+        case TText(ref=ref):
+            text_t = _resolve_ref(ref, interpolations)
+            text = render_template_as_f(text_t)
+            return Text(text)
+        case TComment(ref=ref):
+            comment_t = _resolve_ref(ref, interpolations)
+            comment = render_template_as_f(comment_t)
+            return Comment(comment)
+        case TDocumentType(text=text):
+            return DocumentType(text)
+        case TElement(tag=tag, attrs=attrs, children=children):
+            resolved_attrs = _resolve_attrs(attrs, interpolations)
+            resolved_children = [_resolve(child, interpolations) for child in children]
+            return Element(tag=tag, attrs=resolved_attrs, children=resolved_children)
+        case Fragment(children=children):
+            resolved_children = [_resolve(child, interpolations) for child in children]
+            return Fragment(children=resolved_children)
         case Element(tag=tag, attrs=attrs, children=children):
             new_children = _substitute_and_flatten_children(children, interpolations)
             if (index := _find_placeholder(tag)) is not None:
@@ -381,5 +415,5 @@ def html(template: Template) -> Node:
     # Parse the HTML, returning a tree of nodes with placeholders
     # where interpolations go.
     cachable = CachableTemplate(template)
-    t_node = _parse(template)
+    t_node = _parse_and_cache(cachable)
     return _resolve(t_node, template.interpolations)
