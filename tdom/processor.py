@@ -339,12 +339,12 @@ def _resolve_t_text_ref(
     if ref.is_static:
         return Text(ref.strings[0])
 
-    def to_node(part: str | Interpolation) -> Node:
-        if isinstance(part, str):
-            return Text(part)
-        return _node_from_value(format_interpolation(part))
-
-    parts = [to_node(part) for part in _resolve_ref(ref, interpolations)]
+    parts = [
+        Text(part)
+        if isinstance(part, str)
+        else _node_from_value(format_interpolation(part))
+        for part in _resolve_ref(ref, interpolations)
+    ]
     flat = _flatten_nodes(parts)
 
     if len(flat) == 1 and isinstance(flat[0], Text):
