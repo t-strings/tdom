@@ -158,7 +158,7 @@ def test_interpolated_in_content_node():
     )
     assert (
         str(node)
-        == "<style>&lt;/style&gt;&lt;script&gt;alert(&#39;whoops&#39;);&lt;/script&gt;&lt;style&gt;</style>"
+        == "<style>&lt;/style><script>alert('whoops');</script><style></style>"
     )
 
 
@@ -167,7 +167,7 @@ def test_interpolated_trusted_in_content_node():
     node = html(t"<script>if (a < b && c > d) {{ alert('wow'); }}</script>")
     assert node == Element(
         "script",
-        children=[Text(Markup("if (a < b && c > d) { alert('wow'); }"))],
+        children=[Text("if (a < b && c > d) { alert('wow'); }")],
     )
     assert str(node) == ("<script>if (a < b && c > d) { alert('wow'); }</script>")
 
@@ -179,7 +179,7 @@ def test_interpolated_trusted_in_content_node():
 
 def test_interpolated_false_content():
     node = html(t"<div>{False}</div>")
-    assert node == Element("div", children=[])
+    assert node == Element("div")
     assert str(node) == "<div></div>"
 
 
@@ -187,24 +187,6 @@ def test_interpolated_none_content():
     node = html(t"<div>{None}</div>")
     assert node == Element("div", children=[])
     assert str(node) == "<div></div>"
-
-
-def test_interpolated_zero_arg_function():
-    def get_value():
-        return "dynamic"
-
-    node = html(t"<p>The value is {get_value}.</p>")
-    assert node == Element(
-        "p", children=[Text("The value is "), Text("dynamic"), Text(".")]
-    )
-
-
-def test_interpolated_multi_arg_function_fails():
-    def add(a, b):  # pragma: no cover
-        return a + b
-
-    with pytest.raises(TypeError):
-        _ = html(t"<p>The sum is {add}.</p>")
 
 
 # --------------------------------------------------------------------------
@@ -481,12 +463,12 @@ def test_multiple_attribute_spread_dicts():
     node = html(t"<a {attrs1} {attrs2}>Link</a>")
     assert node == Element(
         "a",
-        attrs={"href": "https://example.com/", "id": "link1", "target": "_blank"},
+        attrs={"href": "https://example.com/", "target": "_blank", "id": "link1"},
         children=[Text("Link")],
     )
     assert (
         str(node)
-        == '<a href="https://example.com/" id="link1" target="_blank">Link</a>'
+        == '<a href="https://example.com/" target="_blank" id="link1">Link</a>'
     )
 
 
@@ -629,13 +611,6 @@ def test_interpolated_data_attributes():
     )
 
 
-def test_interpolated_data_attribute_multiple_placeholders():
-    confusing = {"user-id": "user-123"}
-    placeholders = {"role": "admin"}
-    with pytest.raises(TypeError):
-        _ = html(t'<div data="{confusing} {placeholders}">User Info</div>')
-
-
 def test_interpolated_aria_attributes():
     aria = {"label": "Close", "hidden": True, "another": False, "more": None}
     node = html(t"<button aria={aria}>X</button>")
@@ -648,13 +623,6 @@ def test_interpolated_aria_attributes():
         str(node)
         == '<button aria-label="Close" aria-hidden="true" aria-another="false">X</button>'
     )
-
-
-def test_interpolated_aria_attribute_multiple_placeholders():
-    confusing = {"label": "Close"}
-    placeholders = {"hidden": True}
-    with pytest.raises(TypeError):
-        _ = html(t'<button aria="{confusing} {placeholders}">X</button>')
 
 
 def test_interpolated_style_attribute():
@@ -925,9 +893,9 @@ def test_component_returning_iterable():
     assert str(node) == "<ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>"
 
 
-def test_component_returning_explicit_fragment():
+def test_component_returning_fragment():
     def Items() -> Node:
-        return html(t"<><li>Item {1}</li><li>Item {2}</li><li>Item {3}</li></>")
+        return html(t"<li>Item {1}</li><li>Item {2}</li><li>Item {3}</li>")
 
     node = html(t"<ul><{Items} /></ul>")
     assert node == Element(

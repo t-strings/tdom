@@ -181,7 +181,7 @@ def _resolve_tattrs(
                 attr_value = format_interpolation(interpolation)
                 for sub_k, sub_v in _process_attr(name, attr_value):
                     new_attrs[sub_k] = sub_v
-            case TTemplatedAttribute(name=name, ref=ref):
+            case TTemplatedAttribute(name=name, value_ref=ref):
                 attr_t = _resolve_ref(ref, interpolations)
                 attr_value = render_template_as_f(attr_t)
                 new_attrs[name] = attr_value
@@ -190,6 +190,8 @@ def _resolve_tattrs(
                 spread_value = format_interpolation(interpolation)
                 for sub_k, sub_v in _substitute_spread_attrs(spread_value):
                     new_attrs[sub_k] = sub_v
+            case _:
+                assert False, f"Unknown TAttribute type: {type(attr).__name__}"
     return new_attrs
 
 
@@ -347,13 +349,34 @@ def _resolve_ref(
     return template_from_parts(ref.strings, resolved)
 
 
+def _resolve_text_ref(
+    ref: TemplateRef, interpolations: tuple[Interpolation, ...]
+) -> Text | Fragment:
+    """Resolve a TText node into Text or Fragment by processing interpolations."""
+    if ref.is_static:
+        return Text(ref.strings[0])
+    parts = []
+    text_t = _resolve_ref(ref, interpolations)
+    for part in text_t:
+        if isinstance(part, str):
+            parts.append(Text(part))
+        else:
+            res = _node_from_value(format_interpolation(part))
+            if isinstance(res, Fragment):
+                if res.children:
+                    parts.extend(res.children)
+            else:
+                parts.append(res)
+    if len(parts) == 1:
+        return parts[0]
+    return Fragment(children=parts)
+
+
 def _resolve_tnode(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> Node:
     """Resolve a TNode tree into a Node tree by processing interpolations."""
     match t_node:
         case TText(ref=ref):
-            text_t = _resolve_ref(ref, interpolations)
-            text = render_template_as_f(text_t)
-            return Text(text)
+            return _resolve_text_ref(ref, interpolations)
         case TComment(ref=ref):
             comment_t = _resolve_ref(ref, interpolations)
             comment = render_template_as_f(comment_t)
@@ -361,15 +384,15 @@ def _resolve_tnode(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> 
         case TDocumentType(text=text):
             return DocumentType(text)
         case TFragment(children=children):
-            resolved_children = [
-                _resolve_tnode(child, interpolations) for child in children
-            ]
+            resolved_children = _substitute_and_flatten_children(
+                children, interpolations
+            )
             return Fragment(children=resolved_children)
         case TElement(tag=tag, attrs=attrs, children=children):
             resolved_attrs = _resolve_attrs(attrs, interpolations)
-            resolved_children = [
-                _resolve_tnode(child, interpolations) for child in children
-            ]
+            resolved_children = _substitute_and_flatten_children(
+                children, interpolations
+            )
             return Element(tag=tag, attrs=resolved_attrs, children=resolved_children)
         case TComponent(
             start_i_index=start_i_index,
@@ -381,22 +404,24 @@ def _resolve_tnode(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> 
             end_interpolation = (
                 interpolations[end_i_index] if end_i_index != -1 else None
             )
-            resolved_attrs = _resolve_tattrs(attrs, interpolations)
-            resolved_children = [
-                _resolve_tnode(child, interpolations) for child in children
-            ]
+            resolved_tattrs = _resolve_tattrs(attrs, interpolations)
+            resolved_children = _substitute_and_flatten_children(
+                children, interpolations
+            )
+            # HERE ALSO BE DRAGONS: validate matching start/end callables, since
+            # the underlying TemplateParser cannot do that for us.
             if (
                 end_interpolation is not None
                 and end_interpolation.value != start_interpolation.value
             ):
                 raise ValueError("Mismatched component start and end callables.")
             return _invoke_component(
-                attrs=resolved_attrs,
+                attrs=resolved_tattrs,
                 children=resolved_children,
                 interpolation=start_interpolation,
             )
         case _:
-            raise TypeError(f"Unknown TNode type: {type(t_node).__name__}")
+            assert False, f"Unknown TNode type: {type(t_node).__name__}"
 
 
 # --------------------------------------------------------------------------
@@ -405,7 +430,7 @@ def _resolve_tnode(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> 
 
 
 def html(template: Template) -> Node:
-    """Parse a t-string, substitue values, return a tree of Nodes."""
+    """Parse an HTML t-string, substitue values, and return a tree of Nodes."""
     cachable = CachableTemplate(template)
     tnode = _parse_and_cache(cachable)
     return _resolve_tnode(tnode, template.interpolations)
