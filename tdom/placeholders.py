@@ -102,6 +102,9 @@ class PlaceholderState:
     known: set[int]
     """Mapping from placeholder strings to their interpolation indices."""
 
+    def __init__(self):
+        self.known = set()
+
     @property
     def is_empty(self) -> bool:
         return len(self.known) == 0

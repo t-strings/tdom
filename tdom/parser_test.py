@@ -7,8 +7,11 @@ from .parser import (
     TemplateParser,
     TFragment,
     TLiteralAttribute,
+    TSpreadAttribute,
+    TTemplatedAttribute,
     TText,
 )
+from .placeholders import TemplateRef
 
 
 def test_parse_empty():
@@ -226,3 +229,55 @@ def test_self_closing_tags_unexpected_closing_tag():
 def test_self_closing_void_tags_unexpected_closing_tag():
     with pytest.raises(ValueError):
         _ = TemplateParser.parse(t"<input /></input>")
+
+
+def test_literal_attributes():
+    node = TemplateParser.parse(t'<input type="text" disabled />')
+    assert node == TElement(
+        "input",
+        attrs=[
+            TLiteralAttribute("type", "text"),
+            TLiteralAttribute("disabled", None),
+        ],
+    )
+
+
+def test_templated_attributes():
+    value1 = 42
+    value2 = 99
+    node = TemplateParser.parse(
+        t'<div value1="{value1}" value2="neato-{value2}-wow" />'
+    )
+    value1_ref = TemplateRef.singleton(0)
+    value2_ref = TemplateRef(strings=("neato-", "-wow"), i_indexes=(1,))
+    assert node == TElement(
+        "div",
+        attrs=[
+            TTemplatedAttribute("value1", value1_ref),
+            TTemplatedAttribute("value2", value2_ref),
+        ],
+        children=[],
+    )
+
+
+def test_templated_attribute_name_error():
+    with pytest.raises(ValueError):
+        attr_name = "some-attr"
+        _ = TemplateParser.parse(t'<div {attr_name}="value" />')
+
+
+def test_templated_attribute_name_and_value_error():
+    with pytest.raises(ValueError):
+        attr_name = "some-attr"
+        value = "value"
+        _ = TemplateParser.parse(t'<div {attr_name}="{value}" />')
+
+
+def test_spread_attribute():
+    props = "doesnt-matter-the-type"
+    node = TemplateParser.parse(t"<div {props} />")
+    assert node == TElement(
+        "div",
+        attrs=[TSpreadAttribute(name_i_index=0)],
+        children=[],
+    )
