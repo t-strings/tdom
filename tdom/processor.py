@@ -1,9 +1,6 @@
-import sys
 import typing as t
 from collections.abc import Iterable
-from dataclasses import dataclass
 from collections import OrderedDict
-from functools import lru_cache
 from string.templatelib import Interpolation, Template
 
 from markupsafe import Markup
@@ -410,27 +407,6 @@ def _substitute_node(tnode: TNode, interpolations: tuple[Interpolation, ...]) ->
             return DocumentType(tnode.text)
 
 
-@dataclass
-class CachedTemplate:
-    """Attempt to cache template just by its strings."""
-
-    template: Template
-
-    def __hash__(self):
-        return hash(self.template.strings)
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, CachedTemplate)
-            and self.template.strings == other.template.strings
-        )
-
-
-@lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
-def _parse_html(cached_template):
-    return parse_html(cached_template.template)
-
-
 # --------------------------------------------------------------------------
 # Public API
 # --------------------------------------------------------------------------
@@ -440,5 +416,5 @@ def html(template: Template) -> Node:
     """Parse a t-string and return a tree of Nodes."""
     # Parse the HTML, returning a tree of nodes with placeholders
     # where interpolations go.
-    tnode = _parse_html(CachedTemplate(template))
+    tnode = parse_html(template)
     return _substitute_node(tnode, template.interpolations)

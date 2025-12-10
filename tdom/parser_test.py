@@ -1,7 +1,9 @@
 import pytest
 from string.templatelib import Template, Interpolation
+from functools import lru_cache
 
 from .nodes import (
+    TNode,
     TComment,
     TDocumentType,
     TElement,
@@ -13,7 +15,7 @@ from .nodes import (
     StaticAttribute,
     SpreadAttribute,
 )
-from .parser import parse_html
+from .parser import _parse_html, parse_html, CachedTemplate
 
 
 class TestHelpers:
@@ -437,3 +439,101 @@ def test_parse_component_attrs():
             ]
         ),
     )
+
+
+@pytest.fixture()
+def parse_html_simulation():
+    """
+    Simulate parse_html/_parse_html using the lru_cache.
+    """
+
+    @lru_cache(maxsize=512)
+    def _simulated_parse_html(cached_template: CachedTemplate) -> TNode:
+        return _parse_html.__wrapped__(cached_template)
+
+    def simulated_parse_html(template: Template) -> TNode:
+        return _simulated_parse_html(CachedTemplate(template))
+
+    yield simulated_parse_html, _simulated_parse_html
+    _simulated_parse_html.cache_clear()
+
+
+def hits_misses_helper(caching_func):
+    """Shorthand for unpacking a cached func's cache info over-and-over."""
+
+    def _hits_misses():
+        info = caching_func.cache_info()
+        return (info.hits, info.misses)
+
+    return _hits_misses
+
+
+def test_parse_html_cache_hit_after_first_parse(parse_html_simulation):
+    simulated_parse_html, _simulated_parse_html = parse_html_simulation
+    hits_misses = hits_misses_helper(_simulated_parse_html)
+    assert hits_misses() == (0, 0)
+
+    in_template = t"<div>Parsing {'html'}!</div>"
+    out_tnode = th.el("div", children=tuple([th.text("Parsing ", 0, "!")]))
+
+    assert simulated_parse_html(in_template) == out_tnode
+    assert hits_misses() == (0, 1)  # MISS!
+    assert simulated_parse_html(in_template) == out_tnode
+    assert hits_misses() == (1, 1)  # HIT!
+
+
+def test_parse_html_cache_hit_same_strings(parse_html_simulation):
+    simulated_parse_html, _simulated_parse_html = parse_html_simulation
+    hits_misses = hits_misses_helper(_simulated_parse_html)
+    assert hits_misses() == (0, 0)
+
+    in_template = t"<div>Parsing {'html'}!</div>"
+    alt_template = t"<div>Parsing {100}!</div>"
+    out_tnode = th.el("div", children=tuple([th.text("Parsing ", 0, "!")]))
+
+    # Strings equal but interpolation values are different
+    assert (
+        alt_template.strings == in_template.strings
+        and alt_template.values != in_template.values
+    )
+
+    assert simulated_parse_html(in_template) == out_tnode
+    assert hits_misses() == (0, 1)  # MISS!
+    assert simulated_parse_html(in_template) == out_tnode
+    assert hits_misses() == (1, 1)  # HIT!
+    assert simulated_parse_html(alt_template) == out_tnode
+    assert hits_misses() == (2, 1)  # HIT!
+
+
+def test_cached_template_eq():
+    ct1 = CachedTemplate(t"<div>Parsing {'html'}!</div>")
+    ct2 = CachedTemplate(t"<div>Parsing {100}!</div>")
+    assert (
+        ct1.template.strings == ct2.template.strings
+        and ct1.template.values != ct2.template.values
+    )
+    assert ct1 == ct2 and ct1 == ct1
+
+    ct3 = CachedTemplate(t"<div>Still parsing {'html'}!</div>")
+    assert (
+        ct1.template.strings != ct3.template.strings
+        and ct1.template.values == ct3.template.values
+    )
+    assert ct1 != ct3
+
+
+def test_cached_template_hash():
+    ct1 = CachedTemplate(t"<div>Parsing {'html'}!</div>")
+    ct2 = CachedTemplate(t"<div>Parsing {100}!</div>")
+    assert (
+        ct1.template.strings == ct2.template.strings
+        and ct1.template.values != ct2.template.values
+    )
+    assert hash(ct1) == hash(ct2)
+
+    ct3 = CachedTemplate(t"<div>Still parsing {'html'}!</div>")
+    assert (
+        ct1.template.strings != ct3.template.strings
+        and ct1.template.values == ct3.template.values
+    )
+    assert hash(ct1) != hash(ct3)

@@ -1,7 +1,9 @@
+import sys
 import typing as t
 from string.templatelib import Template, Interpolation
 from html.parser import HTMLParser
 from dataclasses import dataclass, field
+from functools import lru_cache
 
 from .nodes import (
     VOID_ELEMENTS,
@@ -428,11 +430,35 @@ class TemplateParser(HTMLParser):
         )
 
 
-def parse_html(
-    template: Template,
+@lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
+def _parse_html(
+    cached_template: CachedTemplate,
 ) -> (
     TNode  # @TODO: Might be more consistent for this to always be a container.
 ):
+    parser = TemplateParser()
+    parser.feed_template(cached_template.template)
+    parser.close()
+    return parser.get_node()
+
+
+@dataclass
+class CachedTemplate:
+    """Attempt to cache template just by its strings."""
+
+    template: Template
+
+    def __hash__(self):
+        return hash(self.template.strings)
+
+    def __eq__(self, other):
+        return (
+            isinstance(other, CachedTemplate)
+            and self.template.strings == other.template.strings
+        )
+
+
+def parse_html(template: Template) -> TNode:
     """
     Parse a string, or sequence of HTML string chunks, into a Node tree.
 
@@ -441,7 +467,4 @@ def parse_html(
     This is particularly useful if you want to keep specific text chunks
     separate in the resulting Node tree.
     """
-    parser = TemplateParser()
-    parser.feed_template(template)
-    parser.close()
-    return parser.get_node()
+    return _parse_html(CachedTemplate(template))
