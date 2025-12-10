@@ -385,19 +385,6 @@ result = html(t"<ul><{Items} /></ul>")
 assert str(result) == "<ul><li>first</li><li>second</li></ul>"
 ```
 
-If you prefer, you can use **explicit fragment syntax** to wrap multiple
-elements in a `Fragment`:
-
-```python
-def Items() -> Node:
-    return html(t'<><li>first</li><li>second</li></>')
-
-result = html(t'<ul><{Items} /></ul>')
-assert str(result) == "<ul><li>first</li><li>second</li></ul>"
-```
-
-This is not required, but it can make your intent clearer.
-
 #### Class-based components
 
 Component functions are great for simple use cases, but for more complex

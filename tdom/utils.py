@@ -1,5 +1,6 @@
 import typing as t
-from string.templatelib import Interpolation
+from collections import OrderedDict
+from string.templatelib import Interpolation, Template
 
 
 @t.overload
@@ -86,3 +87,39 @@ def format_interpolation(
         interpolation.conversion,
         formatters=formatters,
     )
+
+
+def template_from_parts(
+    strings: t.Sequence[str], interpolations: t.Sequence[Interpolation]
+) -> Template:
+    """Construct a template string from the given strings and parts."""
+    assert len(strings) == len(interpolations) + 1, (
+        "TemplateRef must have one more string than interpolation references."
+    )
+    flat = [x for pair in zip(strings, interpolations) for x in pair] + [strings[-1]]
+    return Template(*flat)
+
+
+class CachableTemplate:
+    template: Template
+
+    # CONSIDER: what about interpolation format specs, convsersions, etc.?
+
+    def __init__(self, template: Template) -> None:
+        self.template = template
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, CachableTemplate):
+            return NotImplemented
+        return self.template.strings == other.template.strings
+
+    def __hash__(self) -> int:
+        return hash(self.template.strings)
+
+
+class LastUpdatedOrderedDict(OrderedDict):
+    "Store items in the order the keys were last updated."
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.move_to_end(key)
