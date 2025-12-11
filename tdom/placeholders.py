@@ -91,7 +91,7 @@ class TemplateRef:
 
 class PlaceholderState:
     known: set[int]
-    """Mapping from placeholder strings to their interpolation indices."""
+    """Collection of currently 'known and active' placeholder indexes."""
 
     def __init__(self):
         self.known = set()
