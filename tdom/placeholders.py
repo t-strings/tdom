@@ -85,7 +85,7 @@ class TemplateRef:
     def __post_init__(self):
         if len(self.strings) != len(self.i_indexes) + 1:
             raise ValueError(
-                "PlaceholderRef must have one more string than interpolation indexes."
+                "TemplateRef must have one more string than interpolation indexes."
             )
 
 
