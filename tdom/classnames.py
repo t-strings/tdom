@@ -33,6 +33,10 @@ def classnames(*args: object) -> str:
         elif isinstance(arg, dict):
             for key, value in arg.items():
                 if value:
+                    if not isinstance(key, str):
+                        raise ValueError(
+                            f"Classnames dictionary keys must be strings, found {key!r} of type {type(key).__name__}"
+                        )
                     classes.append(key)
         elif isinstance(arg, (list, tuple)):
             # Add items to the front of the queue to process them next, in order.

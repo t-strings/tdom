@@ -24,8 +24,11 @@ jobs:
       - name: Check formatting
         run: uv run ruff format --check
 
-      - name: Type check
+      - name: Type check with Pyright
         run: uv run pyright
+
+      - name: Type check with Ty
+        run: uv run ty check
 
       - name: Run tests
         run: uv run pytest -v
