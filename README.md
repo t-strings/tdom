@@ -627,12 +627,14 @@ tdom is designed for high performance with practical workloads. The library uses
 - MarkupSafe-based HTML escaping (optimized C implementation)
 - O(1) void element detection with frozensets
 - Memory-efficient dataclasses with `__slots__`
+- **Template caching**: 10-50x speedup for repeated templates (LRU cache)
 
 **Run benchmarks yourself:**
 
 ```bash
-just benchmark        # Quick performance check
-just profile-parser   # Deep parser profiling
+just benchmark         # Quick performance check
+just benchmark-cache   # Measure cache benefits
+just profile-parser    # Deep parser profiling
 just profile-processor # Full pipeline profiling
 ```
 

@@ -52,6 +52,10 @@ clean_badges:
 benchmark:
     uv run python -m tdom.profiling.benchmark
 
+# Benchmark template cache performance
+benchmark-cache:
+    uv run python -m tdom.profiling.benchmark_cache
+
 # Profile parser operations
 profile-parser:
     uv run python -m tdom.profiling.profiler_parser

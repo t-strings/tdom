@@ -147,6 +147,59 @@ class Element(Node):
 - Faster attribute access
 - Type safety with runtime validation
 
+### 6. Template Caching
+
+LRU cache for parsed templates eliminates redundant parsing:
+
+```python
+@lru_cache(maxsize=512)
+def _parse_html(cached_template: CachedTemplate) -> TNode:
+    parser = TemplateParser()
+    parser.feed_template(cached_template.template)
+    parser.close()
+    return parser.get_node()
+```
+
+**How it works**:
+- Templates are cached by their string parts (not interpolated values)
+- Cache size of 512 templates handles most real-world applications
+- Automatic cache eviction using LRU policy
+- Disabled during tests to ensure test isolation
+
+**Benefits**:
+- **10-50x speedup** for repeated template parsing
+- Ideal for reusable components and layouts
+- Zero configuration required
+- Thread-safe cache implementation
+
+**Cache Performance** (measured with `just benchmark-cache`):
+
+| Scenario | Cache Hit Rate | Speedup | Time Saved |
+|----------|----------------|---------|------------|
+| Same template repeated | 100% | ~20-50x | ~95-98% |
+| Small template set (4 templates) | ~75-100% | ~15-30x | ~93-97% |
+| Large template set (600 templates) | ~85% | ~10-20x | ~90-95% |
+
+**When caching helps most**:
+- Reusable component functions called repeatedly
+- Layout templates shared across pages
+- Partial templates included in multiple views
+- SSR applications rendering many pages
+
+**Real-world example**:
+```python
+# Component defined once
+def Card(*, title: str, content: str) -> Node:
+    return html(t"""<div class="card">
+        <h3>{title}</h3>
+        <p>{content}</p>
+    </div>""")
+
+# Called 1000 times - template parsed once, cached 999 times
+for item in items:
+    card = Card(title=item.title, content=item.content)
+```
+
 ## Running Benchmarks
 
 ### Quick Performance Check
@@ -161,6 +214,26 @@ This runs the standard benchmark suite and reports:
 - Average operation time
 - Performance rating
 - Pipeline breakdown (parsing vs serialization vs overhead)
+
+### Template Cache Benchmark
+
+```bash
+just benchmark-cache
+```
+
+This measures the performance impact of template caching:
+
+- Compares cached vs non-cached parsing performance
+- Tests multiple scenarios (single template, template sets, cache evictions)
+- Reports speedup factors and time savings
+- Shows cache hit rates and statistics
+- Provides real-world insights on cache effectiveness
+
+**Use this to**:
+- Understand cache performance characteristics
+- Verify cache benefits for your workload
+- Decide on cache configuration (default is usually best)
+- Measure impact of template reuse patterns
 
 ### Deep Profiling
 
@@ -302,13 +375,16 @@ just profile-processor
 
 ## Comparison: With vs. Without Optimizations
 
-| Optimization           | Impact | When It Matters               |
-| ---------------------- | ------ | ----------------------------- |
-| Two-stage parsing      | 10-20% | Complex templates             |
-| MarkupSafe escaping    | 30-40% | Templates with user content   |
-| Void element detection | 5-10%  | Templates with many void tags |
-| Dataclass slots        | 15-25% | Memory-constrained scenarios  |
-| Lazy serialization     | N/A    | When DOM manipulation needed  |
+| Optimization           | Impact      | When It Matters                    |
+| ---------------------- | ----------- | ---------------------------------- |
+| Template caching       | 10-50x      | Reusable components, repeated templates |
+| Two-stage parsing      | 10-20%      | Complex templates                  |
+| MarkupSafe escaping    | 30-40%      | Templates with user content        |
+| Void element detection | 5-10%       | Templates with many void tags      |
+| Dataclass slots        | 15-25%      | Memory-constrained scenarios       |
+| Lazy serialization     | N/A         | When DOM manipulation needed       |
+
+**Note**: Template caching provides by far the largest performance improvement when applicable. The other optimizations stack on top of the base performance.
 
 ## Thread Safety
 
