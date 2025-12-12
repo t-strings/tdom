@@ -30,6 +30,29 @@ If you have [Astral's `uv`](https://docs.astral.sh/uv/) you can easily try `tdom
 uv run --with tdom --python 3.14 python
 ```
 
+## Development
+
+This project uses [`just`](https://just.systems/) for task automation and [`uv`](https://docs.astral.sh/uv/) for dependency management.
+
+### Setup
+
+Install `just` and `uv`, then run:
+
+```bash
+just install
+```
+
+### Common Tasks
+
+```bash
+just              # Show all available tasks
+just test         # Run tests
+just lint         # Check code for issues
+just fmt          # Format code
+just typecheck    # Run type checker
+just ci-checks    # Run all checks (CI pipeline)
+```
+
 ## Usage
 
 `tdom` leverages Python 3.14's
