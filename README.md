@@ -616,6 +616,28 @@ before formatting, following the same semantics as f-strings.
 These utilities follow the patterns established by PEP 750 for t-string
 processing, allowing you to build custom template processors if needed.
 
+## Performance
+
+tdom is designed for high performance with practical workloads. The library uses efficient parsing strategies, optimized string handling with MarkupSafe, and lazy serialization.
+
+**Quick Performance Highlights** (250+ element template):
+
+- Full pipeline (template → DOM → HTML): Fast end-to-end processing
+- Two-stage parsing for clean separation of concerns
+- MarkupSafe-based HTML escaping (optimized C implementation)
+- O(1) void element detection with frozensets
+- Memory-efficient dataclasses with `__slots__`
+
+**Run benchmarks yourself:**
+
+```bash
+just benchmark        # Quick performance check
+just profile-parser   # Deep parser profiling
+just profile-processor # Full pipeline profiling
+```
+
+📊 **[See detailed benchmarks →](docs/benchmark.md)**
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit issues or pull requests on

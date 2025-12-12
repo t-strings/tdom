@@ -47,3 +47,15 @@ badges:
 
 clean_badges:
     rm -rf reports/*.svg
+
+# Run performance benchmark
+benchmark:
+    uv run python -m tdom.profiling.benchmark
+
+# Profile parser operations
+profile-parser:
+    uv run python -m tdom.profiling.profiler_parser
+
+# Profile full processor pipeline
+profile-processor:
+    uv run python -m tdom.profiling.profiler_processor
