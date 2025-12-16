@@ -386,8 +386,6 @@ assert str(result) == "<ul><li>first</li><li>second</li></ul>"
 ```
 
 If you prefer, you can use **explicit fragment syntax** to wrap multiple
-
-
 elements in a `Fragment`:
 
 ```python
