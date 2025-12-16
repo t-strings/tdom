@@ -1,9 +1,10 @@
 import random
 import re
 import string
-import typing as t
-from dataclasses import dataclass
 
+from .templating import TemplateRef
+
+FRAGMENT_TAG = f"t🐍f-{''.join(random.choices(string.ascii_lowercase, k=4))}-"
 _PLACEHOLDER_PREFIX = f"t🐍{''.join(random.choices(string.ascii_lowercase, k=2))}-"
 _PLACEHOLDER_SUFFIX = f"-{''.join(random.choices(string.ascii_lowercase, k=2))}🐍t"
 _PLACEHOLDER_PATTERN = re.compile(
@@ -29,7 +30,7 @@ def find_placeholders(s: str) -> TemplateRef:
     """
     matches = match_placeholders(s)
     if not matches:
-        return TemplateRef.static(s)
+        return TemplateRef.literal(s)
 
     strings: list[str] = []
     i_indexes: list[int] = []
@@ -42,51 +43,6 @@ def find_placeholders(s: str) -> TemplateRef:
     strings.append(s[last_index:])
 
     return TemplateRef(tuple(strings), tuple(i_indexes))
-
-
-# XXX consider where this belongs in practice; it is now placeholder-independent
-@dataclass(slots=True, frozen=True)
-class TemplateRef:
-    """Reference to a template with indexes for its original interpolations."""
-
-    strings: tuple[str, ...]
-    """Static string parts of the original string.templatelib.Template"""
-
-    i_indexes: tuple[int, ...]
-    """Indexes of the interpolations in the original string.templatelib.Template"""
-
-    @property
-    def is_static(self) -> bool:
-        """Return True if there are no interpolations."""
-        return not self.i_indexes
-
-    @property
-    def is_empty(self) -> bool:
-        """Return True if the template is empty."""
-        return self.is_static and self.strings[0] == ""
-
-    @property
-    def is_singleton(self) -> bool:
-        """Return True if there is exactly one interpolation and no other content."""
-        return self.strings == ("", "")
-
-    @classmethod
-    def static(cls, s: str) -> t.Self:
-        return cls((s,), ())
-
-    @classmethod
-    def empty(cls) -> t.Self:
-        return cls.static("")
-
-    @classmethod
-    def singleton(cls, i_index: int) -> t.Self:
-        return cls(("", ""), (i_index,))
-
-    def __post_init__(self):
-        if len(self.strings) != len(self.i_indexes) + 1:
-            raise ValueError(
-                "TemplateRef must have one more string than interpolation indexes."
-            )
 
 
 class PlaceholderState:

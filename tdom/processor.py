@@ -8,9 +8,10 @@ from markupsafe import Markup
 
 from .callables import get_callable_info
 from .classnames import classnames
-from .escaping import format_interpolation, render_template_as_f
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
 from .parser import (
+    HTMLAttribute,
+    HTMLAttributesDict,
     TAttribute,
     TComment,
     TComponent,
@@ -26,6 +27,7 @@ from .parser import (
     TText,
 )
 from .placeholders import TemplateRef
+from .templating import format_interpolation, render_template_as_f
 from .utils import CachableTemplate, LastUpdatedOrderedDict, template_from_parts
 
 
@@ -41,8 +43,6 @@ def _parse_and_cache(cachable: CachableTemplate) -> TNode:
 
 type Attribute = tuple[str, object]
 type AttributesDict = dict[str, object]
-type HTMLAttribute = tuple[str, str | None]
-type HTMLAttributesDict = dict[str, str | None]
 
 # --------------------------------------------------------------------------
 # Placeholder Substitution
@@ -79,7 +79,7 @@ def _process_data_attr(value: object) -> t.Iterable[Attribute]:
     for sub_k, sub_v in d.items():
         if sub_v is True:
             yield f"data-{sub_k}", True
-        elif sub_v not in (False, None):
+        elif sub_v is not False and sub_v is not None:
             yield f"data-{sub_k}", str(sub_v)
 
 
@@ -336,7 +336,7 @@ def _resolve_t_text_ref(
     ref: TemplateRef, interpolations: tuple[Interpolation, ...]
 ) -> Text | Fragment:
     """Resolve a TText ref into Text or Fragment by processing interpolations."""
-    if ref.is_static:
+    if ref.is_literal:
         return Text(ref.strings[0])
 
     parts = [

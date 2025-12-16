@@ -1,11 +1,12 @@
 import pytest
 
-from .parser import (
+from .parser import TemplateParser
+from .placeholders import TemplateRef
+from .tnodes import (
     TComment,
     TComponent,
     TDocumentType,
     TElement,
-    TemplateParser,
     TFragment,
     TInterpolatedAttribute,
     TLiteralAttribute,
@@ -13,22 +14,21 @@ from .parser import (
     TTemplatedAttribute,
     TText,
 )
-from .placeholders import TemplateRef
 
 
 def test_parse_empty():
     node = TemplateParser.parse(t"")
-    assert node == TText.empty()
+    assert node == TFragment()
 
 
 def test_parse_text():
     node = TemplateParser.parse(t"Hello, world!")
-    assert node == TText.static("Hello, world!")
+    assert node == TText.literal("Hello, world!")
 
 
 def test_parse_text_with_entities():
     node = TemplateParser.parse(t"Panini&apos;s")
-    assert node == TText.static("Panini's")
+    assert node == TText.literal("Panini's")
 
 
 def test_parse_void_element():
@@ -48,17 +48,17 @@ def test_parse_uppercase_void_element():
 
 def test_parse_standard_element_with_text():
     node = TemplateParser.parse(t"<div>Hello, world!</div>")
-    assert node == TElement("div", children=[TText.static("Hello, world!")])
+    assert node == TElement("div", children=(TText.literal("Hello, world!"),))
 
 
 def test_parse_nested_elements():
     node = TemplateParser.parse(t"<div><span>Nested</span> content</div>")
     assert node == TElement(
         "div",
-        children=[
-            TElement("span", children=[TText.static("Nested")]),
-            TText.static(" content"),
-        ],
+        children=(
+            TElement("span", children=(TText.literal("Nested"),)),
+            TText.literal(" content"),
+        ),
     )
 
 
@@ -68,27 +68,27 @@ def test_parse_element_with_attributes():
     )
     assert node == TElement(
         "a",
-        attrs=[
+        attrs=(
             TLiteralAttribute("href", "https://example.com"),
             TLiteralAttribute("target", "_blank"),
-        ],
-        children=[TText.static("Link")],
+        ),
+        children=(TText.literal("Link"),),
     )
 
 
 def test_parse_element_attribute_order():
     node = TemplateParser.parse(t'<a title="a" href="b" title="c"></a>')
     assert isinstance(node, TElement)
-    assert node.attrs == [
+    assert node.attrs == (
         TLiteralAttribute("title", "a"),
         TLiteralAttribute("href", "b"),
         TLiteralAttribute("title", "c"),
-    ]
+    )
 
 
 def test_parse_comment():
     node = TemplateParser.parse(t"<!-- This is a comment -->")
-    assert node == TComment.static(" This is a comment ")
+    assert node == TComment.literal(" This is a comment ")
 
 
 def test_parse_doctype():
@@ -99,7 +99,7 @@ def test_parse_doctype():
 def test_parse_multiple_voids():
     node = TemplateParser.parse(t"<br><hr><hr /><hr /><br /><br><br>")
     assert node == TFragment(
-        children=[
+        children=(
             TElement("br"),
             TElement("hr"),
             TElement("hr"),
@@ -107,7 +107,7 @@ def test_parse_multiple_voids():
             TElement("br"),
             TElement("br"),
             TElement("br"),
-        ]
+        )
     )
 
 
@@ -117,21 +117,21 @@ def test_parse_mixed_content():
         t"Hello, <br class='funky' />world <!-- neato -->!</div>"
     )
     assert node == TFragment(
-        children=[
+        children=(
             TDocumentType("html"),
-            TComment.static(" Comment "),
+            TComment.literal(" Comment "),
             TElement(
                 "div",
-                attrs=[TLiteralAttribute("class", "container")],
-                children=[
-                    TText.static("Hello, "),
-                    TElement("br", attrs=[TLiteralAttribute("class", "funky")]),
-                    TText.static("world "),
-                    TComment.static(" neato "),
-                    TText.static("!"),
-                ],
+                attrs=(TLiteralAttribute("class", "container"),),
+                children=(
+                    TText.literal("Hello, "),
+                    TElement("br", attrs=(TLiteralAttribute("class", "funky"),)),
+                    TText.literal("world "),
+                    TComment.literal(" neato "),
+                    TText.literal("!"),
+                ),
             ),
-        ]
+        )
     )
 
 
@@ -139,7 +139,7 @@ def test_parse_entities_are_escaped():
     node = TemplateParser.parse(t"<p>&lt;/p&gt;</p>")
     assert node == TElement(
         "p",
-        children=[TText.static("</p>")],
+        children=(TText.literal("</p>"),),
     )
 
 
@@ -149,7 +149,7 @@ def test_parse_script_tag_content():
     )
     assert node == TElement(
         "script",
-        children=[TText.static("if (a < b && c > d) { alert('wow'); }")],
+        children=(TText.literal("if (a < b && c > d) { alert('wow'); }"),),
     )
 
 
@@ -158,7 +158,7 @@ def test_parse_script_with_entities():
     node = TemplateParser.parse(t"<script>var x = 'a &amp; b';</script>")
     assert node == TElement(
         "script",
-        children=[TText.static("var x = 'a &amp; b';")],
+        children=(TText.literal("var x = 'a &amp; b';"),),
     )
 
 
@@ -168,7 +168,7 @@ def test_parse_textarea_tag_content():
     )
     assert node == TElement(
         "textarea",
-        children=[TText.static("if (a < b && c > d) { alert('wow'); }")],
+        children=(TText.literal("if (a < b && c > d) { alert('wow'); }"),),
     )
 
 
@@ -177,7 +177,7 @@ def test_parse_textarea_with_entities():
     node = TemplateParser.parse(t"<textarea>var x = 'a &amp; b';</textarea>")
     assert node == TElement(
         "textarea",
-        children=[TText.static("var x = 'a & b';")],
+        children=(TText.literal("var x = 'a & b';"),),
     )
 
 
@@ -185,7 +185,7 @@ def test_parse_title_unusual():
     node = TemplateParser.parse(t"<title>My & Awesome <Site></title>")
     assert node == TElement(
         "title",
-        children=[TText.static("My & Awesome <Site>")],
+        children=(TText.literal("My & Awesome <Site>"),),
     )
 
 
@@ -207,20 +207,20 @@ def test_parse_unexpected_closing_tag():
 def test_self_closing_tags():
     node = TemplateParser.parse(t"<div/><p></p>")
     assert node == TFragment(
-        children=[
+        children=(
             TElement("div"),
             TElement("p"),
-        ]
+        )
     )
 
 
 def test_nested_self_closing_tags():
     node = TemplateParser.parse(t"<div><br><div /><br></div>")
     assert node == TElement(
-        "div", children=[TElement("br"), TElement("div"), TElement("br")]
+        "div", children=(TElement("br"), TElement("div"), TElement("br"))
     )
     node = TemplateParser.parse(t"<div><div /></div>")
-    assert node == TElement("div", children=[TElement("div")])
+    assert node == TElement("div", children=(TElement("div"),))
 
 
 def test_self_closing_tags_unexpected_closing_tag():
@@ -237,10 +237,10 @@ def test_literal_attributes():
     node = TemplateParser.parse(t'<input type="text" disabled />')
     assert node == TElement(
         "input",
-        attrs=[
+        attrs=(
             TLiteralAttribute("type", "text"),
             TLiteralAttribute("disabled", None),
-        ],
+        ),
     )
 
 
@@ -250,11 +250,11 @@ def test_interpolated_attributes():
     node = TemplateParser.parse(t'<div value1="{value1}" value2={value2} />')
     assert node == TElement(
         "div",
-        attrs=[
+        attrs=(
             TInterpolatedAttribute("value1", 0),
             TInterpolatedAttribute("value2", 1),
-        ],
-        children=[],
+        ),
+        children=(),
     )
 
 
@@ -268,11 +268,11 @@ def test_templated_attributes():
     value2_ref = TemplateRef(strings=("neato-", "-wow"), i_indexes=(1,))
     assert node == TElement(
         "div",
-        attrs=[
+        attrs=(
             TTemplatedAttribute("value1", value1_ref),
             TTemplatedAttribute("value2", value2_ref),
-        ],
-        children=[],
+        ),
+        children=(),
     )
 
 
@@ -294,8 +294,8 @@ def test_spread_attribute():
     node = TemplateParser.parse(t"<div {props} />")
     assert node == TElement(
         "div",
-        attrs=[TSpreadAttribute(i_index=0)],
-        children=[],
+        attrs=(TSpreadAttribute(i_index=0),),
+        children=(),
     )
 
 
