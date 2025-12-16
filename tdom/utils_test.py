@@ -1,6 +1,6 @@
 from string.templatelib import Interpolation
 
-from .utils import convert, format_interpolation
+from .utils import base_format_interpolation, convert
 
 
 class Convertible:
@@ -32,37 +32,37 @@ def test_convert_s():
     assert convert(value, "s") == "Convertible str"
 
 
-def test_format_interpolation_no_formatting():
+def test_base_format_interpolation_no_formatting():
     value = Convertible()
     interp = Interpolation(value, expression="", conversion=None, format_spec="")
-    assert format_interpolation(interp) is value
+    assert base_format_interpolation(interp) is value
 
 
-def test_format_interpolation_a():
+def test_base_format_interpolation_a():
     value = Convertible()
     interp = Interpolation(value, expression="", conversion="a", format_spec="")
-    assert format_interpolation(interp) == "Convertible repr"
+    assert base_format_interpolation(interp) == "Convertible repr"
 
 
-def test_format_interpolation_r():
+def test_base_format_interpolation_r():
     value = Convertible()
     interp = Interpolation(value, expression="", conversion="r", format_spec="")
-    assert format_interpolation(interp) == "Convertible repr"
+    assert base_format_interpolation(interp) == "Convertible repr"
 
 
-def test_format_interpolation_s():
+def test_base_format_interpolation_s():
     value = Convertible()
     interp = Interpolation(value, expression="", conversion="s", format_spec="")
-    assert format_interpolation(interp) == "Convertible str"
+    assert base_format_interpolation(interp) == "Convertible str"
 
 
-def test_format_interpolation_default_formatting():
+def test_base_format_interpolation_default_formatting():
     value = 42
     interp = Interpolation(value, expression="", conversion=None, format_spec="5d")
-    assert format_interpolation(interp) == "   42"
+    assert base_format_interpolation(interp) == "   42"
 
 
-def test_format_interpolation_custom_formatter_match_exact():
+def test_base_format_interpolation_custom_formatter_match_exact():
     value = 42
     interp = Interpolation(value, expression="", conversion=None, format_spec="custom")
 
@@ -70,12 +70,12 @@ def test_format_interpolation_custom_formatter_match_exact():
         return f"formatted-{val}-{spec}"
 
     assert (
-        format_interpolation(interp, formatters=[("custom", formatter)])
+        base_format_interpolation(interp, formatters=[("custom", formatter)])
         == "formatted-42-custom"
     )
 
 
-def test_format_interpolation_custom_formatter_match_predicate():
+def test_base_format_interpolation_custom_formatter_match_predicate():
     value = 42
     interp = Interpolation(
         value, expression="", conversion=None, format_spec="custom123"
@@ -88,6 +88,6 @@ def test_format_interpolation_custom_formatter_match_predicate():
         return f"formatted-{val}-{spec}"
 
     assert (
-        format_interpolation(interp, formatters=[(matcher, formatter)])
+        base_format_interpolation(interp, formatters=[(matcher, formatter)])
         == "formatted-42-custom123"
     )

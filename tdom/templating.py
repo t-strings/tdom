@@ -4,7 +4,7 @@ from string.templatelib import Interpolation, Template
 
 from markupsafe import Markup
 
-from .utils import format_interpolation as base_format_interpolation
+from .utils import base_format_interpolation
 
 
 def _format_safe(value: object, format_spec: str) -> str:
@@ -27,6 +27,17 @@ def format_interpolation(interpolation: Interpolation) -> object:
         interpolation,
         formatters=CUSTOM_FORMATTERS,
     )
+
+
+def template_from_parts(
+    strings: t.Sequence[str], interpolations: t.Sequence[Interpolation]
+) -> Template:
+    """Construct a template string from the given strings and parts."""
+    assert len(strings) == len(interpolations) + 1, (
+        "TemplateRef must have one more string than interpolation references."
+    )
+    flat = [x for pair in zip(strings, interpolations) for x in pair] + [strings[-1]]
+    return Template(*flat)
 
 
 def render_template_as_f(template: Template) -> str:

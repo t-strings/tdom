@@ -65,7 +65,7 @@ def _format_interpolation(
     return converted
 
 
-def format_interpolation(
+def base_format_interpolation(
     interpolation: Interpolation,
     *,
     formatters: t.Sequence[MatcherAndFormatter] = tuple(),
@@ -89,15 +89,12 @@ def format_interpolation(
     )
 
 
-def template_from_parts(
-    strings: t.Sequence[str], interpolations: t.Sequence[Interpolation]
-) -> Template:
-    """Construct a template string from the given strings and parts."""
-    assert len(strings) == len(interpolations) + 1, (
-        "TemplateRef must have one more string than interpolation references."
-    )
-    flat = [x for pair in zip(strings, interpolations) for x in pair] + [strings[-1]]
-    return Template(*flat)
+class LastUpdatedOrderedDict(OrderedDict):
+    "Store items in the order the keys were last updated."
+
+    def __setitem__(self, key, value):
+        super().__setitem__(key, value)
+        self.move_to_end(key)
 
 
 class CachableTemplate:
@@ -115,11 +112,3 @@ class CachableTemplate:
 
     def __hash__(self) -> int:
         return hash(self.template.strings)
-
-
-class LastUpdatedOrderedDict(OrderedDict):
-    "Store items in the order the keys were last updated."
-
-    def __setitem__(self, key, value):
-        super().__setitem__(key, value)
-        self.move_to_end(key)

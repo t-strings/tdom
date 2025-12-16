@@ -27,8 +27,8 @@ from .parser import (
     TText,
 )
 from .placeholders import TemplateRef
-from .templating import format_interpolation, render_template_as_f
-from .utils import CachableTemplate, LastUpdatedOrderedDict, template_from_parts
+from .templating import format_interpolation, render_template_as_f, template_from_parts
+from .utils import CachableTemplate, LastUpdatedOrderedDict
 
 
 @t.runtime_checkable
