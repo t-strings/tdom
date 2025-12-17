@@ -674,11 +674,10 @@ pytest = [
 
 [[package]]
 name = "tdom"
-version = "0.1.11"
+version = "0.1.12"
 source = { editable = "." }
 dependencies = [
     { name = "markupsafe" },
-    { name = "ty" },
 ]
 
 [package.dev-dependencies]
@@ -698,10 +697,7 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [
-    { name = "markupsafe", specifier = ">=3.0.3" },
-    { name = "ty", specifier = ">=0.0.1a34" },
-]
+requires-dist = [{ name = "markupsafe", specifier = ">=3.0.3" }]
 
 [package.metadata.requires-dev]
 dev = [
