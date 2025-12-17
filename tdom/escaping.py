@@ -33,7 +33,10 @@ def escape_html_comment(text: str) -> str:
     return text
 
 
-STYLE_RES = ((re.compile("</style>", re.I | re.A), LT + "/style>"),)
+# @NOTE: We use a group to preserve the case of the tagname, ie. StylE -> StylE
+# @NOTE: Rawstrings are needed for the groupname to resolve correctly
+# otherwise the slash must be escaped twice again.
+STYLE_RES = ((re.compile("</(?P<tagname>style)>", re.I | re.A), LT + r"/\g<tagname>>"),)
 
 
 def escape_html_style(text: str) -> str:
@@ -44,9 +47,18 @@ def escape_html_style(text: str) -> str:
 
 
 SCRIPT_RES = (
-    (re.compile("<!--", re.I | re.A), "\x3c!--"),
-    (re.compile("<script", re.I | re.A), "\x3cscript"),
-    (re.compile("</script", re.I | re.A), "\x3c/script"),
+    # @NOTE: Slashes are unescaped inside `repl` text in ADDITION to
+    # python's default unescaping.  So for a regular python str() you need
+    # `//` but for a python str() in res.sub(*, repl, *) you need 4 slashes,
+    # `////`, but we can use a rawstring to only need 2 slashes, ie. `//`.
+    # in order to get a single slash out the other side.
+    # @NOTE: We use a group to preserve the case of the tagname,
+    # ie. ScripT->ScripT.
+    # @NOTE: Rawstrings are also needed for the groupname to resolve correctly
+    # otherwise the slash must be escaped twice again.
+    (re.compile("<!--", re.I | re.A), r"\\x3c!--"),
+    (re.compile("<(?P<tagname>script)", re.I | re.A), r"\\x3c\g<tagname>"),
+    (re.compile("</(?P<tagname>script)", re.I | re.A), r"\\x3c/\g<tagname>"),
 )
 
 

@@ -30,12 +30,15 @@ def test_escape_html_comment_ends_with_lt_dash() -> None:
 def test_escape_html_style() -> None:
     input_text = "body { color: red; }</style> p { font-SIZE: 12px; }</STYLE>"
     expected_output = (
-        "body { color: red; }&lt;/style> p { font-SIZE: 12px; }&lt;/style>"
+        "body { color: red; }&lt;/style> p { font-SIZE: 12px; }&lt;/STYLE>"
     )
     assert escape_html_style(input_text) == expected_output
 
 
 def test_escape_html_script() -> None:
     input_text = "<!-- <script>var a = 1;</script> </SCRIPT>"
-    expected_output = "\x3c!-- \x3cscript>var a = 1;\x3c/script> </script>"
+    expected_output = "\\x3c!-- \\x3cscript>var a = 1;\\x3c/script> \\x3c/SCRIPT>"
     assert escape_html_script(input_text) == expected_output
+    # Smoketest that escaping is working and we are not just escaping back to the same value.
+    for text in ("<script", "</script", "<!--"):
+        assert escape_html_script(text) != text
