@@ -1,7 +1,7 @@
 import typing as t
 from dataclasses import dataclass, field
 
-from .templating import TemplateRef
+from .template_utils import TemplateRef
 
 
 @dataclass(slots=True, frozen=True)

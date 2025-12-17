@@ -599,7 +599,7 @@ used internally by the `html()` function but can also be used independently:
 
 ```python
 from string.templatelib import Interpolation
-from tdom.utils import convert
+from tdom.format import convert
 
 # Test convert function
 assert convert("hello", "s") == "hello"

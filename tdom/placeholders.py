@@ -2,7 +2,7 @@ import random
 import re
 import string
 
-from .templating import TemplateRef
+from .template_utils import TemplateRef
 
 FRAGMENT_TAG = f"t🐍f-{''.join(random.choices(string.ascii_lowercase, k=4))}-"
 _PLACEHOLDER_PREFIX = f"t🐍{''.join(random.choices(string.ascii_lowercase, k=2))}-"

@@ -32,6 +32,7 @@ CDATA_CONTENT_ELEMENTS = frozenset(["script", "style"])
 RCDATA_CONTENT_ELEMENTS = frozenset(["textarea", "title"])
 CONTENT_ELEMENTS = CDATA_CONTENT_ELEMENTS | RCDATA_CONTENT_ELEMENTS
 
+
 # FUTURE: add a pretty-printer to nodes for debugging
 # FUTURE: make nodes frozen (and have the parser work with mutable builders)
 

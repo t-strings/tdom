@@ -5,11 +5,12 @@ from markupsafe import escape as markup_escape
 escape_html_text = markup_escape  # unify api for test of project
 
 
-def escape_html_comment(text):
-    """Escape text injected into an HTML comment."""
-    GT = "&gt;"
-    LT = "&lt;"
+GT = "&gt;"
+LT = "&lt;"
 
+
+def escape_html_comment(text: str) -> str:
+    """Escape text injected into an HTML comment."""
     if not text:
         return text
     # - text must not start with the string ">"
@@ -21,15 +22,9 @@ def escape_html_comment(text):
         text = "-" + GT + text[2:]
 
     # - nor contain the strings "<!--", "-->", or "--!>"
-    index = text.find("<!--")
-    if index != -1:
-        text = text[:index] + LT + text[index + 1]
-    index = text.find("-->")
-    if index != -1:
-        text = text[: index + 2] + GT + text[index + 3]
-    index = text.find("--!>")
-    if index != -1:
-        text = text[: index + 3] + GT + text[index + 4]
+    text = text.replace("<!--", LT + "!--")
+    text = text.replace("-->", "--" + GT)
+    text = text.replace("--!>", "--!" + GT)
 
     # - nor end with the string "<!-".
     if text[-3:] == "<!-":
@@ -38,16 +33,27 @@ def escape_html_comment(text):
     return text
 
 
-def escape_html_style(text):
-    LT = "&lt;"
-    close_str = "</style>"
-    close_str_re = re.compile(close_str, re.I | re.A)
-    replace_str = LT + close_str[1:]
-    return re.sub(close_str_re, replace_str, text)
+STYLE_RES = ((re.compile("</style>", re.I | re.A), LT + "/style>"),)
 
 
-def escape_html_script(text):
+def escape_html_style(text: str) -> str:
+    """Escape text injected into an HTML style element."""
+    for matche_re, replace_text in STYLE_RES:
+        text = re.sub(matche_re, replace_text, text)
+    return text
+
+
+SCRIPT_RES = (
+    (re.compile("<!--", re.I | re.A), "\x3c!--"),
+    (re.compile("<script", re.I | re.A), "\x3cscript"),
+    (re.compile("</script", re.I | re.A), "\x3c/script"),
+)
+
+
+def escape_html_script(text: str) -> str:
     """
+    Escape text injected into an HTML script element.
+
     https://html.spec.whatwg.org/multipage/scripting.html#restrictions-for-contents-of-script-elements
 
     (from link) The easiest and safest way to avoid the rather strange restrictions
@@ -57,11 +63,6 @@ def escape_html_script(text):
     - "<script" as "\x3cscript"
     - "</script" as "\x3c/script"`
     """
-    match_to_replace = (
-        (re.compile("<!--", re.I | re.A), "\x3c!--"),
-        (re.compile("<script", re.I | re.A), "\x3cscript"),
-        (re.compile("</script", re.I | re.A), "\x3c/script"),
-    )
-    for match_re, replace_text in match_to_replace:
+    for match_re, replace_text in SCRIPT_RES:
         text = re.sub(match_re, replace_text, text)
     return text

@@ -1,93 +1,34 @@
-from string.templatelib import Interpolation
-
-from .utils import base_format_interpolation, convert
+from .utils import CachableTemplate, LastUpdatedOrderedDict
 
 
-class Convertible:
-    def __str__(self) -> str:
-        return "Convertible str"
+def test_last_updated_ordered_dict() -> None:
+    loudict: dict[int, str] = LastUpdatedOrderedDict()
+    loudict[1] = "one"
+    loudict[2] = "two"
+    loudict[3] = "three"
+    assert list(loudict.keys()) == [1, 2, 3]
 
-    def __repr__(self) -> str:
-        return "Convertible repr"
+    loudict[2] = "TWO"
+    assert list(loudict.keys()) == [1, 3, 2]
 
+    loudict[1] = "ONE"
+    assert list(loudict.keys()) == [3, 2, 1]
 
-def test_convert_none():
-    value = Convertible()
-    assert convert(value, None) is value
-
-
-def test_convert_a():
-    value = Convertible()
-    assert convert(value, "a") == "Convertible repr"
-    assert convert("Café", "a") == "'Caf\\xe9'"
+    loudict[4] = "four"
+    assert list(loudict.keys()) == [3, 2, 1, 4]
 
 
-def test_convert_r():
-    value = Convertible()
-    assert convert(value, "r") == "Convertible repr"
+def test_cachable_template_eq() -> None:
+    t1 = CachableTemplate(t"Hello {'name'}!")
+    t2 = CachableTemplate(t"Hello {'name'}!")
+    t3 = CachableTemplate(t"Goodbye {'name'}!")
+
+    assert t1 == t2
+    assert t1 != t3
 
 
-def test_convert_s():
-    value = Convertible()
-    assert convert(value, "s") == "Convertible str"
+def test_cachable_template_hash() -> None:
+    t1 = CachableTemplate(t"Hello {'name'}!")
+    t2 = CachableTemplate(t"Hello {'name'}!")
 
-
-def test_base_format_interpolation_no_formatting():
-    value = Convertible()
-    interp = Interpolation(value, expression="", conversion=None, format_spec="")
-    assert base_format_interpolation(interp) is value
-
-
-def test_base_format_interpolation_a():
-    value = Convertible()
-    interp = Interpolation(value, expression="", conversion="a", format_spec="")
-    assert base_format_interpolation(interp) == "Convertible repr"
-
-
-def test_base_format_interpolation_r():
-    value = Convertible()
-    interp = Interpolation(value, expression="", conversion="r", format_spec="")
-    assert base_format_interpolation(interp) == "Convertible repr"
-
-
-def test_base_format_interpolation_s():
-    value = Convertible()
-    interp = Interpolation(value, expression="", conversion="s", format_spec="")
-    assert base_format_interpolation(interp) == "Convertible str"
-
-
-def test_base_format_interpolation_default_formatting():
-    value = 42
-    interp = Interpolation(value, expression="", conversion=None, format_spec="5d")
-    assert base_format_interpolation(interp) == "   42"
-
-
-def test_base_format_interpolation_custom_formatter_match_exact():
-    value = 42
-    interp = Interpolation(value, expression="", conversion=None, format_spec="custom")
-
-    def formatter(val: object, spec: str) -> str:
-        return f"formatted-{val}-{spec}"
-
-    assert (
-        base_format_interpolation(interp, formatters=[("custom", formatter)])
-        == "formatted-42-custom"
-    )
-
-
-def test_base_format_interpolation_custom_formatter_match_predicate():
-    value = 42
-    interp = Interpolation(
-        value, expression="", conversion=None, format_spec="custom123"
-    )
-
-    def matcher(spec: str) -> bool:
-        return spec.startswith("custom")
-
-    def formatter(val: object, spec: str) -> str:
-        return f"formatted-{val}-{spec}"
-
-    assert (
-        base_format_interpolation(interp, formatters=[(matcher, formatter)])
-        == "formatted-42-custom123"
-    )
+    assert hash(t1) == hash(t2)

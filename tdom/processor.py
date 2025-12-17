@@ -8,6 +8,8 @@ from markupsafe import Markup
 
 from .callables import get_callable_info
 from .classnames import classnames
+from .format import format_interpolation as base_format_interpolation
+from .format import format_template
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
 from .parser import (
     HTMLAttribute,
@@ -27,7 +29,7 @@ from .parser import (
     TText,
 )
 from .placeholders import TemplateRef
-from .templating import format_interpolation, render_template_as_f, template_from_parts
+from .template_utils import template_from_parts
 from .utils import CachableTemplate, LastUpdatedOrderedDict
 
 
@@ -43,6 +45,34 @@ def _parse_and_cache(cachable: CachableTemplate) -> TNode:
 
 type Attribute = tuple[str, object]
 type AttributesDict = dict[str, object]
+
+
+# --------------------------------------------------------------------------
+# Custom formatting for the processor
+# --------------------------------------------------------------------------
+
+
+def _format_safe(value: object, format_spec: str) -> str:
+    """Use Markup() to mark a value as safe HTML."""
+    assert format_spec == "safe"
+    return Markup(value)
+
+
+def _format_unsafe(value: object, format_spec: str) -> str:
+    """Convert a value to a plain string, forcing it to be treated as unsafe."""
+    assert format_spec == "unsafe"
+    return str(value)
+
+
+CUSTOM_FORMATTERS = (("safe", _format_safe), ("unsafe", _format_unsafe))
+
+
+def format_interpolation(interpolation: Interpolation) -> object:
+    return base_format_interpolation(
+        interpolation,
+        formatters=CUSTOM_FORMATTERS,
+    )
+
 
 # --------------------------------------------------------------------------
 # Placeholder Substitution
@@ -162,7 +192,7 @@ def _resolve_t_attrs(
                     new_attrs[sub_k] = sub_v
             case TTemplatedAttribute(name=name, value_ref=ref):
                 attr_t = _resolve_ref(ref, interpolations)
-                attr_value = render_template_as_f(attr_t)
+                attr_value = format_template(attr_t)
                 new_attrs[name] = attr_value
             case TSpreadAttribute(i_index=i_index):
                 interpolation = interpolations[i_index]
@@ -360,7 +390,7 @@ def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) ->
             return _resolve_t_text_ref(ref, interpolations)
         case TComment(ref=ref):
             comment_t = _resolve_ref(ref, interpolations)
-            comment = render_template_as_f(comment_t)
+            comment = format_template(comment_t)
             return Comment(comment)
         case TDocumentType(text=text):
             return DocumentType(text)
