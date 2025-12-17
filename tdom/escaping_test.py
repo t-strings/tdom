@@ -40,5 +40,5 @@ def test_escape_html_script() -> None:
     expected_output = "\\x3c!-- \\x3cscript>var a = 1;\\x3c/script> \\x3c/SCRIPT>"
     assert escape_html_script(input_text) == expected_output
     # Smoketest that escaping is working and we are not just escaping back to the same value.
-    for text in ("<script>", "</script", "<!--"):
+    for text in ("<script", "</script", "<!--"):
         assert escape_html_script(text) != text
