@@ -289,7 +289,7 @@ def _kebab_to_snake(name: str) -> str:
 
 def _invoke_component(
     attrs: AttributesDict,
-    children: list[Node],
+    children: list[Node],  # TODO: why not TNode, though?
     interpolation: Interpolation,
 ) -> Node:
     """
