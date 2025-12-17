@@ -1,14 +1,11 @@
 from dataclasses import dataclass, field
-from string.templatelib import Template
-
-from markupsafe import escape
 
 from .escaping import (
     escape_html_comment,
     escape_html_script,
     escape_html_style,
+    escape_html_text,
 )
-
 
 # See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
 VOID_ELEMENTS = frozenset(
@@ -35,129 +32,13 @@ CDATA_CONTENT_ELEMENTS = frozenset(["script", "style"])
 RCDATA_CONTENT_ELEMENTS = frozenset(["textarea", "title"])
 CONTENT_ELEMENTS = CDATA_CONTENT_ELEMENTS | RCDATA_CONTENT_ELEMENTS
 
+
 # FUTURE: add a pretty-printer to nodes for debugging
 # FUTURE: make nodes frozen (and have the parser work with mutable builders)
 
 
-def to_template_repr(template):
-    """
-    Convert a template to a comparable representation.
-
-    This is mostly for testing because Templates/Interpolations are not comparable.
-    """
-    parts = []
-    for index, s in enumerate(template.strings):
-        parts.append(s)
-        if index < len(template.strings) - 1:
-            ip = template.interpolations[index]
-            parts.append((ip.value, ip.expression, ip.conversion, ip.format_spec))
-    return tuple(parts)
-
-
-@dataclass
-class TNodeBase:
-    def __str__(self) -> str:
-        raise NotImplementedError("Cannot serialize dynamic nodes.")
-
-    def __html__(self) -> str:
-        raise NotImplementedError("Cannot serialize dynamic nodes.")
-
-
-type TAttribute = (
-    StaticAttribute | SpreadAttribute | TemplatedAttribute | InterpolatedAttribute
-)
-
-
-@dataclass
-class StaticAttribute:
-    name: str
-    value: str | None = None
-
-
-@dataclass
-class SpreadAttribute:
-    interpolation_index: int
-
-
-@dataclass
-class TemplatedAttribute:
-    name: str
-    value_t: Template
-
-    def to_comparable(self):
-        return (self.name, to_template_repr(self.value_t))
-
-    def __eq__(self, other: object):
-        return (
-            isinstance(other, TemplatedAttribute)
-            and self.to_comparable() == other.to_comparable()
-        )
-
-
-@dataclass
-class InterpolatedAttribute:
-    name: str
-    interpolation_index: int
-
-
-type TNode = TElement | TComponent | TFragment | TText | TComment | TDocumentType
-
-
-@dataclass
-class TDocumentType(TNodeBase):
-    text: str
-
-
-@dataclass
-class TElement(TNodeBase):
-    tag: str
-    attrs: tuple[TAttribute, ...] = field(default_factory=tuple)
-    children: tuple[TNode, ...] = field(default_factory=tuple)
-
-
-@dataclass
-class TFragment(TNodeBase):
-    children: tuple[TNode, ...] = field(default_factory=tuple)
-
-
-@dataclass
-class TComponent(TNodeBase):
-    starttag_interpolation_index: int
-    endtag_interpolation_index: int
-    starttag_string_index: (
-        int  # string index where the starttag > or startendtag /> occurs.
-    )
-    endtag_string_index: (
-        int  # string index where the endtag > or startendtag /> occurs.
-    )
-    attrs: tuple[TAttribute, ...] = field(default_factory=tuple)
-    children: tuple[TNode, ...] = field(default_factory=tuple)
-
-
-@dataclass
-class TText(TNodeBase):
-    text_t: Template
-
-    def __eq__(self, other: object) -> bool:
-        # This is primarily of use for testing purposes. We only consider
-        # two Text nodes equal if their string representations match.
-        return isinstance(other, TText) and to_template_repr(
-            self.text_t
-        ) == to_template_repr(other.text_t)
-
-
-@dataclass
-class TComment(TNodeBase):
-    text_t: Template
-
-    def __eq__(self, other: object) -> bool:
-        return isinstance(other, TComment) and to_template_repr(
-            self.text_t
-        ) == to_template_repr(other.text_t)
-
-
 @dataclass(slots=True)
-class Node(TNodeBase):
+class Node:
     def __html__(self) -> str:
         """Return the HTML representation of the node."""
         # By default, just return the string representation
@@ -170,7 +51,7 @@ class Text(Node):
 
     def __str__(self) -> str:
         # Use markupsafe's escape to handle HTML escaping
-        return escape(self.text)
+        return escape_html_text(self.text)
 
     def __eq__(self, other: object) -> bool:
         # This is primarily of use for testing purposes. We only consider
@@ -251,7 +132,7 @@ class Element(Node):
         # We use markupsafe's escape to handle HTML escaping of attribute values
         # which means it's possible to mark them as safe if needed.
         attrs_str = "".join(
-            f" {key}" if value is None else f' {key}="{escape(value)}"'
+            f" {key}" if value is None else f' {key}="{escape_html_text(value)}"'
             for key, value in self.attrs.items()
         )
         if self.is_void:

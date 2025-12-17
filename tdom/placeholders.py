@@ -1,13 +1,10 @@
-from dataclasses import dataclass
-import re
 import random
+import re
 import string
-from string.templatelib import Interpolation, Template
-import typing as t
 
+from .template_utils import TemplateRef
 
 FRAGMENT_TAG = f"t🐍f-{''.join(random.choices(string.ascii_lowercase, k=4))}-"
-
 _PLACEHOLDER_PREFIX = f"t🐍{''.join(random.choices(string.ascii_lowercase, k=2))}-"
 _PLACEHOLDER_SUFFIX = f"-{''.join(random.choices(string.ascii_lowercase, k=2))}🐍t"
 _PLACEHOLDER_PATTERN = re.compile(
@@ -15,58 +12,66 @@ _PLACEHOLDER_PATTERN = re.compile(
 )
 
 
-def placeholder(i: int) -> str:
+def make_placeholder(i: int) -> str:
     """Generate a placeholder for the i-th interpolation."""
     return f"{_PLACEHOLDER_PREFIX}{i}{_PLACEHOLDER_SUFFIX}"
 
 
-@dataclass(frozen=True, slots=True)
-class _PlaceholderMatch:
-    start: int
-    end: int
-    index: int | None
+def match_placeholders(s: str) -> list[re.Match[str]]:
+    """Find all placeholders in a string."""
+    return list(_PLACEHOLDER_PATTERN.finditer(s))
 
 
-def find_placeholder(s: str) -> int | None:
+def find_placeholders(s: str) -> TemplateRef:
     """
-    If the string is exactly one placeholder, return its index. Otherwise, None.
-    """
-    match = _PLACEHOLDER_PATTERN.fullmatch(s)
-    return int(match.group(1)) if match else None
+    Find all placeholders in a string and return a TemplateRef.
 
-
-def _find_all_placeholders(s: str) -> t.Iterable[_PlaceholderMatch]:
+    If no placeholders are found, returns a static TemplateRef.
     """
-    Find all placeholders in a string, returning their positions and indices.
+    matches = match_placeholders(s)
+    if not matches:
+        return TemplateRef.literal(s)
 
-    If there is non-placeholder text in the string, its position is also
-    returned with index None.
-    """
-    matches = list(_PLACEHOLDER_PATTERN.finditer(s))
-    last_end = 0
+    strings: list[str] = []
+    i_indexes: list[int] = []
+    last_index = 0
     for match in matches:
-        if match.start() > last_end:
-            yield _PlaceholderMatch(last_end, match.start(), None)
-        index = int(match.group(1))
-        yield _PlaceholderMatch(match.start(), match.end(), index)
-        last_end = match.end()
-    if last_end < len(s):
-        yield _PlaceholderMatch(last_end, len(s), None)
+        start, end = match.span()
+        strings.append(s[last_index:start])
+        i_indexes.append(int(match[1]))
+        last_index = end
+    strings.append(s[last_index:])
+
+    return TemplateRef(tuple(strings), tuple(i_indexes))
 
 
-def placeholders_to_template(text: str, format_spec: str) -> tuple[Template, list[str]]:
-    """
-    Replace placeholders in text with interpolations to make template.
+class PlaceholderState:
+    known: set[int]
+    """Collection of currently 'known and active' placeholder indexes."""
 
-    Return the template and a list of placeholders in the order they were found.
-    """
-    placeholders: list[str] = []
-    parts: list[str | Interpolation] = []
-    for match_info in _find_all_placeholders(text):
-        match_str = text[match_info.start : match_info.end]
-        if match_info.index is not None:
-            placeholders.append(match_str)
-            parts.append(Interpolation(match_info.index, "", None, format_spec))
-        else:
-            parts.append(match_str)
-    return Template(*parts), placeholders
+    def __init__(self):
+        self.known = set()
+
+    @property
+    def is_empty(self) -> bool:
+        return len(self.known) == 0
+
+    def add_placeholder(self, index: int) -> str:
+        placeholder = make_placeholder(index)
+        self.known.add(index)
+        return placeholder
+
+    def remove_placeholders(self, text: str) -> TemplateRef:
+        """
+        Find all known placeholders in the text and return their indices.
+
+        If unknown placeholders are found, raises ValueError.
+
+        If no placeholders are found, returns a static PlaceholderRef.
+        """
+        pt = find_placeholders(text)
+        for index in pt.i_indexes:
+            if index not in self.known:
+                raise ValueError(f"Unknown placeholder index {index} found in text.")
+            self.known.remove(index)
+        return pt

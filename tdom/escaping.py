@@ -1,38 +1,16 @@
 import re
-from string.templatelib import Interpolation
 
-from markupsafe import Markup
+from markupsafe import escape as markup_escape
 
-from .utils import format_interpolation as base_format_interpolation
-
-
-def _format_safe(value: object, format_spec: str) -> str:
-    """Use Markup() to mark a value as safe HTML."""
-    assert format_spec == "safe"
-    return Markup(value)
+escape_html_text = markup_escape  # unify api for test of project
 
 
-def _format_unsafe(value: object, format_spec: str) -> str:
-    """Convert a value to a plain string, forcing it to be treated as unsafe."""
-    assert format_spec == "unsafe"
-    return str(value)
+GT = "&gt;"
+LT = "&lt;"
 
 
-CUSTOM_FORMATTERS = (("safe", _format_safe), ("unsafe", _format_unsafe))
-
-
-def format_interpolation(interpolation: Interpolation) -> object:
-    return base_format_interpolation(
-        interpolation,
-        formatters=CUSTOM_FORMATTERS,
-    )
-
-
-def escape_html_comment(text):
+def escape_html_comment(text: str) -> str:
     """Escape text injected into an HTML comment."""
-    GT = "&gt;"
-    LT = "&lt;"
-
     if not text:
         return text
     # - text must not start with the string ">"
@@ -44,12 +22,9 @@ def escape_html_comment(text):
         text = "-" + GT + text[2:]
 
     # - nor contain the strings "<!--", "-->", or "--!>"
-    if (index := text.find("<!--")) and index != -1:
-        text = text[:index] + LT + text[index + 1]
-    if (index := text.find("-->")) and index != -1:
-        text = text[: index + 2] + GT + text[index + 3]
-    if (index := text.find("--!>")) and index != -1:
-        text = text[: index + 3] + GT + text[index + 4]
+    text = text.replace("<!--", LT + "!--")
+    text = text.replace("-->", "--" + GT)
+    text = text.replace("--!>", "--!" + GT)
 
     # - nor end with the string "<!-".
     if text[-3:] == "<!-":
@@ -58,16 +33,27 @@ def escape_html_comment(text):
     return text
 
 
-def escape_html_style(text):
-    LT = "&lt;"
-    close_str = "</style>"
-    close_str_re = re.compile(close_str, re.I | re.A)
-    replace_str = LT + close_str[1:]
-    return re.sub(close_str_re, replace_str, text)
+STYLE_RES = ((re.compile("</style>", re.I | re.A), LT + "/style>"),)
 
 
-def escape_html_script(text):
+def escape_html_style(text: str) -> str:
+    """Escape text injected into an HTML style element."""
+    for matche_re, replace_text in STYLE_RES:
+        text = re.sub(matche_re, replace_text, text)
+    return text
+
+
+SCRIPT_RES = (
+    (re.compile("<!--", re.I | re.A), "\x3c!--"),
+    (re.compile("<script", re.I | re.A), "\x3cscript"),
+    (re.compile("</script", re.I | re.A), "\x3c/script"),
+)
+
+
+def escape_html_script(text: str) -> str:
     """
+    Escape text injected into an HTML script element.
+
     https://html.spec.whatwg.org/multipage/scripting.html#restrictions-for-contents-of-script-elements
 
     (from link) The easiest and safest way to avoid the rather strange restrictions
@@ -76,15 +62,7 @@ def escape_html_script(text):
     - "<!--" as "\x3c!--"
     - "<script" as "\x3cscript"
     - "</script" as "\x3c/script"`
-
-    This does not make a script *run*; it just tries to prevent accidentally injecting
-    *another* SCRIPT tag into a SCRIPT tag being rendered.
     """
-    match_to_replace = (
-        (re.compile("<!--", re.I | re.A), "\x3c!--"),
-        (re.compile("<script", re.I | re.A), "\x3cscript"),
-        (re.compile("</script", re.I | re.A), "\x3c/script"),
-    )
-    for match_re, replace_text in match_to_replace:
+    for match_re, replace_text in SCRIPT_RES:
         text = re.sub(match_re, replace_text, text)
     return text

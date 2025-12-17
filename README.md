@@ -599,15 +599,12 @@ used internally by the `html()` function but can also be used independently:
 
 ```python
 from string.templatelib import Interpolation
-from tdom.utils import format_interpolation, convert
+from tdom.format import convert
 
 # Test convert function
 assert convert("hello", "s") == "hello"
 assert convert("hello", "r") == "'hello'"
 assert convert(42, None) == 42
-
-# format_interpolation is used internally for custom format specifiers
-# The html() function uses this to implement :safe and :unsafe specifiers
 ```
 
 **`convert()`**: Applies conversion specifiers (`!a`, `!r`, `!s`) to values
