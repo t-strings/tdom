@@ -8,7 +8,8 @@ import time
 from functools import lru_cache
 
 from tdom import html
-from tdom.parser import CachedTemplate, TemplateParser
+from tdom.parser import TemplateParser
+from tdom.utils import CachableTemplate
 
 
 def create_test_templates():
@@ -56,12 +57,12 @@ def create_test_templates():
     return [template1, template2, template3, template4]
 
 
-def parse_without_cache(cached_template: CachedTemplate):
+def parse_without_cache(cached_template: CachableTemplate):
     """Parse template without caching (mimics disabled cache)."""
     parser = TemplateParser()
     parser.feed_template(cached_template.template)
     parser.close()
-    return parser.get_node()
+    return parser.get_tnode()
 
 
 def benchmark_cache_scenario(name: str, templates, iterations: int = 1000):
@@ -80,21 +81,21 @@ def benchmark_cache_scenario(name: str, templates, iterations: int = 1000):
     start = time.perf_counter()
     for _ in range(iterations):
         for template in templates:
-            cached_template = CachedTemplate(template)
+            cached_template = CachableTemplate(template)
             _ = parse_without_cache(cached_template)
     end = time.perf_counter()
     without_cache_time = (end - start) * 1_000_000  # microseconds
 
     # Warm up cache
     for template in templates:
-        cached_template = CachedTemplate(template)
+        cached_template = CachableTemplate(template)
         _ = parse_cached(cached_template)
 
     # Benchmark WITH cache (all cache hits after warmup)
     start = time.perf_counter()
     for _ in range(iterations):
         for template in templates:
-            cached_template = CachedTemplate(template)
+            cached_template = CachableTemplate(template)
             _ = parse_cached(cached_template)
     end = time.perf_counter()
     with_cache_time = (end - start) * 1_000_000  # microseconds

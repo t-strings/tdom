@@ -69,8 +69,7 @@ def benchmark_parser(template):
     """Run parser operations repeatedly."""
     # Parse template multiple times
     for _ in range(100):
-        parser = TemplateParser(template)
-        _ = parser.parse()
+        _ = TemplateParser.parse(template)
 
 
 def profile_parser():

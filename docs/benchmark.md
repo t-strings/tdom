@@ -59,13 +59,16 @@ Templates are parsed into an intermediate TNode representation first, then
 processed into the final Node tree:
 
 ```python
+from tdom.parser import TemplateParser
+from tdom.processor import _resolve_t_node  # subject to change!
+
+template = t"<div>Hello, {'world'}!</div>"
+
 # Stage 1: Parse template string into TNode tree
-parser = TemplateParser(template)
-tnodes = parser.parse()
+tnodes = TemplateParser.parse(template)
 
 # Stage 2: Process TNodes into final Node tree
-processor = TemplateProcessor(template, tnodes)
-nodes = processor.process()
+nodes = _resolve_t_node(tnodes, template.interpolations)
 ```
 
 **Benefits**:
@@ -79,12 +82,13 @@ nodes = processor.process()
 Uses MarkupSafe for HTML escaping with context-aware strategies:
 
 ```python
+from tdom.escaping import escape_html_text, escape_html_script, escape_html_style
 # Text content escaping
-escape(user_input)  # Fast HTML entity escaping
+escape_html_text("<script>alert('xss')</script>")  # Fast HTML entity escaping
 
-# Special handling for script/style tags
-escape_html_script(script_content)
-escape_html_style(style_content)
+# Special handling for the interior content of script/style tags
+escape_html_script("alert('xss')</script>alert('yes')")
+escape_html_style("body { background: </style> body { color: red; } }")
 ```
 
 **Benefits**:
@@ -116,6 +120,8 @@ def is_void(self) -> bool:
 Node trees are built but not serialized until needed:
 
 ```python
+from tdom import html
+
 # Building the DOM is separate from rendering
 dom = html(t"<div>Content</div>")  # Parse + process only
 
@@ -134,6 +140,9 @@ html_string = str(dom)  # Now serialize to string
 Uses dataclasses with `__slots__` for memory efficiency:
 
 ```python
+from dataclasses import dataclass, field
+from tdom.nodes import Node
+
 @dataclass(slots=True)
 class Element(Node):
     tag: str
@@ -152,12 +161,13 @@ class Element(Node):
 LRU cache for parsed templates eliminates redundant parsing:
 
 ```python
+from functools import lru_cache
+from tdom.parser import TemplateParser
+
 @lru_cache(maxsize=512)
 def _parse_html(cached_template: CachedTemplate) -> TNode:
-    parser = TemplateParser()
-    parser.feed_template(cached_template.template)
-    parser.close()
-    return parser.get_node()
+    parser = TemplateParser.parse(cached_template.template)
+    return parser.get_tnode()
 ```
 
 **How it works**:
@@ -196,8 +206,9 @@ def Card(*, title: str, content: str) -> Node:
     </div>""")
 
 # Called 1000 times - template parsed once, cached 999 times
+items = [{"title": f"Item {i}", "content": "Lorem ipsum"} for i in range(1000)]
 for item in items:
-    card = Card(title=item.title, content=item.content)
+    card = Card(title=item['title'], content=item['content'])
 ```
 
 ## Running Benchmarks
@@ -330,11 +341,12 @@ Pre-build repeated sections with plain Python:
 
 ```python
 # ✅ Good - fast string building
+data = ["Item 1", "Item 2", "Item 3"]
 items = "".join(f"<li>{item}</li>" for item in data)
 result = html(t"<ul>{items}</ul>")
 
 # ❌ Less efficient - many small template calls
-result = html(t"<ul>{''.join(html(t'<li>{item}</li>') for item in data)}</ul>")
+result = html(t"<ul>{''.join(str(html(t'<li>{item}</li>')) for item in data)}</ul>")
 ```
 
 ### 3. Minimize Deep Nesting
