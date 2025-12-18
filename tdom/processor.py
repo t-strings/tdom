@@ -38,6 +38,11 @@ class HasHTMLDunder(t.Protocol):
     def __html__(self) -> str: ...  # pragma: no cover
 
 
+# TODO: in Ian's original PR, this caching was tethered to the
+# TemplateParser. Here, it's tethered to the processor. I suspect we'll
+# revisit this soon enough.
+
+
 @lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
 def _parse_and_cache(cachable: CachableTemplate) -> TNode:
     return TemplateParser.parse(cachable.template)
