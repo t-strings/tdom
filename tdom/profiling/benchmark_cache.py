@@ -103,16 +103,26 @@ def benchmark_cache_scenario(name: str, templates, iterations: int = 1000):
     avg_without = without_cache_time / (iterations * len(templates))
     avg_with = with_cache_time / (iterations * len(templates))
     speedup = without_cache_time / with_cache_time if with_cache_time > 0 else 0
-    savings_pct = ((without_cache_time - with_cache_time) / without_cache_time * 100) if without_cache_time > 0 else 0
+    savings_pct = (
+        ((without_cache_time - with_cache_time) / without_cache_time * 100)
+        if without_cache_time > 0
+        else 0
+    )
 
-    print(f"  Without cache: {avg_without:>8.3f}μs/op  (total: {without_cache_time/1000:.2f}ms)")
-    print(f"  With cache:    {avg_with:>8.3f}μs/op  (total: {with_cache_time/1000:.2f}ms)")
+    print(
+        f"  Without cache: {avg_without:>8.3f}μs/op  (total: {without_cache_time / 1000:.2f}ms)"
+    )
+    print(
+        f"  With cache:    {avg_with:>8.3f}μs/op  (total: {with_cache_time / 1000:.2f}ms)"
+    )
     print(f"  Speedup:       {speedup:>8.2f}x")
     print(f"  Time saved:    {savings_pct:>8.1f}%")
 
     # Cache stats
     info = parse_cached.cache_info()
-    print(f"  Cache stats:   hits={info.hits}, misses={info.misses}, size={info.currsize}")
+    print(
+        f"  Cache stats:   hits={info.hits}, misses={info.misses}, size={info.currsize}"
+    )
 
     return {
         "without_cache": avg_without,
@@ -157,7 +167,9 @@ def benchmark_full_pipeline_cache():
 
     print(f"\nRotating through {len(templates)} templates ({iterations} iterations):")
     print(f"  Average time: {mixed_time:>8.3f}μs/op")
-    print(f"  Mix of {len(templates)} unique templates (25% cache hit rate per template)")
+    print(
+        f"  Mix of {len(templates)} unique templates (25% cache hit rate per template)"
+    )
 
 
 def run_benchmark():
@@ -173,28 +185,23 @@ def run_benchmark():
 
     # Scenario 1: Best case - repeated parsing of same templates
     results_best = benchmark_cache_scenario(
-        "Scenario 1: Best Case (100% cache hit rate)",
-        templates,
-        iterations=1000
+        "Scenario 1: Best Case (100% cache hit rate)", templates, iterations=1000
     )
 
     # Scenario 2: Single template repeated (extreme best case)
     results_single = benchmark_cache_scenario(
         "Scenario 2: Single Template Repeated (extreme best case)",
         [templates[0]],
-        iterations=1000
+        iterations=1000,
     )
 
     # Scenario 3: More templates than cache (cache evictions)
     # Create 600 unique templates (more than cache maxsize=512)
-    many_templates = [
-        t"""<div id="{i}"><p>Content {i}</p></div>"""
-        for i in range(600)
-    ]
+    many_templates = [t"""<div id="{i}"><p>Content {i}</p></div>""" for i in range(600)]
     results_eviction = benchmark_cache_scenario(
         "Scenario 3: Cache Evictions (600 templates, cache size 512)",
         many_templates,
-        iterations=10  # Fewer iterations due to many templates
+        iterations=10,  # Fewer iterations due to many templates
     )
 
     # Full pipeline benchmark

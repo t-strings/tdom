@@ -111,48 +111,41 @@ def run_benchmark():
 
     # End-to-end: Template -> DOM -> String
     results["full_pipeline"] = benchmark_operation(
-        "Full pipeline (template → DOM → HTML)",
-        lambda: str(html(template))
+        "Full pipeline (template → DOM → HTML)", lambda: str(html(template))
     )
 
     # Just parsing: Template -> DOM
     results["parse_only"] = benchmark_operation(
-        "Parse only (template → DOM)",
-        lambda: html(template)
+        "Parse only (template → DOM)", lambda: html(template)
     )
 
     # Just serialization: DOM -> String
     dom = html(template)
     results["serialize_only"] = benchmark_operation(
-        "Serialize only (DOM → HTML)",
-        lambda: str(dom)
+        "Serialize only (DOM → HTML)", lambda: str(dom)
     )
 
     # Small template (overhead measurement)
     small_template = t"<div><p>Hello</p></div>"
     results["small_template"] = benchmark_operation(
-        "Small template (overhead baseline)",
-        lambda: str(html(small_template))
+        "Small template (overhead baseline)", lambda: str(html(small_template))
     )
 
     # Heavy interpolation
     results["interpolation"] = benchmark_operation(
-        "Heavy interpolation",
-        lambda: str(html(interpolation_template))
+        "Heavy interpolation", lambda: str(html(interpolation_template))
     )
 
     # Component rendering (nested elements)
     nested_template = t"<div><div><div><p>Nested</p></div></div></div>"
     results["nested"] = benchmark_operation(
-        "Nested elements",
-        lambda: str(html(nested_template))
+        "Nested elements", lambda: str(html(nested_template))
     )
 
     # Attribute handling
     attr_template = t'<div id="test" class="foo bar" data-value="123">Content</div>'
     results["attributes"] = benchmark_operation(
-        "Attribute handling",
-        lambda: str(html(attr_template))
+        "Attribute handling", lambda: str(html(attr_template))
     )
 
     print("-" * 80)
@@ -173,9 +166,7 @@ def run_benchmark():
     else:
         print("  ✗ SLOW - Optimization recommended")
 
-    print(
-        f"\n  Current: {avg_time:.1f}μs/op | Target: <100μs/op | Best: <50μs/op"
-    )
+    print(f"\n  Current: {avg_time:.1f}μs/op | Target: <100μs/op | Best: <50μs/op")
 
     # Detailed breakdown
     print("\n" + "=" * 80)
@@ -187,9 +178,13 @@ def run_benchmark():
     full_time = results["full_pipeline"]
     overhead = full_time - (parse_time + serialize_time)
 
-    print(f"\nParsing:        {parse_time:>8.3f}μs ({parse_time/full_time*100:.1f}%)")
-    print(f"Serialization:  {serialize_time:>8.3f}μs ({serialize_time/full_time*100:.1f}%)")
-    print(f"Overhead:       {overhead:>8.3f}μs ({overhead/full_time*100:.1f}%)")
+    print(
+        f"\nParsing:        {parse_time:>8.3f}μs ({parse_time / full_time * 100:.1f}%)"
+    )
+    print(
+        f"Serialization:  {serialize_time:>8.3f}μs ({serialize_time / full_time * 100:.1f}%)"
+    )
+    print(f"Overhead:       {overhead:>8.3f}μs ({overhead / full_time * 100:.1f}%)")
     print(f"Total:          {full_time:>8.3f}μs (100.0%)")
 
 
