@@ -1,33 +1,27 @@
-import sys
 import typing as t
-from string.templatelib import Template, Interpolation
-from html.parser import HTMLParser
 from dataclasses import dataclass, field
-from functools import lru_cache
+from html.parser import HTMLParser
+from string.templatelib import Interpolation, Template
 
-from .nodes import (
-    VOID_ELEMENTS,
-    TNode,
+from .nodes import VOID_ELEMENTS
+from .placeholders import FRAGMENT_TAG, PlaceholderState
+from .tnodes import (
+    TAttribute,
     TComment,
+    TComponent,
     TDocumentType,
     TElement,
     TFragment,
+    TInterpolatedAttribute,
+    TLiteralAttribute,
+    TNode,
+    TSpreadAttribute,
+    TTemplatedAttribute,
     TText,
-    TComponent,
-    TAttribute,
-    InterpolatedAttribute,
-    TemplatedAttribute,
-    StaticAttribute,
-    SpreadAttribute,
-)
-from .placeholders import (
-    placeholder as construct_placeholder,
-    find_placeholder as deconstruct_placeholder,
-    placeholders_to_template,
-    FRAGMENT_TAG,
 )
 
-type OpenTag = OpenTElement | OpenTFragment | OpenTComponent
+type HTMLAttribute = tuple[str, str | None]
+type HTMLAttributesDict = dict[str, str | None]
 
 
 @dataclass
@@ -44,427 +38,338 @@ class OpenTFragment:
 
 @dataclass
 class OpenTComponent:
-    starttag_interpolation_index: int
-    starttag_string_index: int
+    # TODO: hold on to start_s_index when we start to need it.
+    start_i_index: int
     attrs: tuple[TAttribute, ...]
     children: list[TNode] = field(default_factory=list)
 
 
+type OpenTag = OpenTElement | OpenTFragment | OpenTComponent
+
+
 @dataclass
-class TemplateState:
-    template: Template = field(default_factory=lambda: Template(""))
-    root: OpenTFragment = field(default_factory=OpenTFragment)
-    stack: list[OpenTag] = field(default_factory=list)
-    active_placeholders: dict[str, int] = field(default_factory=dict)
-    strings_index: int = -1
-    interpolations_index: int = -1
+class SourceTracker:
+    """Tracks source locations within a Template for error reporting."""
+
+    # TODO: write utilities to generate complete error messages, with the
+    # template itself in context and the relevant line/column underlined/etc.
+
+    template: Template
+    i_index: int = -1  # The current interpolation index.
 
     @property
-    def interpolations(self):
+    def interpolations(self) -> tuple[Interpolation, ...]:
         return self.template.interpolations
+
+    @property
+    def s_index(self) -> int:
+        """The current string index."""
+        return self.i_index + 1
+
+    def advance_interpolation(self) -> int:
+        """Call before processing an interpolation to move to the next one."""
+        self.i_index += 1
+        return self.i_index
+
+    def get_expression(
+        self, i_index: int, fallback_prefix: str = "interpolation"
+    ) -> str:
+        """
+        Resolve an interpolation index to its original expression for error messages.
+        Falls back to a synthetic expression if the original is empty.
+        """
+        ip = self.interpolations[i_index]
+        return ip.expression if ip.expression else f"{{{fallback_prefix}-{i_index}}}"
+
+    def get_interpolation_value(self, i_index: int):
+        """Get the runtime value at the given interpolation index."""
+        return self.interpolations[i_index].value
+
+    def format_starttag(self, i_index: int) -> str:
+        """Format a component start tag for error messages."""
+        return self.get_expression(i_index, fallback_prefix="component-starttag")
+
+    def format_endtag(self, i_index: int) -> str:
+        """Format a component end tag for error messages."""
+        return self.get_expression(i_index, fallback_prefix="component-endtag")
+
+    def format_open_tag(self, open_tag: OpenTag) -> str:
+        """Format any open tag for error messages."""
+        match open_tag:
+            case OpenTElement(tag=tag):
+                return tag
+            case OpenTFragment():
+                return ""
+            case OpenTComponent(start_i_index=i_index):
+                return self.format_starttag(i_index)
 
 
 class TemplateParser(HTMLParser):
-    tstate: TemplateState
+    root: OpenTFragment
+    stack: list[OpenTag]
+    placeholders: PlaceholderState
+    source: SourceTracker | None
 
-    def __init__(self, *, convert_charrefs=True):
-        self.tstate = TemplateState()
+    def __init__(self, *, convert_charrefs: bool = True):
+        # This calls HTMLParser.reset() which we override to set up our state.
         super().__init__(convert_charrefs=convert_charrefs)
 
-    def handle_attrs(
-        self, attrs: t.Sequence[tuple[str, str | None]]
-    ) -> tuple[TAttribute, ...]:
-        """Create appropriate attribute types, finding and remove placeholdersas needed."""
-        new_attrs: list[TAttribute] = []
-        for k, v in attrs:
-            k_parts = tuple(self.extract_template(k))
-            v_parts = (
-                (tuple(self.extract_template(v)) or ("",)) if v is not None else None
-            )
-            match k_parts, v_parts:
-                case [Interpolation(value=interpolation_index)], None:
-                    new_attrs.append(
-                        SpreadAttribute(interpolation_index=interpolation_index)
-                    )
-                case [str() as name], None:
-                    new_attrs.append(StaticAttribute(name=name, value=None))
-                case [str() as name], [Interpolation(value=interpolation_index)]:
-                    new_attrs.append(
-                        InterpolatedAttribute(
-                            name=name, interpolation_index=interpolation_index
-                        )
-                    )
-                case [str() as name], [str() | Interpolation(), _, *_]:
-                    new_attrs.append(
-                        TemplatedAttribute(name=name, value_t=Template(*v_parts))
-                    )
-                case [str() as name], [str() as value]:
-                    new_attrs.append(StaticAttribute(name=name, value=value))
-                case _:
-                    raise ValueError(
-                        f"Unupported combination of attribute name/value: {k_parts}={v_parts}"
-                    )
-        return tuple(new_attrs)
-
-    def handle_starttag(
-        self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
-    ) -> None:
-        """Dispatch *opening* a tag specialized handlers."""
-        tag_t = list(self.extract_template(tag, ""))
-        match tag_t:
-            case [Interpolation(value=interpolation_index)]:
-                open_component = self.handle_start_component(interpolation_index, attrs)
-                self.tstate.stack.append(open_component)
-            case [str()]:
-                if tag == FRAGMENT_TAG:
-                    open_fragment = self.handle_start_fragment(tag, attrs)
-                    self.tstate.stack.append(open_fragment)
-                else:
-                    open_element = self.handle_start_element(tag, attrs)
-                    if open_element.tag in VOID_ELEMENTS:
-                        self.append_child(
-                            TElement(tag=open_element.tag, attrs=open_element.attrs)
-                        )
-                    else:
-                        self.tstate.stack.append(open_element)
-            case _:
-                raise ValueError(
-                    "Component tags should be an exact match."
-                )  # @TODO: Cleanup
-
-    def handle_start_fragment(
-        self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
-    ) -> OpenTFragment:
-        if attrs:
-            raise TypeError("Fragments cannot have attributes.")
-        return OpenTFragment()
-
-    def handle_start_element(
-        self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
-    ) -> OpenTElement:
-        return OpenTElement(tag, self.handle_attrs(attrs))
-
-    def handle_start_component(
-        self, interpolation_index: int, attrs: t.Sequence[tuple[str, str | None]]
-    ) -> OpenTComponent:
-        if not callable(self.tstate.interpolations[interpolation_index].value):
-            raise TypeError("Component value should be callable.")  # @TODO: Cleanup
-        return OpenTComponent(
-            starttag_interpolation_index=interpolation_index,
-            starttag_string_index=self.tstate.strings_index,
-            attrs=self.handle_attrs(attrs),
-        )
-
-    def handle_startendtag(
-        self, tag: str, attrs: t.Sequence[tuple[str, str | None]]
-    ) -> None:
-        """Dispatch a self-closing tag, `<tag />` to specialized handlers."""
-        tag_t = list(self.extract_template(tag, ""))
-        match tag_t:
-            case [Interpolation(value=interpolation_index)]:
-                component = self.handle_startend_component(interpolation_index, attrs)
-                self.append_child(component)
-            case [str() as starttag]:
-                if starttag == FRAGMENT_TAG:
-                    fragment = self.handle_startend_fragment(starttag, attrs)
-                    self.append_child(fragment)
-                else:
-                    element = self.handle_startend_element(starttag, attrs)
-                    self.append_child(element)
-            case _:
-                raise ValueError(
-                    "Component tags should be an exact match."
-                )  # @TODO: Cleanup
-
-    def handle_startend_fragment(
-        self, startendtag: str, attrs: t.Sequence[tuple[str, str | None]]
-    ) -> TFragment:
-        if attrs:  # @TODO: Here or inside the dispatcher itself?
-            raise TypeError("Fragments cannot have attributes.")
-        return TFragment()
-
-    def handle_startend_element(
-        self, startendtag: str, attrs: t.Sequence[tuple[str, str | None]]
-    ) -> TElement:
-        return TElement(startendtag, attrs=self.handle_attrs(attrs))
-
-    def handle_startend_component(
-        self, interpolation_index: int, attrs: t.Sequence[tuple[str, str | None]]
-    ) -> TComponent:
-        if not callable(self.tstate.interpolations[interpolation_index].value):
-            raise TypeError("Component value should be callable.")  # @TODO: Cleanup
-        return TComponent(
-            starttag_interpolation_index=interpolation_index,
-            endtag_interpolation_index=interpolation_index,
-            starttag_string_index=self.tstate.strings_index,
-            endtag_string_index=self.tstate.strings_index,
-            attrs=self.handle_attrs(attrs),
-        )
-
-    def handle_endtag(self, tag: str) -> None:
-        """Dispatch *closing* a tag, `</tag>`, to specialized handlers."""
-        tag_t = list(self.extract_template(tag, ""))
-        match tag_t:
-            case [Interpolation(value=interpolation_index)]:
-                component = self.handle_end_component(interpolation_index)
-                self.append_child(component)
-            case [str()]:
-                if tag == FRAGMENT_TAG:
-                    fragment = self.handle_end_fragment(tag)
-                    self.append_child(fragment)
-                else:
-                    element = self.handle_end_element(tag)
-                    self.append_child(element)
-            case _:
-                raise ValueError("Component end tag must be an exact match.")
-
-    def handle_end_component(self, interpolation_index: int) -> TComponent:
-        if not self.tstate.stack:
-            raise ValueError(
-                f"Unexpected closing tag </{self.get_comp_endtag(interpolation_index)}> with no open tag."
-            )
-        open_tag = self.tstate.stack.pop()
-        match open_tag:
-            case OpenTElement():
-                raise TypeError(
-                    f"Mismatched closing tag </{self.get_comp_endtag(interpolation_index)}> for </{open_tag.tag}>."
-                )
-            case OpenTFragment():
-                raise TypeError(
-                    f"Mismatched closing tag </{self.get_comp_endtag(interpolation_index)}> for </>."
-                )
-            case OpenTComponent():
-                if (
-                    self.tstate.interpolations[
-                        open_tag.starttag_interpolation_index
-                    ].value
-                    != self.tstate.interpolations[interpolation_index].value
-                ):
-                    raise ValueError(
-                        f"Mismatched component value for <{self.get_comp_starttag(open_tag.starttag_interpolation_index)}> and </{self.get_comp_endtag(interpolation_index)}>"
-                    )
-                return TComponent(
-                    starttag_interpolation_index=open_tag.starttag_interpolation_index,
-                    endtag_interpolation_index=interpolation_index,
-                    starttag_string_index=open_tag.starttag_string_index,
-                    endtag_string_index=self.tstate.strings_index,
-                    attrs=open_tag.attrs,
-                    children=tuple(open_tag.children),
-                )
-
-    def handle_end_element(self, tag: str) -> TElement:
-        if not self.tstate.stack:
-            raise ValueError(f"Unexpected closing tag </{tag}> with no open tag.")
-        open_tag = self.tstate.stack.pop()
-        match open_tag:
-            case OpenTElement():
-                if open_tag.tag != tag:
-                    raise ValueError(
-                        f"Mismatched closing tag </{tag}> for <{self.get_container_starttag(open_tag)}>."
-                    )
-                return TElement(
-                    open_tag.tag,
-                    attrs=open_tag.attrs,
-                    children=tuple(open_tag.children),
-                )
-            case OpenTFragment():
-                raise TypeError(
-                    f"Mismatched closing tag </{tag}> for </{self.get_container_starttag(open_tag)}>."
-                )
-            case OpenTComponent():
-                raise TypeError(
-                    f"Mismatched closing tag </{tag}> for </{self.get_container_starttag(open_tag)}>."
-                )
-
-    def handle_end_fragment(self, tag: str) -> TFragment:
-        if not self.tstate.stack:
-            raise ValueError("Unexpected closing tag </> with no open tag.")
-        open_tag = self.tstate.stack.pop()
-        match open_tag:
-            case OpenTFragment():
-                return TFragment(children=tuple(open_tag.children))
-            case OpenTElement():
-                raise TypeError(
-                    f"Mismatched closing tag </> for <{self.get_container_starttag(open_tag)}>."
-                )
-            case OpenTComponent():
-                raise TypeError(
-                    f"Mismatched closing tag </> for <{self.get_container_starttag(open_tag)}>."
-                )
-
-    def handle_data(self, data: str) -> None:
-        text_t = self.extract_template(data)
-        last_text_child = self.get_latest_text_child()
-        if last_text_child:
-            last_text_child.text_t += text_t
-        else:
-            text = TText(text_t)
-            self.append_child(text)
-
-    def handle_comment(self, data: str) -> None:
-        text_t = self.extract_template(data)
-        comment = TComment(text_t)
-        self.append_child(comment)
-
-    def handle_decl(self, decl: str) -> None:
-        if decl.upper().startswith("DOCTYPE"):
-            doctype_content = decl[7:].strip()
-            doctype = TDocumentType(doctype_content)
-            self.append_child(doctype)
-        # For simplicity, we ignore other declarations.
-        pass
-
-    def get_latest_text_child(self) -> TText | None:
-        """Get the latest text child of the current parent or None if one does not exist."""
-        children = self.get_parent().children
-        if children and isinstance(children[-1], TText):
-            return children[-1]
-        return None
+    # ------------------------------------------
+    # Parse state helpers
+    # ------------------------------------------
 
     def get_parent(self) -> OpenTag:
         """Return the current parent node to which new children should be added."""
-        return self.tstate.stack[-1] if self.tstate.stack else self.tstate.root
+        return self.stack[-1] if self.stack else self.root
 
     def append_child(self, child: TNode) -> None:
         parent = self.get_parent()
         parent.children.append(child)
 
-    def close(self) -> None:
-        if self.tstate.stack:
-            raise ValueError("Invalid HTML structure: unclosed tags remain.")
-        if self.tstate and self.tstate.active_placeholders:
-            raise ValueError(
-                f"Some interpolations were never found: {list(self.tstate.active_placeholders.values())}"
-            )
-        super().close()
+    # ------------------------------------------
+    # Attribute Helpers
+    # ------------------------------------------
 
-    def get_node(
-        self,
-    ) -> (
-        TNode  # @TODO: Might be more consistent for this to always be a container.
-    ):
-        """Get the Node tree parsed from the input HTML."""
-        # CONSIDER: Should we invert things and offer streaming parsing?
-        assert not self.tstate.active_placeholders and not self.tstate.stack, (
-            "Did you forget to call close()?"
+    def make_tattr(self, attr: HTMLAttribute) -> TAttribute:
+        """Build a TAttribute from a raw attribute tuple."""
+
+        name, value = attr
+        name_ref = self.placeholders.remove_placeholders(name)
+        value_ref = (
+            self.placeholders.remove_placeholders(value) if value is not None else None
         )
-        if len(self.tstate.root.children) > 1:
-            # The parse structure results in multiple root elements, so we
-            # return a Fragment to hold them all.
-            return TFragment(children=tuple(self.tstate.root.children))
-        elif len(self.tstate.root.children) == 1:
-            return self.tstate.root.children[0]
-        else:
-            # Special case: the parse structure is empty; we treat
-            # this as an empty document fragment.
-            return TFragment(children=tuple())
 
-    def feed(self, data: str) -> None:
-        raise NotImplementedError("Did you mean to call feed_template()?")
-
-    def feed_template(self, template: Template):
-        assert self.tstate.template.strings == ("",), "Did you forget to call reset?"
-        tstate = self.tstate = TemplateState(template)
-        last_strings_index = len(tstate.template.strings) - 1
-        tstate.strings_index = 0
-        while tstate.strings_index <= last_strings_index:
-            data = template.strings[tstate.strings_index]
-            # @TODO: Add tracking for this
-            # Could key on (strings_index, pos_in_string).
-            data = data.replace("<>", f"<{FRAGMENT_TAG}>").replace(
-                "</>", f"</{FRAGMENT_TAG}>"
-            )
-            super().feed(data)
-            if tstate.strings_index != last_strings_index:
-                tstate.interpolations_index = tstate.strings_index
-                placeholder = construct_placeholder(tstate.interpolations_index)
-                tstate.active_placeholders[placeholder] = tstate.interpolations_index
-                super().feed(placeholder)
-            tstate.strings_index += 1
-
-    def extract_template(self, text: str, format_spec: str = "") -> Template:
-        text_t, found = placeholders_to_template(text, format_spec)
-        for placeholder in found:
-            if placeholder not in self.tstate.active_placeholders:
-                raise ValueError(
-                    f"Found unexpected placeholder {placeholder} for interpolation {deconstruct_placeholder(placeholder)}."
+        if name_ref.is_literal:
+            if value_ref is None or value_ref.is_literal:
+                return TLiteralAttribute(name=name, value=value)
+            elif value_ref.is_singleton:
+                return TInterpolatedAttribute(
+                    name=name, value_i_index=value_ref.i_indexes[0]
                 )
             else:
-                del self.tstate.active_placeholders[placeholder]
-        return text_t
+                return TTemplatedAttribute(name=name, value_ref=value_ref)
+        if value_ref is not None:
+            raise ValueError(
+                "Attribute names cannot contain interpolations if the value is also interpolated."
+            )
+        if not name_ref.is_singleton:
+            raise ValueError(
+                "Spread attributes must have exactly one interpolation in the name."
+            )
+        return TSpreadAttribute(i_index=name_ref.i_indexes[0])
+
+    def make_tattrs(self, attrs: t.Sequence[HTMLAttribute]) -> tuple[TAttribute, ...]:
+        """Build TAttributes from raw attribute tuples."""
+        return tuple(self.make_tattr(attr) for attr in attrs)
+
+    # ------------------------------------------
+    # Tag Helpers
+    # ------------------------------------------
+
+    def make_open_tag(self, tag: str, attrs: t.Sequence[HTMLAttribute]) -> OpenTag:
+        """Build an OpenTag from a raw tag and attribute tuples."""
+        tag_ref = self.placeholders.remove_placeholders(tag)
+
+        if tag_ref.is_literal:
+            if tag == FRAGMENT_TAG:
+                if attrs:
+                    raise ValueError("Fragments cannot have attributes.")
+                return OpenTFragment()
+            return OpenTElement(tag=tag, attrs=self.make_tattrs(attrs))
+
+        if not tag_ref.is_singleton:
+            raise ValueError(
+                "Component element tags must have exactly one interpolation."
+            )
+
+        # HERE BE DRAGONS: the interpolation at i_index should be a
+        # component callable. We do not check this in the parser, instead
+        # relying on higher layers to validate types and render correctly.
+        i_index = tag_ref.i_indexes[0]
+        return OpenTComponent(
+            start_i_index=i_index,
+            attrs=self.make_tattrs(attrs),
+        )
+
+    def finalize_tag(
+        self, open_tag: OpenTag, endtag_i_index: int | None = None
+    ) -> TNode:
+        """Finalize an OpenTag into a TNode."""
+        match open_tag:
+            case OpenTElement(tag=tag, attrs=attrs, children=children):
+                return TElement(tag=tag, attrs=attrs, children=tuple(children))
+            case OpenTFragment(children=children):
+                return TFragment(children=tuple(children))
+            case OpenTComponent(
+                start_i_index=start_i_index,
+                attrs=attrs,
+                children=children,
+            ):
+                return TComponent(
+                    start_i_index=start_i_index,
+                    end_i_index=endtag_i_index,
+                    attrs=attrs,
+                    children=tuple(children),
+                )
+
+    def validate_end_tag(self, tag: str, open_tag: OpenTag) -> int | None:
+        """Validate that closing tag matches open tag. Return component end index if applicable."""
+        assert self.source, "Parser source tracker not initialized."
+        tag_ref = self.placeholders.remove_placeholders(tag)
+
+        match open_tag:
+            case OpenTElement():
+                if not tag_ref.is_literal:
+                    raise ValueError(
+                        f"Component closing tag found for element <{open_tag.tag}>."
+                    )
+                if tag != open_tag.tag:
+                    raise ValueError(
+                        f"Mismatched closing tag </{tag}> for element <{open_tag.tag}>."
+                    )
+                return None
+
+            case OpenTFragment():
+                if not tag_ref.is_literal:
+                    raise ValueError("Component closing tag found for fragment.")
+                if tag != FRAGMENT_TAG:
+                    raise ValueError(f"Mismatched closing tag </{tag}> for fragment.")
+                return None
+
+            case OpenTComponent(start_i_index=start_i_index):
+                if tag_ref.is_literal:
+                    raise ValueError(
+                        f"Mismatched closing tag </{tag}> for component starting at {self.source.format_starttag(start_i_index)}."
+                    )
+                if not tag_ref.is_singleton:
+                    raise ValueError(
+                        "Component end tags must have exactly one interpolation."
+                    )
+                # HERE BE DRAGONS: the interpolation at end_i_index shuld be a
+                # component callable that matches the start tag. We do not check
+                # any of this in the parser, instead relying on higher layers.
+                return tag_ref.i_indexes[0]
+
+    # ------------------------------------------
+    # HTMLParser tag callbacks
+    # ------------------------------------------
+
+    def handle_starttag(self, tag: str, attrs: t.Sequence[HTMLAttribute]) -> None:
+        open_tag = self.make_open_tag(tag, attrs)
+        if isinstance(open_tag, OpenTElement) and open_tag.tag in VOID_ELEMENTS:
+            final_tag = self.finalize_tag(open_tag)
+            self.append_child(final_tag)
+        else:
+            self.stack.append(open_tag)
+
+    def handle_startendtag(self, tag: str, attrs: t.Sequence[HTMLAttribute]) -> None:
+        """Dispatch a self-closing tag, `<tag />` to specialized handlers."""
+        open_tag = self.make_open_tag(tag, attrs)
+        final_tag = self.finalize_tag(open_tag)
+        self.append_child(final_tag)
+
+    def handle_endtag(self, tag: str) -> None:
+        if not self.stack:
+            raise ValueError(f"Unexpected closing tag </{tag}> with no open tag.")
+
+        open_tag = self.stack.pop()
+        endtag_i_index = self.validate_end_tag(tag, open_tag)
+        final_tag = self.finalize_tag(open_tag, endtag_i_index)
+        self.append_child(final_tag)
+
+    # ------------------------------------------
+    # HTMLParser other callbacks
+    # ------------------------------------------
+
+    def handle_data(self, data: str) -> None:
+        ref = self.placeholders.remove_placeholders(data)
+        text = TText(ref)
+        self.append_child(text)
+
+    def handle_comment(self, data: str) -> None:
+        ref = self.placeholders.remove_placeholders(data)
+        comment = TComment(ref)
+        self.append_child(comment)
+
+    def handle_decl(self, decl: str) -> None:
+        ref = self.placeholders.remove_placeholders(decl)
+        if not ref.is_literal:
+            raise ValueError("Interpolations are not allowed in declarations.")
+        if not decl.upper().startswith("DOCTYPE"):
+            raise NotImplementedError(
+                "Only DOCTYPE declarations are currently supported."
+            )
+        doctype_content = decl[7:].strip()
+        doctype = TDocumentType(doctype_content)
+        self.append_child(doctype)
 
     def reset(self):
         super().reset()
-        self.tstate = TemplateState()
+        self.root = OpenTFragment()
+        self.stack = []
+        self.placeholders = PlaceholderState()
+        self.source = None
 
-    def get_container_starttag(self, node: OpenTag) -> str:
-        match node:
-            case OpenTElement() as element:
-                return element.tag
-            case OpenTFragment():
-                return ""
-            case OpenTComponent() as component:
-                return self.get_comp_starttag(component.starttag_interpolation_index)
+    def close(self) -> None:
+        if self.stack:
+            raise ValueError("Invalid HTML structure: unclosed tags remain.")
+        if not self.placeholders.is_empty:
+            raise ValueError("Some placeholders were never resolved.")
+        super().close()
 
-    def get_ip_expression(
-        self, ip_index: int, fallback_prefix: str = "interpolation-at-"
-    ) -> str:
+    # ------------------------------------------
+    # Getting the parsed node tree
+    # ------------------------------------------
+
+    def get_tnode(self) -> TNode:
+        """Get the Node tree parsed from the input HTML."""
+        # TODO: consider always returning a TTag?
+        if len(self.root.children) > 1:
+            # The parse structure results in multiple root elements, so we
+            # return a Fragment to hold them all.
+            return TFragment(children=tuple(self.root.children))
+        elif len(self.root.children) == 1:
+            # The parse structure results in a single root element, so we
+            # return that element directly. This will be a non-Fragment Node.
+            return self.root.children[0]
+        else:
+            # Special case: the parse structure is empty; we treat
+            # this as an empty document fragment.
+            # CONSIDER: or as an empty text node?
+            return TFragment(children=tuple())
+
+    # ------------------------------------------
+    # Feeding and parsing
+    # ------------------------------------------
+
+    def feed_str(self, s: str) -> None:
+        """Feed a string part of a Template to the parser."""
+        # TODO: add tracking for this, or maybe just deprecate it?
+        s = s.replace("<>", f"<{FRAGMENT_TAG}>").replace("</>", f"</{FRAGMENT_TAG}>")
+        self.feed(s)
+
+    def feed_interpolation(self, index: int) -> None:
+        placeholder = self.placeholders.add_placeholder(index)
+        self.feed(placeholder)
+
+    def feed_template(self, template: Template) -> None:
+        """Feed a Template's content to the parser."""
+        assert self.source is None, "Did you forget to call reset?"
+        self.source = SourceTracker(template)
+        for i_index in range(len(template.interpolations)):
+            self.feed_str(template.strings[i_index])
+            self.source.advance_interpolation()
+            self.feed_interpolation(i_index)
+        self.feed_str(template.strings[-1])
+
+    @staticmethod
+    def parse(t: Template) -> TNode:
         """
-        When an error occurs processing a placeholder resolve an expression to use for debugging.
+        Parse a Template containing valid HTML and substitutions and return
+        a TNode tree representing its structure. This cachable structure can later
+        be resolved against actual interpolation values to produce a Node tree.
         """
-        ip = self.tstate.interpolations[ip_index]
-        return (
-            ip.expression
-            if ip.expression != ""
-            else f"{{{fallback_prefix}-{ip_index}}}"
-        )
-
-    def get_comp_endtag(self, endtag_ip_index: int) -> str:
-        return self.get_ip_expression(
-            endtag_ip_index, fallback_prefix="component-endtag-at-"
-        )
-
-    def get_comp_starttag(self, starttag_ip_index: int) -> str:
-        return self.get_ip_expression(
-            starttag_ip_index, fallback_prefix="component-starttag-at-"
-        )
-
-
-@lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
-def _parse_html(
-    cached_template: CachedTemplate,
-) -> (
-    TNode  # @TODO: Might be more consistent for this to always be a container.
-):
-    parser = TemplateParser()
-    parser.feed_template(cached_template.template)
-    parser.close()
-    return parser.get_node()
-
-
-@dataclass
-class CachedTemplate:
-    """Attempt to cache template just by its strings."""
-
-    template: Template
-
-    def __hash__(self):
-        return hash(self.template.strings)
-
-    def __eq__(self, other):
-        return (
-            isinstance(other, CachedTemplate)
-            and self.template.strings == other.template.strings
-        )
-
-
-def parse_html(template: Template) -> TNode:
-    """
-    Parse a string, or sequence of HTML string chunks, into a Node tree.
-
-    If a single string is provided, it is parsed as a whole. If an iterable
-    of strings is provided, each string is fed to the parser in sequence.
-    This is particularly useful if you want to keep specific text chunks
-    separate in the resulting Node tree.
-    """
-    return _parse_html(CachedTemplate(template))
+        parser = TemplateParser()
+        parser.feed_template(t)
+        parser.close()
+        return parser.get_tnode()

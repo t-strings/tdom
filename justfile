@@ -9,8 +9,13 @@ format_check:
 format_docs:
     npx prettier --write "**/*.md"
 
-type_check:
+type_check_pyright:
     uv run pyright
+
+type_check_ty:
+    uv run ty check
+
+type_check: type_check_pyright type_check_ty
 
 test:
     uv run pytest
