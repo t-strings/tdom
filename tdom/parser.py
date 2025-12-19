@@ -4,7 +4,7 @@ from html.parser import HTMLParser
 from string.templatelib import Interpolation, Template
 
 from .nodes import VOID_ELEMENTS
-from .placeholders import FRAGMENT_TAG, PlaceholderState
+from .placeholders import PlaceholderState
 from .tnodes import (
     TAttribute,
     TComment,
@@ -171,10 +171,6 @@ class TemplateParser(HTMLParser):
         tag_ref = self.placeholders.remove_placeholders(tag)
 
         if tag_ref.is_literal:
-            if tag == FRAGMENT_TAG:
-                if attrs:
-                    raise ValueError("Fragments cannot have attributes.")
-                return OpenTFragment()
             return OpenTElement(tag=tag, attrs=self.make_tattrs(attrs))
 
         if not tag_ref.is_singleton:
@@ -230,11 +226,7 @@ class TemplateParser(HTMLParser):
                 return None
 
             case OpenTFragment():
-                if not tag_ref.is_literal:
-                    raise ValueError("Component closing tag found for fragment.")
-                if tag != FRAGMENT_TAG:
-                    raise ValueError(f"Mismatched closing tag </{tag}> for fragment.")
-                return None
+                raise NotImplementedError("We do not support anonymous fragments.")
 
             case OpenTComponent(start_i_index=start_i_index):
                 if tag_ref.is_literal:
@@ -327,7 +319,7 @@ class TemplateParser(HTMLParser):
         if len(self.root.children) > 1:
             # The parse structure results in multiple root elements, so we
             # return a Fragment to hold them all.
-            return TFragment(children=tuple(self.root.children))
+            return self.finalize_tag(self.root)
         elif len(self.root.children) == 1:
             # The parse structure results in a single root element, so we
             # return that element directly. This will be a non-Fragment Node.
@@ -336,7 +328,7 @@ class TemplateParser(HTMLParser):
             # Special case: the parse structure is empty; we treat
             # this as an empty document fragment.
             # CONSIDER: or as an empty text node?
-            return TFragment(children=tuple())
+            return self.finalize_tag(self.root)
 
     # ------------------------------------------
     # Feeding and parsing
@@ -344,8 +336,6 @@ class TemplateParser(HTMLParser):
 
     def feed_str(self, s: str) -> None:
         """Feed a string part of a Template to the parser."""
-        # TODO: add tracking for this, or maybe just deprecate it?
-        s = s.replace("<>", f"<{FRAGMENT_TAG}>").replace("</>", f"</{FRAGMENT_TAG}>")
         self.feed(s)
 
     def feed_interpolation(self, index: int) -> None:

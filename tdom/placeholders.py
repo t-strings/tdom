@@ -4,7 +4,7 @@ import string
 
 from .template_utils import TemplateRef
 
-FRAGMENT_TAG = f"t🐍f-{''.join(random.choices(string.ascii_lowercase, k=4))}-"
+
 _PLACEHOLDER_PREFIX = f"t🐍{''.join(random.choices(string.ascii_lowercase, k=2))}-"
 _PLACEHOLDER_SUFFIX = f"-{''.join(random.choices(string.ascii_lowercase, k=2))}🐍t"
 _PLACEHOLDER_PATTERN = re.compile(
