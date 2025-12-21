@@ -704,29 +704,50 @@ def test_interpolated_style_attribute():
     )
 
 
-def test_override_static_style_str_str():
+def test_merge_static_style_str_str():
     node = html(t'<p style="font-color: red" {dict(style="font-size: 15px")}></p>')
-    assert node == Element("p", {"style": "font-size: 15px"})
-    assert str(node) == '<p style="font-size: 15px"></p>'
+    assert node == Element("p", {"style": "font-color: red; font-size: 15px"})
+    assert str(node) == '<p style="font-color: red; font-size: 15px"></p>'
 
 
 def test_override_static_style_str_builder():
     node = html(t'<p style="font-color: red" {dict(style={"font-size": "15px"})}></p>')
-    assert node == Element("p", {"style": "font-size: 15px"})
-    assert str(node) == '<p style="font-size: 15px"></p>'
+    assert node == Element("p", {"style": "font-color: red; font-size: 15px"})
+    assert str(node) == '<p style="font-color: red; font-size: 15px"></p>'
 
 
 def test_interpolated_style_attribute_multiple_placeholders():
     styles1 = {"color": "red"}
     styles2 = {"font-weight": "bold"}
-    node = html(t"<p style='{styles1} {styles2}'>Warning!</p>")
     # CONSIDER: Is this what we want? Currently, when we have multiple
-    # placeholders in a single attribute, we treat it as a string attribute.
+    # placeholders in a single attribute, we treat it as a string attribute
+    # which produces an invalid style attribute.
+    with pytest.raises(ValueError):
+        _ = html(t"<p style='{styles1} {styles2}'>Warning!</p>")
+
+
+def test_interpolated_style_attribute_merged():
+    styles1 = {"color": "red"}
+    styles2 = {"font-weight": "bold"}
+    node = html(t"<p style={styles1} style={styles2}>Warning!</p>")
     assert node == Element(
         "p",
-        attrs={"style": "{'color': 'red'} {'font-weight': 'bold'}"},
+        attrs={"style": "color: red; font-weight: bold"},
         children=[Text("Warning!")],
     )
+    assert str(node) == '<p style="color: red; font-weight: bold">Warning!</p>'
+
+
+def test_interpolated_style_attribute_merged_override():
+    styles1 = {"color": "red", "font-weight": "normal"}
+    styles2 = {"font-weight": "bold"}
+    node = html(t"<p style={styles1} style={styles2}>Warning!</p>")
+    assert node == Element(
+        "p",
+        attrs={"style": "color: red; font-weight: bold"},
+        children=[Text("Warning!")],
+    )
+    assert str(node) == '<p style="color: red; font-weight: bold">Warning!</p>'
 
 
 def test_style_attribute_str():
@@ -734,10 +755,10 @@ def test_style_attribute_str():
     node = html(t"<p style={styles}>Warning!</p>")
     assert node == Element(
         "p",
-        attrs={"style": "color: red; font-weight: bold;"},
+        attrs={"style": "color: red; font-weight: bold"},
         children=[Text("Warning!")],
     )
-    assert str(node) == '<p style="color: red; font-weight: bold;">Warning!</p>'
+    assert str(node) == '<p style="color: red; font-weight: bold">Warning!</p>'
 
 
 def test_style_attribute_non_str_non_dict():

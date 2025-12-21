@@ -169,6 +169,77 @@ def _process_attr(key: str, value: object) -> t.Iterable[Attribute]:
     yield (key, value)
 
 
+def _parse_styles(style_str: str) -> list[tuple[str, str | None]]:
+    """
+    Parse the style declaractions out of a style attribute string.
+    """
+    props = [p.strip() for p in style_str.split(";")]
+    styles: list[tuple[str, str | None]] = []
+    for prop in props:
+        if prop:
+            prop_parts = [p.strip() for p in prop.split(":") if p.strip()]
+            if len(prop_parts) != 2:
+                raise ValueError(
+                    f"Invalid number of parts for style property {prop} in {style_str}"
+                )
+            styles.append((prop_parts[0], prop_parts[1]))
+    return styles
+
+
+def _init_style(old_value: object) -> dict[str, str | None]:
+    """
+    Initialize the style accumulator.
+
+    @NOTE: This should only be run if the special style has not been initialized
+    already.
+    """
+    match old_value:
+        case str():
+            special_style = {name: value for name, value in _parse_styles(old_value)}
+        case True:  # We ignore all these and just start with empty.
+            special_style = {}
+        case _:
+            raise ValueError(f"Unexpected value {old_value}")
+    return special_style
+
+
+def _merge_style(
+    special_style: dict[str, str | None],
+    value: object,  # str | None | bool | dict[str, bool | None] | t.Sequence[str | None | bool],
+) -> None:
+    """
+    Merge in an interpolated style value.
+
+    @NOTE: This should only be run after special style is initialized with `_init_style()`.
+    """
+    match value:
+        case str():
+            special_style.update({name: value for name, value in _parse_styles(value)})
+        case dict():
+            special_style.update(
+                {
+                    str(pn): str(pv) if pv is not None else None
+                    for pn, pv in value.items()
+                }  # @TODO: Default units?
+            )
+        case _:
+            raise TypeError(
+                f"Unknown interpolated style value {value}, use '' to omit."
+            )
+
+
+def _finalize_style(special_style: dict[str, str | None]) -> str | None:
+    """
+    Serialize the special style value back into a string.
+
+    @NOTE: If the result would be `''` then use `None` to omit the attribute.
+    """
+    style_value = "; ".join(
+        [f"{pn}: {pv}" for pn, pv in special_style.items() if pv is not None]
+    )
+    return style_value if style_value else None
+
+
 def _init_class(old_value: object) -> dict[str, bool]:
     """
     Initialize the class accumulator.
@@ -239,6 +310,7 @@ def _resolve_t_attrs(
     """
     new_attrs: AttributesDict = LastUpdatedOrderedDict()
     special_class: dict[str, bool] | None = None
+    special_style: dict[str, str | None] | None = None
     for attr in attrs:
         match attr:
             case TLiteralAttribute(name=name, value=value):
@@ -253,6 +325,12 @@ def _resolve_t_attrs(
                             new_attrs["class"]
                         )
                     _merge_class(special_class, attr_value)
+                elif name == "style" and name in new_attrs:
+                    if special_style is None:
+                        new_attrs["style"] = special_style = _init_style(
+                            new_attrs["style"]
+                        )
+                    _merge_style(special_style, attr_value)
                 else:
                     # A single class literal value does NOT activate special
                     # handling.
@@ -266,6 +344,12 @@ def _resolve_t_attrs(
                             new_attrs.get("class", True)
                         )
                     _merge_class(special_class, attr_value)
+                elif name == "style":
+                    if special_style is None:
+                        new_attrs["style"] = special_style = _init_style(
+                            new_attrs.get("style", True)
+                        )
+                    _merge_style(special_style, attr_value)
                 else:
                     for sub_k, sub_v in _process_attr(name, attr_value):
                         new_attrs[sub_k] = sub_v
@@ -278,6 +362,12 @@ def _resolve_t_attrs(
                             new_attrs.get("class", True)
                         )
                     _merge_class(special_class, attr_value)
+                elif name == "style":
+                    if special_style is None:
+                        new_attrs["style"] = special_style = _init_style(
+                            new_attrs.get("style", True)
+                        )
+                    _merge_style(special_style, attr_value)
                 else:
                     new_attrs[name] = attr_value
             case TSpreadAttribute(i_index=i_index):
@@ -290,12 +380,20 @@ def _resolve_t_attrs(
                                 new_attrs.get("class", True)
                             )
                         _merge_class(special_class, sub_v)
+                    elif sub_k == "style":
+                        if special_style is None:
+                            new_attrs["style"] = special_style = _init_style(
+                                new_attrs.get("style", True)
+                            )
+                        _merge_style(special_style, sub_v)
                     else:
                         new_attrs[sub_k] = sub_v
             case _:
                 raise ValueError(f"Unknown TAttribute type: {type(attr).__name__}")
     if special_class is not None:
         new_attrs["class"] = _finalize_class(special_class)
+    if special_style is not None:
+        new_attrs["style"] = _finalize_style(special_style)
     return new_attrs
 
 
