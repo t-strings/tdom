@@ -179,7 +179,7 @@ def _init_class(old_value: object) -> dict[str, bool]:
     match old_value:
         case str():
             special_class = {cn: True for cn in old_value.split()}
-        case True | False | None:  # We ignore all these and just start with empty.
+        case True:
             special_class = {}
         case _:
             raise ValueError(f"Unexpected value {old_value}")
@@ -224,7 +224,7 @@ def _finalize_class(special_class: dict[str, bool]) -> str | None:
 
     @NOTE: If the result would be `''` then use `None` to omit the attribute.
     """
-    class_value = " ".join((cn for cn, toggle in special_class.items() if toggle))
+    class_value = " ".join([cn for cn, toggle in special_class.items() if toggle])
     return class_value if class_value else None
 
 
@@ -263,7 +263,7 @@ def _resolve_t_attrs(
                 if name == "class":
                     if special_class is None:
                         new_attrs["class"] = special_class = _init_class(
-                            new_attrs.get("class", None)
+                            new_attrs.get("class", True)
                         )
                     _merge_class(special_class, attr_value)
                 else:
@@ -275,7 +275,7 @@ def _resolve_t_attrs(
                 if name == "class":
                     if special_class is None:
                         new_attrs["class"] = special_class = _init_class(
-                            new_attrs.get("class", None)
+                            new_attrs.get("class", True)
                         )
                     _merge_class(special_class, attr_value)
                 else:
@@ -287,7 +287,7 @@ def _resolve_t_attrs(
                     if sub_k == "class":
                         if special_class is None:
                             new_attrs["class"] = special_class = _init_class(
-                                new_attrs.get("class", None)
+                                new_attrs.get("class", True)
                             )
                         _merge_class(special_class, sub_v)
                     else:
