@@ -117,19 +117,6 @@ def _process_data_attr(value: object) -> t.Iterable[Attribute]:
             yield f"data-{sub_k}", str(sub_v)
 
 
-def _process_style_attr(value: object) -> t.Iterable[HTMLAttribute]:
-    """Substitute a style attribute based on the interpolated value."""
-    if isinstance(value, str):
-        yield ("style", value)
-        return
-    try:
-        d = _force_dict(value, kind="style")
-        style_str = "; ".join(f"{k}: {v}" for k, v in d.items())
-        yield ("style", style_str)
-    except TypeError:
-        raise TypeError("'style' attribute value must be a string or dict") from None
-
-
 def _substitute_spread_attrs(value: object) -> t.Iterable[Attribute]:
     """
     Substitute a spread attribute based on the interpolated value.
@@ -148,7 +135,6 @@ def _substitute_spread_attrs(value: object) -> t.Iterable[Attribute]:
 # _substitute_attr() itself.
 CUSTOM_ATTR_PROCESSORS = {
     "data": _process_data_attr,
-    "style": _process_style_attr,
     "aria": _process_aria_attr,
 }
 
