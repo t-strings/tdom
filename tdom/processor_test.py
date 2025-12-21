@@ -507,8 +507,9 @@ def test_multiple_attribute_spread_dicts():
 
 
 def test_interpolated_class_attribute():
-    classes = ["btn", "btn-primary", False and "disabled", None, {"active": True}]
-    node = html(t'<button class="{classes}">Click me</button>')
+    classes = ["btn", "btn-primary", False and "disabled", None]
+    toggle_classes = {"active": True}
+    node = html(t'<button class="{classes}" class={toggle_classes}>Click me</button>')
     assert node == Element(
         "button",
         attrs={"class": "btn btn-primary active"},

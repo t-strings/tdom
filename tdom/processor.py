@@ -7,7 +7,6 @@ from string.templatelib import Interpolation, Template
 from markupsafe import Markup
 
 from .callables import get_callable_info
-from .classnames import classnames
 from .format import format_interpolation as base_format_interpolation
 from .format import format_template
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
@@ -118,11 +117,6 @@ def _process_data_attr(value: object) -> t.Iterable[Attribute]:
             yield f"data-{sub_k}", str(sub_v)
 
 
-def _process_class_attr(value: object) -> t.Iterable[HTMLAttribute]:
-    """Substitute a class attribute based on the interpolated value."""
-    yield ("class", classnames(value))
-
-
 def _process_style_attr(value: object) -> t.Iterable[HTMLAttribute]:
     """Substitute a style attribute based on the interpolated value."""
     if isinstance(value, str):
@@ -153,7 +147,6 @@ def _substitute_spread_attrs(value: object) -> t.Iterable[Attribute]:
 # special semantics. This is in addition to the special-casing in
 # _substitute_attr() itself.
 CUSTOM_ATTR_PROCESSORS = {
-    "class": _process_class_attr,
     "data": _process_data_attr,
     "style": _process_style_attr,
     "aria": _process_aria_attr,
@@ -176,6 +169,65 @@ def _process_attr(key: str, value: object) -> t.Iterable[Attribute]:
     yield (key, value)
 
 
+def _init_class(old_value: object) -> dict[str, bool]:
+    """
+    Initialize the class accumulator.
+
+    @NOTE: This should only be run if the special class has not been initialized
+    already.
+    """
+    match old_value:
+        case str():
+            special_class = {cn: True for cn in old_value.split()}
+        case True | False | None:  # We ignore all these and just start with empty.
+            special_class = {}
+        case _:
+            raise ValueError(f"Unexpected value {old_value}")
+    return special_class
+
+
+def _merge_class(
+    special_class: dict[str, bool],
+    value: object,  # str | None | bool | dict[str, bool | None] | t.Sequence[str | None | bool],
+) -> None:
+    """
+    Merge in an interpolated class value.
+
+    @NOTE: This should only be run after special class is initialized with `_init_class()`.
+    """
+    match value:
+        case str():
+            special_class.update({cn: True for cn in value.split()})
+        case [*items]:
+            for item in items:
+                if isinstance(item, str):
+                    special_class.update({cn: True for cn in item.split()})
+                elif item is True or item is False or item is None:
+                    continue  # Skip these as they are no-ops.
+                else:
+                    raise TypeError(
+                        f"Unknown item in interpolated class value, {item} in {value}"
+                    )
+        case dict():
+            special_class.update(
+                {str(cn): bool(toggle) for cn, toggle in value.items()}
+            )
+        case True | False | None:
+            pass
+        case _:
+            raise TypeError(f"Unknown interpolated class value {value}")
+
+
+def _finalize_class(special_class: dict[str, bool]) -> str | None:
+    """
+    Serialize the special class value back into a string.
+
+    @NOTE: If the result would be `''` then use `None` to omit the attribute.
+    """
+    class_value = " ".join((cn for cn, toggle in special_class.items() if toggle))
+    return class_value if class_value else None
+
+
 def _resolve_t_attrs(
     attrs: t.Sequence[TAttribute], interpolations: tuple[Interpolation, ...]
 ) -> AttributesDict:
@@ -186,26 +238,64 @@ def _resolve_t_attrs(
     in a later step.
     """
     new_attrs: AttributesDict = LastUpdatedOrderedDict()
+    special_class: dict[str, bool] | None = None
     for attr in attrs:
         match attr:
             case TLiteralAttribute(name=name, value=value):
-                new_attrs[name] = True if value is None else value
+                # Normalize None to True so that all attribute values are
+                # consistent between literals and interpolations.
+                attr_value = True if value is None else value
+                # Only trigger class special handling if a prior value exists
+                # and a merge becomes necessary.
+                if name == "class" and name in new_attrs:
+                    if special_class is None:
+                        new_attrs["class"] = special_class = _init_class(
+                            new_attrs["class"]
+                        )
+                    _merge_class(special_class, attr_value)
+                else:
+                    # A single class literal value does NOT activate special
+                    # handling.
+                    new_attrs[name] = attr_value
             case TInterpolatedAttribute(name=name, value_i_index=i_index):
                 interpolation = interpolations[i_index]
                 attr_value = format_interpolation(interpolation)
-                for sub_k, sub_v in _process_attr(name, attr_value):
-                    new_attrs[sub_k] = sub_v
+                if name == "class":
+                    if special_class is None:
+                        new_attrs["class"] = special_class = _init_class(
+                            new_attrs.get("class", None)
+                        )
+                    _merge_class(special_class, attr_value)
+                else:
+                    for sub_k, sub_v in _process_attr(name, attr_value):
+                        new_attrs[sub_k] = sub_v
             case TTemplatedAttribute(name=name, value_ref=ref):
                 attr_t = _resolve_ref(ref, interpolations)
                 attr_value = format_template(attr_t)
-                new_attrs[name] = attr_value
+                if name == "class":
+                    if special_class is None:
+                        new_attrs["class"] = special_class = _init_class(
+                            new_attrs.get("class", None)
+                        )
+                    _merge_class(special_class, attr_value)
+                else:
+                    new_attrs[name] = attr_value
             case TSpreadAttribute(i_index=i_index):
                 interpolation = interpolations[i_index]
                 spread_value = format_interpolation(interpolation)
                 for sub_k, sub_v in _substitute_spread_attrs(spread_value):
-                    new_attrs[sub_k] = sub_v
+                    if sub_k == "class":
+                        if special_class is None:
+                            new_attrs["class"] = special_class = _init_class(
+                                new_attrs.get("class", None)
+                            )
+                        _merge_class(special_class, sub_v)
+                    else:
+                        new_attrs[sub_k] = sub_v
             case _:
                 raise ValueError(f"Unknown TAttribute type: {type(attr).__name__}")
+    if special_class is not None:
+        new_attrs["class"] = _finalize_class(special_class)
     return new_attrs
 
 
