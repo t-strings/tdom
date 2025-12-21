@@ -1,6 +1,6 @@
 import sys
 import typing as t
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
 
@@ -189,10 +189,7 @@ def _init_style(old_value: object) -> dict[str, str | None]:
     return special_style
 
 
-def _merge_style(
-    special_style: dict[str, str | None],
-    value: object,  # str | None | bool | dict[str, bool | None] | t.Sequence[str | None | bool],
-) -> None:
+def _merge_style(special_style: dict[str, str | None], value: object) -> None:
     """
     Merge in an interpolated style value.
 
@@ -243,36 +240,33 @@ def _init_class(old_value: object) -> dict[str, bool]:
     return special_class
 
 
-def _merge_class(
-    special_class: dict[str, bool],
-    value: object,  # str | None | bool | dict[str, bool | None] | t.Sequence[str | None | bool],
-) -> None:
+def _merge_class(special_class: dict[str, bool], value: object) -> None:
     """
     Merge in an interpolated class value.
 
     @NOTE: This should only be run after special class is initialized with `_init_class()`.
     """
-    match value:
-        case str():
-            special_class.update({cn: True for cn in value.split()})
-        case [*items]:
-            for item in items:
-                if isinstance(item, str):
-                    special_class.update({cn: True for cn in item.split()})
-                elif item is True or item is False or item is None:
-                    continue  # Skip these as they are no-ops.
+    if not isinstance(value, str) and isinstance(value, Sequence):
+        items = value[:]
+    else:
+        items = (value,)
+    for item in items:
+        match item:
+            case str():
+                special_class.update({cn: True for cn in item.split()})
+            case dict():
+                special_class.update(
+                    {str(cn): bool(toggle) for cn, toggle in item.items()}
+                )
+            case True | False | None:
+                pass
+            case _:
+                if item == value:
+                    raise TypeError(f"Unknown interpolated class value: {value}")
                 else:
                     raise TypeError(
-                        f"Unknown item in interpolated class value, {item} in {value}"
+                        f"Unknown interpolated class item in {value}: {item}"
                     )
-        case dict():
-            special_class.update(
-                {str(cn): bool(toggle) for cn, toggle in value.items()}
-            )
-        case True | False | None:
-            pass
-        case _:
-            raise TypeError(f"Unknown interpolated class value {value}")
 
 
 def _finalize_class(special_class: dict[str, bool]) -> str | None:
