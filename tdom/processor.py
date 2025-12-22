@@ -102,7 +102,7 @@ def _process_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
         elif sub_v is False:
             yield f"aria-{sub_k}", "false"
         elif sub_v is None:
-            pass
+            yield f"aria-{sub_k}", None
         else:
             yield f"aria-{sub_k}", str(sub_v)
 
