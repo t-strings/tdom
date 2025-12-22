@@ -111,9 +111,9 @@ def _process_data_attr(value: object) -> t.Iterable[Attribute]:
     """Produce data-* attributes based on the interpolated value for "data"."""
     d = _force_dict(value, kind="data")
     for sub_k, sub_v in d.items():
-        if sub_v is True:
-            yield f"data-{sub_k}", True
-        elif sub_v is not False and sub_v is not None:
+        if sub_v is True or sub_v is False or sub_v is None:
+            yield f"data-{sub_k}", sub_v
+        else:
             yield f"data-{sub_k}", str(sub_v)
 
 
