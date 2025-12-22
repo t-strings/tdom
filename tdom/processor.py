@@ -3,6 +3,7 @@ import typing as t
 from collections.abc import Iterable, Sequence
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
+from dataclasses import dataclass
 
 from markupsafe import Markup
 
@@ -155,7 +156,7 @@ def _process_attr(key: str, value: object) -> t.Iterable[Attribute]:
     yield (key, value)
 
 
-def _parse_styles(style_str: str) -> list[tuple[str, str | None]]:
+def parse_style_attribute_value(style_str: str) -> list[tuple[str, str | None]]:
     """
     Parse the style declaractions out of a style attribute string.
     """
@@ -172,7 +173,7 @@ def _parse_styles(style_str: str) -> list[tuple[str, str | None]]:
     return styles
 
 
-def _init_style(old_value: object) -> dict[str, str | None]:
+def make_style_accumulator(old_value: object) -> dict[str, str | None]:
     """
     Initialize the style accumulator.
 
@@ -181,49 +182,51 @@ def _init_style(old_value: object) -> dict[str, str | None]:
     """
     match old_value:
         case str():
-            special_style = {name: value for name, value in _parse_styles(old_value)}
-        case True:  # We ignore all these and just start with empty.
-            special_style = {}
+            styles = {name: value for name, value in parse_style_attribute_value(old_value)}
+        case True: # A bare attribute will just default to {}.
+            styles = {}
         case _:
-            raise ValueError(f"Unexpected value {old_value}")
-    return special_style
+            raise TypeError(f"Unexpected value: {old_value}")
+    return StyleAccumulator(styles=styles)
 
 
-def _merge_style(special_style: dict[str, str | None], value: object) -> None:
-    """
-    Merge in an interpolated style value.
+@dataclass
+class StyleAccumulator:
 
-    @NOTE: This should only be run after special style is initialized with `_init_style()`.
-    """
-    match value:
-        case str():
-            special_style.update({name: value for name, value in _parse_styles(value)})
-        case dict():
-            special_style.update(
-                {
-                    str(pn): str(pv) if pv is not None else None
-                    for pn, pv in value.items()
-                }  # @TODO: Default units?
-            )
-        case _:
-            raise TypeError(
-                f"Unknown interpolated style value {value}, use '' to omit."
-            )
+    styles: dict[str, str | None]
+
+    def merge_value(self, value: object) -> None:
+        """
+        Merge in an interpolated style value.
+        """
+        match value:
+            case str():
+                self.styles.update({name: value for name, value in parse_style_attribute_value(value)})
+            case dict():
+                self.styles.update(
+                    {
+                        str(pn): str(pv) if pv is not None else None
+                        for pn, pv in value.items()
+                    }
+                )
+            case _:
+                raise TypeError(
+                    f"Unknown interpolated style value {value}, use '' to omit."
+                )
+
+    def to_value(self) -> str | None:
+        """
+        Serialize the special style value back into a string.
+
+        @NOTE: If the result would be `''` then use `None` to omit the attribute.
+        """
+        style_value = "; ".join(
+            [f"{pn}: {pv}" for pn, pv in self.styles.items() if pv is not None]
+        )
+        return style_value if style_value else None
 
 
-def _finalize_style(special_style: dict[str, str | None]) -> str | None:
-    """
-    Serialize the special style value back into a string.
-
-    @NOTE: If the result would be `''` then use `None` to omit the attribute.
-    """
-    style_value = "; ".join(
-        [f"{pn}: {pv}" for pn, pv in special_style.items() if pv is not None]
-    )
-    return style_value if style_value else None
-
-
-def _init_class(old_value: object) -> dict[str, bool]:
+def make_class_accumulator(old_value: object) -> dict[str, bool]:
     """
     Initialize the class accumulator.
 
@@ -232,51 +235,65 @@ def _init_class(old_value: object) -> dict[str, bool]:
     """
     match old_value:
         case str():
-            special_class = {cn: True for cn in old_value.split()}
+            toggled_classes = {cn: True for cn in old_value.split()}
         case True:
-            special_class = {}
+            toggled_classes = {}
         case _:
             raise ValueError(f"Unexpected value {old_value}")
-    return special_class
+    return ClassAccumulator(toggled_classes=toggled_classes)
 
 
-def _merge_class(special_class: dict[str, bool], value: object) -> None:
-    """
-    Merge in an interpolated class value.
+@dataclass
+class ClassAccumulator:
 
-    @NOTE: This should only be run after special class is initialized with `_init_class()`.
-    """
-    if not isinstance(value, str) and isinstance(value, Sequence):
-        items = value[:]
-    else:
-        items = (value,)
-    for item in items:
-        match item:
-            case str():
-                special_class.update({cn: True for cn in item.split()})
-            case dict():
-                special_class.update(
-                    {str(cn): bool(toggle) for cn, toggle in item.items()}
-                )
-            case True | False | None:
-                pass
-            case _:
-                if item == value:
-                    raise TypeError(f"Unknown interpolated class value: {value}")
-                else:
-                    raise TypeError(
-                        f"Unknown interpolated class item in {value}: {item}"
+    toggled_classes: dict[str, bool]
+
+    def merge_value(self, value: object) -> None:
+        """
+        Merge in an interpolated class value.
+        """
+        if not isinstance(value, str) and isinstance(value, Sequence):
+            items = value[:]
+        else:
+            items = (value,)
+        for item in items:
+            match item:
+                case str():
+                    self.toggled_classes.update({cn: True for cn in item.split()})
+                case dict():
+                    self.toggled_classes.update(
+                        {str(cn): bool(toggle) for cn, toggle in item.items()}
                     )
+                case True | False | None:
+                    pass
+                case _:
+                    if item == value:
+                        raise TypeError(f"Unknown interpolated class value: {value}")
+                    else:
+                        raise TypeError(
+                            f"Unknown interpolated class item in {value}: {item}"
+                        )
+
+    def to_value(self) -> str | None:
+        """
+        Serialize the special class value back into a string.
+
+        @NOTE: If the result would be `''` then use `None` to omit the attribute.
+        """
+        class_value = " ".join([cn for cn, toggle in self.toggled_classes.items() if toggle])
+        return class_value if class_value else None
 
 
-def _finalize_class(special_class: dict[str, bool]) -> str | None:
-    """
-    Serialize the special class value back into a string.
+attr_acc_makers = {
+    'class': make_class_accumulator,
+    'style': make_style_accumulator,
+}
 
-    @NOTE: If the result would be `''` then use `None` to omit the attribute.
-    """
-    class_value = " ".join([cn for cn, toggle in special_class.items() if toggle])
-    return class_value if class_value else None
+
+attr_acc_names = ("class", "style")
+
+
+type AttributeValueAccumulator = StyleAccumulator | ClassAccumulator
 
 
 def _resolve_t_attrs(
@@ -289,91 +306,50 @@ def _resolve_t_attrs(
     in a later step.
     """
     new_attrs: AttributesDict = LastUpdatedOrderedDict()
-    special_class: dict[str, bool] | None = None
-    special_style: dict[str, str | None] | None = None
+    attr_accs: dict[str, AttributeValueAccumulator | None] = {}
     for attr in attrs:
         match attr:
             case TLiteralAttribute(name=name, value=value):
-                # Normalize None to True so that all attribute values are
-                # consistent between literals and interpolations.
                 attr_value = True if value is None else value
-                # Only trigger class special handling if a prior value exists
-                # and a merge becomes necessary.
-                if name == "class" and name in new_attrs:
-                    if special_class is None:
-                        new_attrs["class"] = special_class = _init_class(
-                            new_attrs["class"]
-                        )
-                    _merge_class(special_class, attr_value)
-                elif name == "style" and name in new_attrs:
-                    if special_style is None:
-                        new_attrs["style"] = special_style = _init_style(
-                            new_attrs["style"]
-                        )
-                    _merge_style(special_style, attr_value)
+                if name in attr_acc_names and name in new_attrs:
+                    if name not in attr_accs:
+                        attr_accs[name] = attr_acc_makers[name](new_attrs[name])
+                    new_attrs[name] = attr_accs[name].merge_value(attr_value)
                 else:
-                    # A single class literal value does NOT activate special
-                    # handling.
                     new_attrs[name] = attr_value
             case TInterpolatedAttribute(name=name, value_i_index=i_index):
                 interpolation = interpolations[i_index]
                 attr_value = format_interpolation(interpolation)
-                if name == "class":
-                    if special_class is None:
-                        new_attrs["class"] = special_class = _init_class(
-                            new_attrs.get("class", True)
-                        )
-                    _merge_class(special_class, attr_value)
-                elif name == "style":
-                    if special_style is None:
-                        new_attrs["style"] = special_style = _init_style(
-                            new_attrs.get("style", True)
-                        )
-                    _merge_style(special_style, attr_value)
+                if name in attr_acc_names:
+                    if name not in attr_accs:
+                        attr_accs[name] = attr_acc_makers[name](new_attrs.get(name, True))
+                    new_attrs[name] = attr_accs[name].merge_value(attr_value)
                 else:
                     for sub_k, sub_v in _process_attr(name, attr_value):
                         new_attrs[sub_k] = sub_v
             case TTemplatedAttribute(name=name, value_ref=ref):
                 attr_t = _resolve_ref(ref, interpolations)
                 attr_value = format_template(attr_t)
-                if name == "class":
-                    if special_class is None:
-                        new_attrs["class"] = special_class = _init_class(
-                            new_attrs.get("class", True)
-                        )
-                    _merge_class(special_class, attr_value)
-                elif name == "style":
-                    if special_style is None:
-                        new_attrs["style"] = special_style = _init_style(
-                            new_attrs.get("style", True)
-                        )
-                    _merge_style(special_style, attr_value)
+                if name in attr_acc_names:
+                    if name not in attr_accs:
+                        attr_accs[name] = attr_acc_makers[name](new_attrs.get(name, True))
+                    new_attrs[name] = attr_accs[name].merge_value(attr_value)
                 else:
                     new_attrs[name] = attr_value
             case TSpreadAttribute(i_index=i_index):
                 interpolation = interpolations[i_index]
                 spread_value = format_interpolation(interpolation)
                 for sub_k, sub_v in _substitute_spread_attrs(spread_value):
-                    if sub_k == "class":
-                        if special_class is None:
-                            new_attrs["class"] = special_class = _init_class(
-                                new_attrs.get("class", True)
-                            )
-                        _merge_class(special_class, sub_v)
-                    elif sub_k == "style":
-                        if special_style is None:
-                            new_attrs["style"] = special_style = _init_style(
-                                new_attrs.get("style", True)
-                            )
-                        _merge_style(special_style, sub_v)
+                    if sub_k in attr_acc_names:
+                        if sub_k not in attr_accs:
+                            attr_accs[sub_k] = attr_acc_makers[sub_k](new_attrs.get(sub_k, True))
+                        new_attrs[sub_k] = attr_accs[sub_k].merge_value(sub_v)
                     else:
                         new_attrs[sub_k] = sub_v
             case _:
                 raise ValueError(f"Unknown TAttribute type: {type(attr).__name__}")
-    if special_class is not None:
-        new_attrs["class"] = _finalize_class(special_class)
-    if special_style is not None:
-        new_attrs["style"] = _finalize_style(special_style)
+    for acc_name, acc in attr_accs.items():
+        new_attrs[acc_name] = acc.to_value()
     return new_attrs
 
 
