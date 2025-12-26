@@ -33,3 +33,26 @@ def test_render_select():
     struct_cache = {}
     assert render_api.render_template(get_color_select_t(set()), struct_cache) == '<select><option value="R">Red</option><option value="Y">Yellow</option><option value="B">Blue</option></select>'
     assert render_api.render_template(get_color_select_t({'Y'}), struct_cache) == '<select><option value="R">Red</option><option value="Y" selected>Yellow</option><option value="B">Blue</option></select>'
+
+from contextvars import ContextVar
+
+
+theme_context_var = ContextVar('theme', default='default')
+
+
+def test_component():
+
+    def ThemeContext(attrs, embedded_t, embedded_struct):
+        context_values = ((theme_context_var, attrs.get('value', 'normal')),)
+        return embedded_t, context_values
+
+    def ThemedDiv(attrs, embedded_t, embedded_struct):
+        theme = theme_context_var.get()
+        return t'<div data-theme="{theme}">{embedded_t}</div>', ()
+
+    render_api = render_service_factory()
+    body_t = t"<div><{ThemeContext} value='holiday'><{ThemedDiv}><b>Cheers!</b></{ThemedDiv}></{ThemeContext}></div>"
+    with theme_context_var.set('not-the-default'):
+        assert render_api.render_template(body_t) == '<div><div data-theme="holiday"><b>Cheers!</b></div></div>'
+        assert theme_context_var.get() == 'not-the-default'
+    assert theme_context_var.get() == 'default'
