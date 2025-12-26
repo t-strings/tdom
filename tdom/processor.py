@@ -158,7 +158,7 @@ def _process_attr(key: str, value: object) -> t.Iterable[Attribute]:
 
 def parse_style_attribute_value(style_str: str) -> list[tuple[str, str | None]]:
     """
-    Parse the style declaractions out of a style attribute string.
+    Parse the style declarations out of a style attribute string.
     """
     props = [p.strip() for p in style_str.split(";")]
     styles: list[tuple[str, str | None]] = []
