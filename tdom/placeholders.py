@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 import random
 import re
 import string
@@ -5,59 +6,67 @@ import string
 from .template_utils import TemplateRef
 
 
-_PLACEHOLDER_PREFIX = f"t🐍{''.join(random.choices(string.ascii_lowercase, k=2))}-"
-_PLACEHOLDER_SUFFIX = f"-{''.join(random.choices(string.ascii_lowercase, k=2))}🐍t"
-_PLACEHOLDER_PATTERN = re.compile(
-    re.escape(_PLACEHOLDER_PREFIX) + r"(\d+)" + re.escape(_PLACEHOLDER_SUFFIX)
-)
+def make_placeholder_config() -> PlaceholderConfig:
+    prefix = f"t🐍{''.join(random.choices(string.ascii_lowercase, k=2))}-"
+    suffix = f"-{''.join(random.choices(string.ascii_lowercase, k=2))}🐍t"
+    return PlaceholderConfig(
+        prefix=prefix,
+        suffix=suffix,
+        pattern=re.compile(re.escape(prefix) + r"(\d+)" + re.escape(suffix)),
+    )
 
 
-def make_placeholder(i: int) -> str:
-    """Generate a placeholder for the i-th interpolation."""
-    return f"{_PLACEHOLDER_PREFIX}{i}{_PLACEHOLDER_SUFFIX}"
+@dataclass(frozen=True)
+class PlaceholderConfig:
+    """String operations for working with a placeholder pattern."""
+
+    prefix: str
+    suffix: str
+    pattern: re.Pattern
+
+    def make_placeholder(self, i: int) -> str:
+        """Generate a placeholder for the i-th interpolation."""
+        return f"{self.prefix}{i}{self.suffix}"
+
+    def match_placeholders(self, s: str) -> list[re.Match[str]]:
+        """Find all placeholders in a string."""
+        return list(self.pattern.finditer(s))
+
+    def find_placeholders(self, s: str) -> TemplateRef:
+        """
+        Find all placeholders in a string and return a TemplateRef.
+
+        If no placeholders are found, returns a static TemplateRef.
+        """
+        matches = self.match_placeholders(s)
+        if not matches:
+            return TemplateRef.literal(s)
+
+        strings: list[str] = []
+        i_indexes: list[int] = []
+        last_index = 0
+        for match in matches:
+            start, end = match.span()
+            strings.append(s[last_index:start])
+            i_indexes.append(int(match[1]))
+            last_index = end
+        strings.append(s[last_index:])
+
+        return TemplateRef(tuple(strings), tuple(i_indexes))
 
 
-def match_placeholders(s: str) -> list[re.Match[str]]:
-    """Find all placeholders in a string."""
-    return list(_PLACEHOLDER_PATTERN.finditer(s))
-
-
-def find_placeholders(s: str) -> TemplateRef:
-    """
-    Find all placeholders in a string and return a TemplateRef.
-
-    If no placeholders are found, returns a static TemplateRef.
-    """
-    matches = match_placeholders(s)
-    if not matches:
-        return TemplateRef.literal(s)
-
-    strings: list[str] = []
-    i_indexes: list[int] = []
-    last_index = 0
-    for match in matches:
-        start, end = match.span()
-        strings.append(s[last_index:start])
-        i_indexes.append(int(match[1]))
-        last_index = end
-    strings.append(s[last_index:])
-
-    return TemplateRef(tuple(strings), tuple(i_indexes))
-
-
+@dataclass
 class PlaceholderState:
-    known: set[int]
+    known: set[int] = field(default_factory=set)
+    config: PlaceholderConfig = field(default_factory=make_placeholder_config)
     """Collection of currently 'known and active' placeholder indexes."""
-
-    def __init__(self):
-        self.known = set()
 
     @property
     def is_empty(self) -> bool:
         return len(self.known) == 0
 
     def add_placeholder(self, index: int) -> str:
-        placeholder = make_placeholder(index)
+        placeholder = self.config.make_placeholder(index)
         self.known.add(index)
         return placeholder
 
@@ -69,7 +78,7 @@ class PlaceholderState:
 
         If no placeholders are found, returns a static PlaceholderRef.
         """
-        pt = find_placeholders(text)
+        pt = self.config.find_placeholders(text)
         for index in pt.i_indexes:
             if index not in self.known:
                 raise ValueError(f"Unknown placeholder index {index} found in text.")

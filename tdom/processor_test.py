@@ -7,7 +7,7 @@ import pytest
 from markupsafe import Markup
 
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
-from .placeholders import _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX
+from .placeholders import make_placeholder_config
 from .processor import html
 
 # --------------------------------------------------------------------------
@@ -507,8 +507,9 @@ def test_multiple_attribute_spread_dicts():
 
 
 def test_interpolated_class_attribute():
-    classes = ["btn", "btn-primary", False and "disabled", None, {"active": True}]
-    node = html(t'<button class="{classes}">Click me</button>')
+    classes = ["btn", "btn-primary", False and "disabled", None]
+    toggle_classes = {"active": True}
+    node = html(t'<button class="{classes}" class={toggle_classes}>Click me</button>')
     assert node == Element(
         "button",
         attrs={"class": "btn btn-primary active"},
@@ -597,25 +598,25 @@ def test_interpolated_attribute_value_tricky_multiple_placeholders():
 
 
 def test_placeholder_collision_avoidance():
+    config = make_placeholder_config()
     # This test is to ensure that our placeholder detection avoids collisions
     # even with content that might look like a placeholder.
     tricky = "123"
     template = Template(
         '<div data-tricky="',
-        _PLACEHOLDER_PREFIX,
+        config.prefix,
         Interpolation(tricky, "tricky"),
-        _PLACEHOLDER_SUFFIX,
+        config.suffix,
         '"></div>',
     )
     node = html(template)
     assert node == Element(
         "div",
-        attrs={"data-tricky": _PLACEHOLDER_PREFIX + tricky + _PLACEHOLDER_SUFFIX},
+        attrs={"data-tricky": config.prefix + tricky + config.suffix},
         children=[],
     )
     assert (
-        str(node)
-        == f'<div data-tricky="{_PLACEHOLDER_PREFIX}{tricky}{_PLACEHOLDER_SUFFIX}"></div>'
+        str(node) == f'<div data-tricky="{config.prefix}{tricky}{config.suffix}"></div>'
     )
 
 
@@ -689,7 +690,21 @@ def test_interpolated_aria_attributes():
     )
 
 
-def test_interpolated_style_attribute():
+#
+# Special style attribute handling.
+#
+def test_style_in_literal_attr():
+    p_id = "para1"  # non-literal attribute to cause attr resolution
+    node = html(t'<p style="color: red" id={p_id}>Warning!</p>')
+    assert node == Element(
+        "p",
+        attrs={"style": "color: red", "id": "para1"},
+        children=[Text("Warning!")],
+    )
+    assert str(node) == '<p style="color: red" id="para1">Warning!</p>'
+
+
+def test_style_in_interpolated_attr():
     styles = {"color": "red", "font-weight": "bold", "font-size": "16px"}
     node = html(t"<p style={styles}>Warning!</p>")
     assert node == Element(
@@ -703,29 +718,93 @@ def test_interpolated_style_attribute():
     )
 
 
-def test_override_static_style_str_str():
-    node = html(t'<p style="font-color: red" {dict(style="font-size: 15px")}></p>')
-    assert node == Element("p", {"style": "font-size: 15px"})
-    assert str(node) == '<p style="font-size: 15px"></p>'
+def test_style_in_templated_attr():
+    color = "red"
+    node = html(t'<p style="color: {color}">Warning!</p>')
+    assert node == Element(
+        "p",
+        attrs={"style": "color: red"},
+        children=[Text("Warning!")],
+    )
+    assert str(node) == '<p style="color: red">Warning!</p>'
 
 
-def test_override_static_style_str_builder():
-    node = html(t'<p style="font-color: red" {dict(style={"font-size": "15px"})}></p>')
-    assert node == Element("p", {"style": "font-size: 15px"})
-    assert str(node) == '<p style="font-size: 15px"></p>'
+def test_style_in_spread_attr():
+    attrs = {"style": {"color": "red"}}
+    node = html(t"<p {attrs}>Warning!</p>")
+    assert node == Element(
+        "p",
+        attrs={"style": "color: red"},
+        children=[Text("Warning!")],
+    )
+    assert str(node) == '<p style="color: red">Warning!</p>'
+
+
+def test_style_merged_from_all_attrs():
+    attrs = dict(style="font-size: 15px")
+    style = {"font-weight": "bold"}
+    color = "red"
+    node = html(
+        t'<p style="font-family: serif" style="color: {color}" style={style} {attrs}></p>'
+    )
+    assert node == Element(
+        "p",
+        {"style": "font-family: serif; color: red; font-weight: bold; font-size: 15px"},
+    )
+    assert (
+        str(node)
+        == '<p style="font-family: serif; color: red; font-weight: bold; font-size: 15px"></p>'
+    )
+
+
+def test_style_override_left_to_right():
+    suffix = t"></p>"
+    parts = [
+        (t'<p style="color: red"', "color: red"),
+        (t" style={dict(color='blue')}", "color: blue"),
+        (t''' style="color: {"green"}"''', "color: green"),
+        (t""" {dict(style=dict(color="yellow"))}""", "color: yellow"),
+    ]
+    for index in range(len(parts)):
+        expected_style = parts[index][1]
+        t = sum([part[0] for part in parts[: index + 1]], t"") + suffix
+        node = html(t)
+        assert node == Element("p", {"style": expected_style})
+        assert str(node) == f'<p style="{expected_style}"></p>'
 
 
 def test_interpolated_style_attribute_multiple_placeholders():
     styles1 = {"color": "red"}
     styles2 = {"font-weight": "bold"}
-    node = html(t"<p style='{styles1} {styles2}'>Warning!</p>")
     # CONSIDER: Is this what we want? Currently, when we have multiple
-    # placeholders in a single attribute, we treat it as a string attribute.
+    # placeholders in a single attribute, we treat it as a string attribute
+    # which produces an invalid style attribute.
+    with pytest.raises(ValueError):
+        _ = html(t"<p style='{styles1} {styles2}'>Warning!</p>")
+
+
+def test_interpolated_style_attribute_merged():
+    styles1 = {"color": "red"}
+    styles2 = {"font-weight": "bold"}
+    node = html(t"<p style={styles1} style={styles2}>Warning!</p>")
     assert node == Element(
         "p",
-        attrs={"style": "{'color': 'red'} {'font-weight': 'bold'}"},
+        attrs={"style": "color: red; font-weight: bold"},
         children=[Text("Warning!")],
     )
+    assert str(node) == '<p style="color: red; font-weight: bold">Warning!</p>'
+
+
+def test_interpolated_style_attribute_merged_override():
+    styles1 = {"color": "red", "font-weight": "normal"}
+    styles2 = {"font-weight": "bold"}
+    node = html(t"<p style={styles1} style={styles2}>Warning!</p>")
+    assert node == Element(
+        "p",
+        attrs={"style": "color: red; font-weight: bold"},
+        children=[Text("Warning!")],
+    )
+    assert str(node) == '<p style="color: red; font-weight: bold">Warning!</p>'
 
 
 def test_style_attribute_str():
@@ -733,10 +812,10 @@ def test_style_attribute_str():
     node = html(t"<p style={styles}>Warning!</p>")
     assert node == Element(
         "p",
-        attrs={"style": "color: red; font-weight: bold;"},
+        attrs={"style": "color: red; font-weight: bold"},
         children=[Text("Warning!")],
     )
-    assert str(node) == '<p style="color: red; font-weight: bold;">Warning!</p>'
+    assert str(node) == '<p style="color: red; font-weight: bold">Warning!</p>'
 
 
 def test_style_attribute_non_str_non_dict():
