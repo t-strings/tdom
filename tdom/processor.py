@@ -284,13 +284,10 @@ class ClassAccumulator:
         return class_value if class_value else None
 
 
-attr_acc_makers = {
+ATTR_ACCUMULATOR_MAKERS = {
     'class': make_class_accumulator,
     'style': make_style_accumulator,
 }
-
-
-attr_acc_names = ("class", "style")
 
 
 type AttributeValueAccumulator = StyleAccumulator | ClassAccumulator
@@ -311,18 +308,18 @@ def _resolve_t_attrs(
         match attr:
             case TLiteralAttribute(name=name, value=value):
                 attr_value = True if value is None else value
-                if name in attr_acc_names and name in new_attrs:
+                if name in ATTR_ACCUMULATOR_MAKERS and name in new_attrs:
                     if name not in attr_accs:
-                        attr_accs[name] = attr_acc_makers[name](new_attrs[name])
+                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](new_attrs[name])
                     new_attrs[name] = attr_accs[name].merge_value(attr_value)
                 else:
                     new_attrs[name] = attr_value
             case TInterpolatedAttribute(name=name, value_i_index=i_index):
                 interpolation = interpolations[i_index]
                 attr_value = format_interpolation(interpolation)
-                if name in attr_acc_names:
+                if name in ATTR_ACCUMULATOR_MAKERS:
                     if name not in attr_accs:
-                        attr_accs[name] = attr_acc_makers[name](new_attrs.get(name, True))
+                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](new_attrs.get(name, True))
                     new_attrs[name] = attr_accs[name].merge_value(attr_value)
                 else:
                     for sub_k, sub_v in _process_attr(name, attr_value):
@@ -330,9 +327,9 @@ def _resolve_t_attrs(
             case TTemplatedAttribute(name=name, value_ref=ref):
                 attr_t = _resolve_ref(ref, interpolations)
                 attr_value = format_template(attr_t)
-                if name in attr_acc_names:
+                if name in ATTR_ACCUMULATOR_MAKERS:
                     if name not in attr_accs:
-                        attr_accs[name] = attr_acc_makers[name](new_attrs.get(name, True))
+                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](new_attrs.get(name, True))
                     new_attrs[name] = attr_accs[name].merge_value(attr_value)
                 else:
                     new_attrs[name] = attr_value
@@ -340,9 +337,9 @@ def _resolve_t_attrs(
                 interpolation = interpolations[i_index]
                 spread_value = format_interpolation(interpolation)
                 for sub_k, sub_v in _substitute_spread_attrs(spread_value):
-                    if sub_k in attr_acc_names:
+                    if sub_k in ATTR_ACCUMULATOR_MAKERS:
                         if sub_k not in attr_accs:
-                            attr_accs[sub_k] = attr_acc_makers[sub_k](new_attrs.get(sub_k, True))
+                            attr_accs[sub_k] = ATTR_ACCUMULATOR_MAKERS[sub_k](new_attrs.get(sub_k, True))
                         new_attrs[sub_k] = attr_accs[sub_k].merge_value(sub_v)
                     else:
                         new_attrs[sub_k] = sub_v
