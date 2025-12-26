@@ -94,7 +94,7 @@ def _force_dict(value: t.Any, *, kind: str) -> dict:
         ) from None
 
 
-def _process_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
+def _expand_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
     """Produce aria-* attributes based on the interpolated value for "aria"."""
     d = _force_dict(value, kind="aria")
     for sub_k, sub_v in d.items():
@@ -108,7 +108,7 @@ def _process_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
             yield f"aria-{sub_k}", str(sub_v)
 
 
-def _process_data_attr(value: object) -> t.Iterable[Attribute]:
+def _expand_data_attr(value: object) -> t.Iterable[Attribute]:
     """Produce data-* attributes based on the interpolated value for "data"."""
     d = _force_dict(value, kind="data")
     for sub_k, sub_v in d.items():
@@ -127,33 +127,13 @@ def _substitute_spread_attrs(value: object) -> t.Iterable[Attribute]:
     The value must be a dict or iterable of key-value pairs.
     """
     d = _force_dict(value, kind="spread")
-    for sub_k, sub_v in d.items():
-        yield from _process_attr(sub_k, sub_v)
+    yield from d.items()
 
 
-# A collection of custom handlers for certain attribute names that have
-# special semantics. This is in addition to the special-casing in
-# _substitute_attr() itself.
-CUSTOM_ATTR_PROCESSORS = {
-    "data": _process_data_attr,
-    "aria": _process_aria_attr,
+ATTR_EXPANDERS = {
+    "data": _expand_data_attr,
+    "aria": _expand_aria_attr,
 }
-
-
-def _process_attr(key: str, value: object) -> t.Iterable[Attribute]:
-    """
-    Substitute a single attribute based on its key and the interpolated value.
-
-    A single parsed attribute with a placeholder may result in multiple
-    attributes in the final output, for instance if the value is a dict or
-    iterable of key-value pairs. Likewise, a value of False will result in
-    the attribute being omitted entirely; nothing is yielded in that case.
-    """
-    # Special handling for certain attribute names that have special semantics
-    if custom_processor := CUSTOM_ATTR_PROCESSORS.get(key):
-        yield from custom_processor(value)
-        return
-    yield (key, value)
 
 
 def parse_style_attribute_value(style_str: str) -> list[tuple[str, str | None]]:
@@ -321,9 +301,11 @@ def _resolve_t_attrs(
                     if name not in attr_accs:
                         attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](new_attrs.get(name, True))
                     new_attrs[name] = attr_accs[name].merge_value(attr_value)
-                else:
-                    for sub_k, sub_v in _process_attr(name, attr_value):
+                elif expander := ATTR_EXPANDERS.get(name):
+                    for sub_k, sub_v in expander(attr_value):
                         new_attrs[sub_k] = sub_v
+                else:
+                    new_attrs[name] = attr_value
             case TTemplatedAttribute(name=name, value_ref=ref):
                 attr_t = _resolve_ref(ref, interpolations)
                 attr_value = format_template(attr_t)
@@ -341,6 +323,9 @@ def _resolve_t_attrs(
                         if sub_k not in attr_accs:
                             attr_accs[sub_k] = ATTR_ACCUMULATOR_MAKERS[sub_k](new_attrs.get(sub_k, True))
                         new_attrs[sub_k] = attr_accs[sub_k].merge_value(sub_v)
+                    elif expander := ATTR_EXPANDERS.get(sub_k):
+                        for exp_k, exp_v in expander(sub_v):
+                            new_attrs[exp_k] = exp_v
                     else:
                         new_attrs[sub_k] = sub_v
             case _:
