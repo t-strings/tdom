@@ -151,7 +151,7 @@ def interpolate_text(render_api, struct_cache, q, bf, last_container_tag, templa
     if not isinstance(value, str):
         if isinstance(value, Template):
             return (container_tag, iter(render_api.walk_template(bf, value, render_api.process_template(value, struct_cache))))
-        elif isinstance(value, Sequence):
+        elif isinstance(value, Sequence) or hasattr(value, '__iter__'):
             return (container_tag, (((interpolate_user_text, template, (None, v)) for v in iter(value))))
         elif value is False or value is None:
             # Do nothing here, we don't even need to yield ''.
