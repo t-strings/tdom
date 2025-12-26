@@ -173,7 +173,7 @@ def parse_style_attribute_value(style_str: str) -> list[tuple[str, str | None]]:
     return styles
 
 
-def make_style_accumulator(old_value: object) -> dict[str, str | None]:
+def make_style_accumulator(old_value: object) -> StyleAccumulator:
     """
     Initialize the style accumulator.
 
@@ -226,7 +226,7 @@ class StyleAccumulator:
         return style_value if style_value else None
 
 
-def make_class_accumulator(old_value: object) -> dict[str, bool]:
+def make_class_accumulator(old_value: object) -> ClassAccumulator:
     """
     Initialize the class accumulator.
 
@@ -303,7 +303,7 @@ def _resolve_t_attrs(
     in a later step.
     """
     new_attrs: AttributesDict = LastUpdatedOrderedDict()
-    attr_accs: dict[str, AttributeValueAccumulator | None] = {}
+    attr_accs: dict[str, AttributeValueAccumulator] = {}
     for attr in attrs:
         match attr:
             case TLiteralAttribute(name=name, value=value):
