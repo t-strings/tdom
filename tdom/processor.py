@@ -162,8 +162,10 @@ def make_style_accumulator(old_value: object) -> StyleAccumulator:
     """
     match old_value:
         case str():
-            styles = {name: value for name, value in parse_style_attribute_value(old_value)}
-        case True: # A bare attribute will just default to {}.
+            styles = {
+                name: value for name, value in parse_style_attribute_value(old_value)
+            }
+        case True:  # A bare attribute will just default to {}.
             styles = {}
         case _:
             raise TypeError(f"Unexpected value: {old_value}")
@@ -172,7 +174,6 @@ def make_style_accumulator(old_value: object) -> StyleAccumulator:
 
 @dataclass
 class StyleAccumulator:
-
     styles: dict[str, str | None]
 
     def merge_value(self, value: object) -> None:
@@ -181,7 +182,9 @@ class StyleAccumulator:
         """
         match value:
             case str():
-                self.styles.update({name: value for name, value in parse_style_attribute_value(value)})
+                self.styles.update(
+                    {name: value for name, value in parse_style_attribute_value(value)}
+                )
             case dict():
                 self.styles.update(
                     {
@@ -225,7 +228,6 @@ def make_class_accumulator(old_value: object) -> ClassAccumulator:
 
 @dataclass
 class ClassAccumulator:
-
     toggled_classes: dict[str, bool]
 
     def merge_value(self, value: object) -> None:
@@ -260,13 +262,15 @@ class ClassAccumulator:
 
         @NOTE: If the result would be `''` then use `None` to omit the attribute.
         """
-        class_value = " ".join([cn for cn, toggle in self.toggled_classes.items() if toggle])
+        class_value = " ".join(
+            [cn for cn, toggle in self.toggled_classes.items() if toggle]
+        )
         return class_value if class_value else None
 
 
 ATTR_ACCUMULATOR_MAKERS = {
-    'class': make_class_accumulator,
-    'style': make_style_accumulator,
+    "class": make_class_accumulator,
+    "style": make_style_accumulator,
 }
 
 
@@ -299,7 +303,9 @@ def _resolve_t_attrs(
                 attr_value = format_interpolation(interpolation)
                 if name in ATTR_ACCUMULATOR_MAKERS:
                     if name not in attr_accs:
-                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](new_attrs.get(name, True))
+                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](
+                            new_attrs.get(name, True)
+                        )
                     new_attrs[name] = attr_accs[name].merge_value(attr_value)
                 elif expander := ATTR_EXPANDERS.get(name):
                     for sub_k, sub_v in expander(attr_value):
@@ -311,7 +317,9 @@ def _resolve_t_attrs(
                 attr_value = format_template(attr_t)
                 if name in ATTR_ACCUMULATOR_MAKERS:
                     if name not in attr_accs:
-                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](new_attrs.get(name, True))
+                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](
+                            new_attrs.get(name, True)
+                        )
                     new_attrs[name] = attr_accs[name].merge_value(attr_value)
                 else:
                     new_attrs[name] = attr_value
@@ -321,7 +329,9 @@ def _resolve_t_attrs(
                 for sub_k, sub_v in _substitute_spread_attrs(spread_value):
                     if sub_k in ATTR_ACCUMULATOR_MAKERS:
                         if sub_k not in attr_accs:
-                            attr_accs[sub_k] = ATTR_ACCUMULATOR_MAKERS[sub_k](new_attrs.get(sub_k, True))
+                            attr_accs[sub_k] = ATTR_ACCUMULATOR_MAKERS[sub_k](
+                                new_attrs.get(sub_k, True)
+                            )
                         new_attrs[sub_k] = attr_accs[sub_k].merge_value(sub_v)
                     elif expander := ATTR_EXPANDERS.get(sub_k):
                         for exp_k, exp_v in expander(sub_v):

@@ -689,21 +689,19 @@ def test_interpolated_aria_attributes():
         == '<button aria-label="Close" aria-hidden="true" aria-another="false">X</button>'
     )
 
+
 #
 # Special style attribute handling.
 #
 def test_style_in_literal_attr():
-    p_id = "para1" # non-literal attribute to cause attr resolution
+    p_id = "para1"  # non-literal attribute to cause attr resolution
     node = html(t'<p style="color: red" id={p_id}>Warning!</p>')
     assert node == Element(
         "p",
         attrs={"style": "color: red", "id": "para1"},
         children=[Text("Warning!")],
     )
-    assert (
-        str(node)
-        == '<p style="color: red" id="para1">Warning!</p>'
-    )
+    assert str(node) == '<p style="color: red" id="para1">Warning!</p>'
 
 
 def test_style_in_interpolated_attr():
@@ -728,45 +726,48 @@ def test_style_in_templated_attr():
         attrs={"style": "color: red"},
         children=[Text("Warning!")],
     )
-    assert (
-        str(node)
-        == '<p style="color: red">Warning!</p>'
-    )
+    assert str(node) == '<p style="color: red">Warning!</p>'
+
 
 def test_style_in_spread_attr():
     attrs = {"style": {"color": "red"}}
-    node = html(t'<p {attrs}>Warning!</p>')
+    node = html(t"<p {attrs}>Warning!</p>")
     assert node == Element(
         "p",
         attrs={"style": "color: red"},
         children=[Text("Warning!")],
     )
-    assert (
-        str(node)
-        == '<p style="color: red">Warning!</p>'
-    )
+    assert str(node) == '<p style="color: red">Warning!</p>'
 
 
 def test_style_merged_from_all_attrs():
     attrs = dict(style="font-size: 15px")
     style = {"font-weight": "bold"}
     color = "red"
-    node = html(t'<p style="font-family: serif" style="color: {color}" style={ style } {attrs}></p>')
-    assert node == Element("p", {"style": "font-family: serif; color: red; font-weight: bold; font-size: 15px"})
-    assert str(node) == '<p style="font-family: serif; color: red; font-weight: bold; font-size: 15px"></p>'
+    node = html(
+        t'<p style="font-family: serif" style="color: {color}" style={style} {attrs}></p>'
+    )
+    assert node == Element(
+        "p",
+        {"style": "font-family: serif; color: red; font-weight: bold; font-size: 15px"},
+    )
+    assert (
+        str(node)
+        == '<p style="font-family: serif; color: red; font-weight: bold; font-size: 15px"></p>'
+    )
 
 
 def test_style_override_left_to_right():
-    suffix = t'></p>'
+    suffix = t"></p>"
     parts = [
-     (t'<p style="color: red"', "color: red"),
-     (t' style={dict(color="blue")}', "color: blue"),
-     (t''' style="color: {'green'}"''', "color: green"),
-     (t''' {dict(style=dict(color='yellow'))}''', "color: yellow"),
-     ]
+        (t'<p style="color: red"', "color: red"),
+        (t" style={dict(color='blue')}", "color: blue"),
+        (t''' style="color: {"green"}"''', "color: green"),
+        (t""" {dict(style=dict(color="yellow"))}""", "color: yellow"),
+    ]
     for index in range(len(parts)):
         expected_style = parts[index][1]
-        t = sum([part[0] for part in parts[:index+1]], t'') + suffix
+        t = sum([part[0] for part in parts[: index + 1]], t"") + suffix
         node = html(t)
         assert node == Element("p", {"style": expected_style})
         assert str(node) == f'<p style="{expected_style}"></p>'
