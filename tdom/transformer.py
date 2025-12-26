@@ -168,7 +168,7 @@ def interpolate_text(render_api, struct_cache, q, bf, last_container_tag, templa
         #bf.append(render_api.escape_html_content_in_tag(container_tag, str(value)))
 
 
-@dataclass
+@dataclass(frozen=True)
 class TransformService:
     """
     Turn a structure node tree into an optimized Template that can be quickly interpolated into a string.
@@ -306,7 +306,7 @@ class TransformService:
         return Template(*parts)
 
 
-@dataclass
+@dataclass(frozen=True)
 class RenderService:
 
     transform_api: TransformService
