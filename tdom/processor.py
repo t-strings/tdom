@@ -156,9 +156,6 @@ def parse_style_attribute_value(style_str: str) -> list[tuple[str, str | None]]:
 def make_style_accumulator(old_value: object) -> StyleAccumulator:
     """
     Initialize the style accumulator.
-
-    @NOTE: This should only be run if the special style has not been initialized
-    already.
     """
     match old_value:
         case str():
@@ -212,9 +209,6 @@ class StyleAccumulator:
 def make_class_accumulator(old_value: object) -> ClassAccumulator:
     """
     Initialize the class accumulator.
-
-    @NOTE: This should only be run if the special class has not been initialized
-    already.
     """
     match old_value:
         case str():
