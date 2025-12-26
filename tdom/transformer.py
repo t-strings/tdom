@@ -108,9 +108,14 @@ def interpolate_component(render_api, struct_cache, q, bf, last_container_tag, t
     embedded_struct_t = render_api.process_template(embedded_template, struct_cache)
     attrs = render_api.resolve_attrs(render_api.interpolate_attrs(attrs, template))
     component_callable = template.interpolations[start_template_interpolation_index].value
-    result_template = component_callable(attrs, embedded_template, embedded_struct_t)
+    result_template, context_values = component_callable(attrs, embedded_template, embedded_struct_t)
     if result_template:
-        return (container_tag, iter(render_api.walk_template(bf, result_template, render_api.process_template(result_template, struct_cache))))
+        result_struct = render_api.process_template(result_template, struct_cache)
+        if context_values:
+            walker = render_api.walk_template_with_context(bf, result_template, result_struct, context_values=context_values)
+        else:
+            walker = render_api.walk_template(bf, result_template, result_struct)
+        return (container_tag, iter(walker))
 
 
 def interpolate_raw_text(render_api, struct_cache, q, bf, last_container_tag, template, value) -> RenderQueueItem | None:
@@ -484,6 +489,14 @@ class RenderService:
                     new_attrs[k] = v
         return new_attrs
 
+    def walk_template_with_context(self, bf, template, struct_t, context_values=None):
+        if context_values:
+            cm = ContextVarSetter(context_values=context_values)
+        else:
+            cm = nullcontext()
+        with cm:
+            yield from self.walk_template(bf, template, struct_t)
+
     def walk_template(self, bf, template, struct_t):
         strings = struct_t.strings
         ips = struct_t.interpolations
@@ -498,6 +511,24 @@ class RenderService:
             idx += 1
         if strings[idx]:
             bf.append(strings[idx])
+
+from contextlib import nullcontext
+from contextvars import ContextVar, Token
+class ContextVarSetter:
+    context_values: tuple[tuple[ContextVar, object]]
+    tokens: tuple[Token] | None = None
+
+    def __init__(self, context_values=None):
+        self.context_values = context_values
+
+    def __enter__(self):
+        self.tokens = tuple([var.set(val) for var, val in self.context_values])
+        print (f'{[var.get() for var, _ in self.context_values]}')
+        print (f'{self.tokens=}')
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        for idx, var_value in enumerate(self.context_values):
+            var_value[0].reset(self.tokens[idx])
 
 
 def render_service_factory():
