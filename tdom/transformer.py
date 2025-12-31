@@ -1,20 +1,26 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from string.templatelib import Interpolation, Template
-from io import StringIO, BufferedWriter
 from typing import Callable
 from collections.abc import Iterable, Sequence
 import typing as t
-from collections import deque
+from contextlib import nullcontext
+from contextvars import ContextVar, Token
+import functools
+from markupsafe import Markup
 
-from .parser import parse_html
-from .nodes import (
+from .parser import TemplateParser
+from .tnodes import (
     TNode,
     TFragment,
     TElement,
     TText,
-    DocumentType,
+    TDocumentType,
     TComment,
-    ComponentInfo,
+    TComponent,
+    TLiteralAttribute,
+    TAttribute,
+)
+from .nodes import (
     VOID_ELEMENTS,
     CDATA_CONTENT_ELEMENTS,
     RCDATA_CONTENT_ELEMENTS,
@@ -22,15 +28,10 @@ from .nodes import (
 from .escaping import (
     escape_html_content_in_tag as default_escape_html_content_in_tag,
     escape_html_text as default_escape_html_text,
-    escape_html_script as default_escape_html_script,
     escape_html_comment as default_escape_html_comment,
     )
-from .processor import LastUpdatedOrderedDict
-
-
-@t.runtime_checkable
-class HasHTMLDunder(t.Protocol):
-    def __html__(self) -> str: ...  # pragma: no cover
+from .utils import CachableTemplate
+from .processor import _resolve_t_attrs, AttributesDict
 
 
 @dataclass
@@ -73,7 +74,7 @@ class Interpolator(t.Protocol):
 type InterpolationInfo = object | None
 
 
-type RenderQueueItem = tuple[str | None, Iteratable[tuple[Interpolator, Template, InterpolationInfo]]]
+type RenderQueueItem = tuple[str | None, Iterable[tuple[Interpolator, Template, InterpolationInfo]]]
 
 
 def interpolate_comment(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
@@ -84,7 +85,7 @@ def interpolate_comment(render_api, struct_cache, q, bf, last_container_tag, tem
 
 def interpolate_attrs(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, attrs = ip_info
-    attrs = render_api.resolve_attrs(render_api.interpolate_attrs(attrs, template))
+    attrs = render_api.interpolate_attrs(attrs, template)
     attrs_str = ''.join(f' {k}' if v is True else f' {k}="{render_api.escape_html_text(v)}"' for k, v in attrs.items() if v is not None and v is not False)
     bf.append(attrs_str)
 
@@ -100,14 +101,16 @@ def interpolate_component(render_api, struct_cache, q, bf, last_container_tag, t
          * transform it to a struct template
          * iteratively recurse into that result template and start outputting it
     """
-    (container_tag, attrs, start_template_interpolation_index, start_template_string_index, end_template_string_index) = ip_info
-    if end_template_string_index is not None:
-        embedded_template = render_api.transform_api.extract_embedded_template(template, start_template_string_index, end_template_string_index)
+    (container_tag, attrs, start_i_index, end_i_index, body_start_s_index) = ip_info
+    if start_i_index != end_i_index and end_i_index is not None:
+        embedded_template = render_api.transform_api.extract_embedded_template(template, body_start_s_index, end_i_index)
     else:
         embedded_template = Template('')
     embedded_struct_t = render_api.process_template(embedded_template, struct_cache)
-    attrs = render_api.resolve_attrs(render_api.interpolate_attrs(attrs, template))
-    component_callable = template.interpolations[start_template_interpolation_index].value
+    attrs = render_api.interpolate_attrs(attrs, template)
+    component_callable = template.interpolations[start_i_index].value
+    if start_i_index != end_i_index and end_i_index is not None and component_callable != template.interpolations[end_i_index].value:
+        raise TypeError('Component callable in start tag must match component callable in end tag.')
     result_template, context_values = component_callable(attrs, embedded_template, embedded_struct_t)
     if result_template:
         result_struct = render_api.process_template(result_template, struct_cache)
@@ -193,23 +196,27 @@ class TransformService:
         struct_node = self.to_struct_node(values_template)
         return self.to_struct_template(struct_node)
 
-    def to_struct_node(self, values_template: Template) -> Node:
-        return parse_html(values_template)
+    def to_struct_node(self, values_template: Template) -> TNode:
+        return TemplateParser.parse(values_template)
 
-    def to_struct_template(self, struct_node: Node) -> Template:
+    def to_struct_template(self, struct_node: TNode) -> Template:
         """ Recombine stream of tokens from node trees into a new template. """
         return Template(*self.streamer(struct_node))
 
     def _stream_comment_interpolation(self, text_t):
-        info = ('<!--', text_t, comment_interpolator)
+        info = ('<!--', text_t, interpolate_comment)
         return Interpolation((interpolate_comment, info), '', None, 'html_comment_template')
 
     def _stream_attrs_interpolation(self, last_container_tag, attrs):
         info = (last_container_tag, attrs)
         return Interpolation((interpolate_attrs, info), '', None, 'html_attrs_seq')
 
-    def _stream_component_interpolation(self, last_container_tag, attrs, comp_info):
-        info = (last_container_tag, attrs, comp_info.starttag_interpolation_index, comp_info.strings_slice_begin, comp_info.strings_slice_end)
+    def _stream_component_interpolation(self, last_container_tag, attrs, start_i_index, end_i_index):
+        # If the interpolation is at 1, then the opening string starts inside at least string 2 (+1)
+        # but it can't start until after any dynamic attributes without our own tag
+        # so we have to count past those.
+        body_start_s_index  = start_i_index + 1 + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
+        info = (last_container_tag, attrs, start_i_index, end_i_index, body_start_s_index)
         return Interpolation((interpolate_component, info), '', None, 'tdom_component')
 
     def _stream_raw_text_interpolation(self, last_container_tag, text_t):
@@ -224,42 +231,44 @@ class TransformService:
         info = (last_container_tag, values_index)
         return Interpolation((interpolate_struct_text, info), '', None, 'html_normal_interpolation')
 
-    def streamer(self, root: TNode, last_container_tag: str|None=None) -> Generator[str|Interpolation, ...]:
+    def streamer(self, root: TNode, last_container_tag: str|None=None) -> t.Iterable[str|Interpolation]:
         """
         Stream template parts back out so they can be consolidated into a new metadata-aware template.
         """
-        q: list[tuple(str | None, TNode | EndTag)] = [(last_container_tag, root)]
+        q: list[tuple[str | None, TNode | EndTag]] = [(last_container_tag, root)]
         while q:
             last_container_tag, tnode = q.pop()
             match tnode:
                 case EndTag(end_tag):
                     yield end_tag
-                case DocumentType(text):
+                case TDocumentType(text):
                     yield f'<!doctype {text}>'
-                case TComment(text_t):
+                case TComment(ref):
+                    text_t = Template(*[part if isinstance(part, str) else Interpolation(part, '', None, '') for part in iter(ref)])
                     yield '<!--'
                     yield self._stream_comment_interpolation(text_t)
                     yield '-->'
                 case TFragment(children):
                     q.extend([(last_container_tag, child) for child in reversed(children)])
-                case TElement(tag, attrs, children, component_info):
-                    if component_info is None:
-                        yield f'<{tag}'
-                        if self.has_dynamic_attrs(attrs):
-                            yield self._stream_attrs_interpolation(tag, attrs)
-                        else:
-                            yield self.static_attrs_to_str(attrs)
-                        # This is just a want to have.
-                        if self.slash_void and tag in VOID_ELEMENTS:
-                            yield ' />'
-                        else:
-                            yield '>'
-                        if tag not in VOID_ELEMENTS:
-                            q.append((last_container_tag, EndTag(f'</{tag}>')))
-                            q.extend([(tag, child) for child in reversed(children)])
+                case TComponent(start_i_index, end_i_index, attrs, children):
+                    yield self._stream_component_interpolation(last_container_tag, attrs, start_i_index, end_i_index)
+                case TElement(tag, attrs, children):
+                    yield f'<{tag}'
+                    if self.has_dynamic_attrs(attrs):
+                        yield self._stream_attrs_interpolation(tag, attrs)
                     else:
-                        yield self._stream_component_interpolation(last_container_tag, attrs, component_info)
-                case TText(text_t):
+                        # @TODO: Probably find a less risky way to do this.
+                        yield ''.join((f'{k}={default_escape_html_text(v)}' if v is not None else f'{k}' for k, v in _resolve_t_attrs(attrs, ()).items() if v is not False and v is not None))
+                    # This is just a want to have.
+                    if self.slash_void and tag in VOID_ELEMENTS:
+                        yield ' />'
+                    else:
+                        yield '>'
+                    if tag not in VOID_ELEMENTS:
+                        q.append((last_container_tag, EndTag(f'</{tag}>')))
+                        q.extend([(tag, child) for child in reversed(children)])
+                case TText(ref):
+                    text_t = Template(*[part if isinstance(part, str) else Interpolation(part, '', None, '') for part in iter(ref)])
                     if last_container_tag in CDATA_CONTENT_ELEMENTS:
                         # Must be handled all at once.
                         yield self._stream_raw_text_interpolation(last_container_tag, text_t)
@@ -277,31 +286,25 @@ class TransformService:
                 case _:
                     raise ValueError(f'Unrecognized tnode: {tnode}')
 
-    def static_attrs_to_str(self, attrs: tuple[tuple[str | int, ...], ...]) -> str:
-        return ''.join(f' {attr[0]}' if len(attr) == 1 else f' {attr[0]}="{self.escape_html_text(attr[1])}"' for attr in attrs)
-
-    def has_dynamic_attrs(self, attrs: tuple[tuple[str|int, ...], ...]) -> bool:
+    def has_dynamic_attrs(self, attrs: t.Sequence[TAttribute]) -> bool:
         for attr in attrs:
-             match attr:
-                 case [str()] | [str(), str()]:
-                     continue
-                 case _:
-                     return True
+            if not isinstance(attr, TLiteralAttribute):
+                return True
         return False
 
-    def extract_embedded_template(self, template: Template, start_index: int, end_index: int):
+    def extract_embedded_template(self, template: Template, body_start_s_index: int, end_i_index: int):
         """
         Extract the template parts exclusively from start tag to end tag.
 
         @TODO: "There must be a better way."
         """
-        assert end_index is not None and start_index <= end_index
         # Copy the parts out of the containing template.
-        index = start_index
+        index = body_start_s_index
+        last_s_index = end_i_index
         parts = []
-        while index < end_index:
+        while index <= last_s_index:
             parts.append(template.strings[index])
-            if index < end_index - 1:
+            if index != last_s_index:
                 parts.append(template.interpolations[index])
             index += 1
         # Now trim the first part to the end of the opening tag.
@@ -396,98 +399,9 @@ class RenderService:
             struct_cache[template.strings] = self.transform_api.transform_template(template)
         return struct_cache[template.strings]
 
-    def interpolate_attrs(self, attrs, template) -> Generator[tuple[str, object|None]]:
+    def interpolate_attrs(self, attrs, template) -> AttributesDict:
         """ Plug `template` values into any attribute interpolations. """
-        for attr in attrs:
-            match attr:
-                case [str()]:
-                    yield (attr[0], True)
-                case [str(), str()]:
-                    yield (attr[0], attr[1])
-                case [str(), int()]:
-                    yield (attr[0], template.interpolations[attr[1]].value)
-                case [str(), str()|int(), _, *_]:
-                    v_str = ''.join(part if isinstance(part, str) else str(template.interpolations[part.value].value) for part in attr[1:])
-                    yield (attr[0], v_str)
-                case [int()]:
-                    spread_attrs = template.interpolations[attr[0]].value
-                    yield from spread_attrs.items() if hasattr(spread_attrs, 'items') else spread_attrs
-                case _:
-                    raise ValueError(f'Unrecognized attr format {attr}')
-
-    def resolve_attrs(self, attrs) -> dict[str, object|None]:
-        # @TODO: This should be using the processor to resolve these.
-        new_attrs = LastUpdatedOrderedDict()
-        klass = {}
-        for k, v in attrs:
-            match k:
-                case 'class':
-                    # Special cases to allow unsetting all classes.  Do we really need all over these?
-                    if v is True:
-                        new_attrs['class'] = v
-                        klass.clear()
-                    elif v is None:
-                        new_attrs['class'] = None
-                        klass.clear()
-                    elif v == '':
-                        new_attrs['class'] = ''
-                        klass.clear()
-                    else:
-                        q = [v]
-                        changes = {}
-                        while q:
-                            sub_v = q.pop()
-                            match sub_v:
-                                case str():
-                                    if ' ' not in sub_v:
-                                        changes[sub_v] = True
-                                    else:
-                                        for cn in sub_v.split():
-                                            changes[cn] = True
-                                case dict():
-                                    for cn, enabled in sub_v.items():
-                                        changes[cn] = enabled
-                                case Iterable():
-                                    q.extend(reversed(sub_v))
-                                case None|False:
-                                    pass
-                                case _:
-                                    raise ValueError(f'Unrecognized format for class attribute: {sub_v}')
-                        if changes:
-                            klass.update(changes)
-                            class_str = ' '.join(cn for cn, enabled in klass.items() if enabled)
-                            if class_str != new_attrs.get('class', None):
-                                new_attrs['class'] = class_str
-                case 'style':
-                    match v:
-                        case None:
-                            new_attrs['style'] = None
-                        case str():
-                            new_attrs['style'] = v
-                        case Iterable():
-                            new_attrs['style'] = '; '.join(f'{pn}: {pv}' for pn, pv in (v.items() if hasattr(v, 'items') else v))
-                        case _:
-                            raise ValueError(f'Unrecognized format for style attribute: {v}')
-                case 'aria':
-                    for an, av in (v.items() if hasattr(v, 'items') else v):
-                        full_name = f'aria-{an}'
-                        match av:
-                            case True:
-                                new_attrs[full_name] = 'true'
-                            case False:
-                                new_attrs[full_name] = 'false'
-                            case None:
-                                new_attrs[full_name] = None
-                            case str():
-                                new_attrs[full_name] = av
-                            case _:
-                                new_attrs[full_name] = str(av)
-                case 'data':
-                    for dn, dv in (v.items() if hasattr(v, 'items') else v):
-                        new_attrs[f'data-{dn}'] = dv
-                case _:
-                    new_attrs[k] = v
-        return new_attrs
+        return _resolve_t_attrs(attrs, template.interpolations)
 
     def walk_template_with_context(self, bf, template, struct_t, context_values=None):
         if context_values:
@@ -512,19 +426,17 @@ class RenderService:
         if strings[idx]:
             bf.append(strings[idx])
 
-from contextlib import nullcontext
-from contextvars import ContextVar, Token
-class ContextVarSetter:
-    context_values: tuple[tuple[ContextVar, object]]
-    tokens: tuple[Token] | None = None
 
-    def __init__(self, context_values=None):
+class ContextVarSetter:
+    context_values: tuple[tuple[ContextVar, object],...]
+    tokens: tuple[Token,...]
+
+    def __init__(self, context_values=()):
         self.context_values = context_values
+        self.tokens = ()
 
     def __enter__(self):
         self.tokens = tuple([var.set(val) for var, val in self.context_values])
-        print (f'{[var.get() for var, _ in self.context_values]}')
-        print (f'{self.tokens=}')
 
     def __exit__(self, exc_type, exc_value, traceback):
         for idx, var_value in enumerate(self.context_values):
@@ -534,3 +446,17 @@ class ContextVarSetter:
 def render_service_factory():
     return RenderService(transform_api=TransformService())
 
+
+#
+# SHIM: This is here until we can find a way to make a configurable cache.
+#
+@dataclass(frozen=True)
+class CachedRenderService(RenderService):
+
+    @functools.lru_cache
+    def _process_template(self, cached_template: CachableTemplate):
+        return self.transform_api.transform_template(cached_template.template)
+
+    def process_template(self, template: Template, struct_cache: dict):
+        ct = CachableTemplate(template)
+        return self._process_template(ct)
