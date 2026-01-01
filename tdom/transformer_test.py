@@ -1,4 +1,8 @@
 from .transformer import render_service_factory
+from contextvars import ContextVar
+
+
+theme_context_var = ContextVar('theme', default='default')
 
 
 def test_render_template():
@@ -34,13 +38,13 @@ def test_render_select():
     assert render_api.render_template(get_color_select_t(set()), struct_cache) == '<select><option value="R">Red</option><option value="Y">Yellow</option><option value="B">Blue</option></select>'
     assert render_api.render_template(get_color_select_t({'Y'}), struct_cache) == '<select><option value="R">Red</option><option value="Y" selected>Yellow</option><option value="B">Blue</option></select>'
 
-from contextvars import ContextVar
 
 
-theme_context_var = ContextVar('theme', default='default')
 
 
-def test_component():
+
+
+def test_render_component_with_context():
 
     def ThemeContext(attrs, embedded_t, embedded_struct):
         context_values = ((theme_context_var, attrs.get('value', 'normal')),)
@@ -56,3 +60,76 @@ def test_component():
         assert render_api.render_template(body_t) == '<div><div data-theme="holiday"><b>Cheers!</b></div></div>'
         assert theme_context_var.get() == 'not-the-default'
     assert theme_context_var.get() == 'default'
+
+
+def test_render_template_components_smoketest():
+
+    def PageComponent(attrs, content_t, content_struct):
+        return t'''<div class="content">{content_t}</div>''', ()
+
+    def FooterComponent(attrs, body_t, body_struct):
+        return t'<div class="footer"><a href="about">About</a></div>', ()
+
+    def LayoutComponent(attrs, body_t, body_struct):
+        return t'''<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="scripts.js"></script>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>{body_t}<{FooterComponent} /></body>
+</html>
+''', ()
+
+    render_api = render_service_factory()
+    content = 'HTML never goes out of style.'
+    content_str = render_api.render_template(t'<{LayoutComponent}><{PageComponent}>{content}</{PageComponent}></{LayoutComponent}>')
+    assert content_str == '''<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="scripts.js"></script>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body><div class="content">HTML never goes out of style.</div><div class="footer"><a href="about">About</a></div></body>
+</html>
+'''
+
+
+def test_render_template_functions_smoketest():
+
+    def make_page_t(content: str) -> Template:
+        return t'''<div class="content">{content}</div>'''
+
+    def make_footer_t() -> Template:
+        return t'<div class="footer"><a href="about">About</a></div>'
+
+    def make_layout_t(body_t: Template) -> Template:
+        footer_t = make_footer_t()
+        return t'''<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="scripts.js"></script>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>{body_t}{footer_t}</body>
+</html>
+'''
+
+    render_api = render_service_factory()
+    content = 'HTML never goes out of style.'
+    layout_t = make_layout_t(make_page_t(content))
+    content_str = render_api.render_template(layout_t)
+    assert content_str == '''<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="scripts.js"></script>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body><div class="content">HTML never goes out of style.</div><div class="footer"><a href="about">About</a></div></body>
+</html>
+'''
+
