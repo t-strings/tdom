@@ -1,4 +1,4 @@
-from .transformer import render_service_factory
+from .transformer import render_service_factory, cached_render_service_factory, CachedTransformService
 from contextvars import ContextVar
 from string.templatelib import Template
 
@@ -6,16 +6,83 @@ from string.templatelib import Template
 theme_context_var = ContextVar('theme', default='default')
 
 
+def test_render_template_smoketest():
+    comment_text = 'comment is not literal'
+    interpolated_class = 'red'
+    text_in_element = 'text is not literal'
+    templated = "not literal"
+    spread_attrs={'data-on': True}
+    def comp(attrs, body_t, body_struct):
+        return t'<div>{body_t}</div>', ()
+    smoke_t = t'''<!doctype html>
+<html>
+<body>
+<!-- literal -->
+<span attr="literal">literal</span>
+<!-- {comment_text} -->
+<span>{text_in_element}</span>
+<span attr="literal" class={interpolated_class} title="is {templated}" {spread_attrs}>{text_in_element}</span>
+<{comp}><span>comp body</span></{comp}>
+</body>
+</html>'''
+    smoke_str = '''<!doctype html>
+<html>
+<body>
+<!-- literal -->
+<span attr="literal">literal</span>
+<!-- comment is not literal -->
+<span>text is not literal</span>
+<span attr="literal" title="is not literal" data-on class="red">text is not literal</span>
+<div><span>comp body</span></div>
+</body>
+</html>'''
+    render_api = render_service_factory()
+    assert render_api.render_template(smoke_t) == smoke_str
+
+
+def struct_repr(st):
+    return st.strings, tuple([(i.value, i.expression, i.conversion, i.format_spec) for i in st.interpolations])
+
+
+def test_process_template_internal_cache():
+    sample_t = t'''<div>{'content'}</div>'''
+    sample_diff_t = t'''<div>{'diffcontent'}</div>'''
+    alt_t = t'''<span>{'content'}</span>'''
+    render_api = render_service_factory()
+    cached_render_api = cached_render_service_factory()
+    #CachedTransformService
+    tnode1 = render_api.process_template(sample_t)
+    tnode2 = render_api.process_template(sample_t)
+    cached_tnode1 = cached_render_api.process_template(sample_t)
+    cached_tnode2 = cached_render_api.process_template(sample_t)
+    cached_tnode3 = cached_render_api.process_template(sample_diff_t)
+    assert tnode1 is not cached_tnode1
+    assert tnode1 is not cached_tnode2
+    assert tnode1 is not cached_tnode3
+    assert tnode1 is not tnode2
+    assert cached_tnode1 is cached_tnode2
+    assert cached_tnode1 is cached_tnode3
+    assert struct_repr(tnode1) == struct_repr(cached_tnode1)
+    assert struct_repr(tnode2) == struct_repr(cached_tnode1)
+    # @TODO: Maybe we should be acting directly on the transform service here?
+    ci = cached_render_api.transform_api._transform_template.cache_info()
+    assert ci.hits == 2, "lookup #2 and lookup #3"
+    assert ci.misses == 1, "lookup #1"
+    cached_tnode4 = cached_render_api.process_template(alt_t)
+    assert cached_tnode1 is not cached_tnode4
+    assert struct_repr(cached_tnode1) != struct_repr(cached_tnode4)
+
+
 def test_render_template_repeated():
     def get_sample_t(idx, spread_attrs, button_text):
         return t'''<div><button data-key={idx} {spread_attrs}>{button_text}</button></div>'''
-    render_api = render_service_factory()
-    struct_cache = {}
-    for idx in range(3):
-        spread_attrs = {'data-enabled': True}
-        button_text = 'RENDER'
-        sample_t = get_sample_t(idx, spread_attrs, button_text)
-        assert render_api.render_template(sample_t, struct_cache) == f'<div><button data-key="{idx}" data-enabled>RENDER</button></div>'
+    render_apis = (render_service_factory(), cached_render_service_factory())
+    for render_api in render_apis:
+        for idx in range(3):
+            spread_attrs = {'data-enabled': True}
+            button_text = 'RENDER'
+            sample_t = get_sample_t(idx, spread_attrs, button_text)
+            assert render_api.render_template(sample_t) == f'<div><button data-key="{idx}" data-enabled>RENDER</button></div>'
 
 def test_render_template_iterables():
     render_api = render_service_factory()
@@ -39,10 +106,9 @@ def test_render_template_iterables():
         assert set(selected_values).issubset(set([opt[0] for opt in PRIMARY_COLORS]))
         return provider(PRIMARY_COLORS, selected_values)
 
-    struct_cache = {}
     for provider in (get_select_t_with_list,get_select_t_with_generator,get_select_t_with_concat):
-        assert render_api.render_template(get_color_select_t(set(), provider), struct_cache) == '<select><option value="R">Red</option><option value="Y">Yellow</option><option value="B">Blue</option></select>'
-        assert render_api.render_template(get_color_select_t({'Y'}, provider), struct_cache) == '<select><option value="R">Red</option><option value="Y" selected>Yellow</option><option value="B">Blue</option></select>'
+        assert render_api.render_template(get_color_select_t(set(), provider)) == '<select><option value="R">Red</option><option value="Y">Yellow</option><option value="B">Blue</option></select>'
+        assert render_api.render_template(get_color_select_t({'Y'}, provider)) == '<select><option value="R">Red</option><option value="Y" selected>Yellow</option><option value="B">Blue</option></select>'
 
 
 def test_render_component_with_context():
