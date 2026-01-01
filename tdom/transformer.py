@@ -31,7 +31,8 @@ from .escaping import (
     escape_html_comment as default_escape_html_comment,
     )
 from .utils import CachableTemplate
-from .processor import _resolve_t_attrs, AttributesDict, _resolve_html_attrs
+from .processor import _resolve_t_attrs, AttributesDict, _resolve_html_attrs, _kebab_to_snake
+from .callables import get_callable_info
 
 
 @dataclass
@@ -88,6 +89,62 @@ def interpolate_attrs(render_api, q, bf, last_container_tag, template, ip_info) 
     bf.append(attrs_str)
 
 
+def invoke_passthru(component_callable, attrs, embedded_template, embedded_struct_t):
+    result_template = component_callable(attrs, embedded_template, embedded_struct_t)
+    return result_template, ()
+
+
+def invoke_passthru_cvalues(component_callable, attrs, embedded_template, embedded_struct_t):
+    result_template, context_values = component_callable(attrs, embedded_template, embedded_struct_t)
+    return result_template, context_values
+
+
+def _prep_cinfo(component_callable, attrs, embedded_template, embedded_struct_t):
+    # @TODO: This is lifted from the processor and then grossified.
+    # Not sure this will work out but maybe we'd unify these.
+    callable_info = get_callable_info(component_callable)
+
+    if callable_info.requires_positional:
+        raise TypeError(
+            "Component callables cannot have required positional arguments."
+        )
+
+    kwargs: AttributesDict = {}
+
+    # Add all supported attributes
+    for attr_name, attr_value in attrs.items():
+        snake_name = _kebab_to_snake(attr_name)
+        if snake_name in callable_info.named_params or callable_info.kwargs:
+            kwargs[snake_name] = attr_value
+
+    # Add system vars if appropriate
+    if "embedded_template" in callable_info.named_params or callable_info.kwargs:
+        kwargs["embedded_template"] = embedded_template
+    # I'm sure the phone is ringing of the hook for this one.
+    if "embedded_struct_t" in callable_info.named_params or callable_info.kwargs:
+        kwargs["embedded_struct_t"] = embedded_struct_t
+
+    # Check to make sure we've fully satisfied the callable's requirements
+    missing = callable_info.required_named_params - kwargs.keys()
+    if missing:
+        raise TypeError(
+            f"Missing required parameters for component: {', '.join(missing)}"
+        )
+    return kwargs
+
+
+def invoke_cinfo(component_callable, attrs, embedded_template, embedded_struct_t):
+    kwargs = _prep_cinfo(component_callable, attrs, embedded_template, embedded_struct_t)
+    result = component_callable(**kwargs)
+    return result, ()
+
+
+def invoke_cinfo_cvalues(component_callable, attrs, embedded_template, embedded_struct_t):
+    kwargs = _prep_cinfo(component_callable, attrs, embedded_template, embedded_struct_t)
+    result, context_values = component_callable(**kwargs)
+    return result, context_values
+
+
 def interpolate_component(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     """
     - Extract embedded template or use empty template.
@@ -106,10 +163,23 @@ def interpolate_component(render_api, q, bf, last_container_tag, template, ip_in
         embedded_template = Template('')
     embedded_struct_t = render_api.process_template(embedded_template)
     attrs = render_api.interpolate_attrs(attrs, template)
-    component_callable = template.interpolations[start_i_index].value
+    start_i = template.interpolations[start_i_index]
+    component_callable = start_i.value
     if start_i_index != end_i_index and end_i_index is not None and component_callable != template.interpolations[end_i_index].value:
         raise TypeError('Component callable in start tag must match component callable in end tag.')
-    result_template, context_values = component_callable(attrs, embedded_template, embedded_struct_t)
+
+    # @TODO: Amazingly this works!  It looks terrible though! Maybe we'll keep pushing symbols around...
+    if start_i.format_spec == '' or start_i.format_spec == 'passthru':
+        invoke_strat = invoke_passthru
+    elif start_i.format_spec == 'passthru+cvalues':
+        invoke_strat = invoke_passthru_cvalues
+    elif start_i.format_spec == 'cinfo':
+        invoke_strat = invoke_cinfo
+    elif start_i.format_spec == 'cinfo+cvalues':
+        invoke_strat = invoke_cinfo_cvalues
+    else:
+        raise ValueError(f'Unknown format spec: {start_i.format_spec}')
+    result_template, context_values = invoke_strat(component_callable, attrs, embedded_template, embedded_struct_t)
     if result_template:
         result_struct = render_api.process_template(result_template)
         if context_values:

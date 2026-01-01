@@ -14,7 +14,7 @@ def test_render_template_smoketest():
     spread_attrs={'data-on': True}
     markup_content = Markup('<div>safe</div>')
     def comp(attrs, body_t, body_struct):
-        return t'<div>{body_t}</div>', ()
+        return t'<div>{body_t}</div>'
     smoke_t = t'''<!doctype html>
 <html>
 <body>
@@ -122,10 +122,10 @@ def test_render_component_with_context():
 
     def ThemedDiv(attrs, embedded_t, embedded_struct):
         theme = theme_context_var.get()
-        return t'<div data-theme="{theme}">{embedded_t}</div>', ()
+        return t'<div data-theme="{theme}">{embedded_t}</div>'
 
     render_api = render_service_factory()
-    body_t = t"<div><{ThemeContext} value='holiday'><{ThemedDiv}><b>Cheers!</b></{ThemedDiv}></{ThemeContext}></div>"
+    body_t = t"<div><{ThemeContext:passthru+cvalues} value='holiday'><{ThemedDiv}><b>Cheers!</b></{ThemedDiv}></{ThemeContext}></div>"
     with theme_context_var.set('not-the-default'):
         assert render_api.render_template(body_t) == '<div><div data-theme="holiday"><b>Cheers!</b></div></div>'
         assert theme_context_var.get() == 'not-the-default'
@@ -135,10 +135,10 @@ def test_render_component_with_context():
 def test_render_template_components_smoketest():
 
     def PageComponent(attrs, content_t, content_struct):
-        return t'''<div class="content">{content_t}</div>''', ()
+        return t'''<div class="content">{content_t}</div>'''
 
     def FooterComponent(attrs, body_t, body_struct):
-        return t'<div class="footer"><a href="about">About</a></div>', ()
+        return t'<div class="footer"><a href="about">About</a></div>'
 
     def LayoutComponent(attrs, body_t, body_struct):
         return t'''<!doctype html>
@@ -150,7 +150,7 @@ def test_render_template_components_smoketest():
   </head>
   <body>{body_t}<{FooterComponent} /></body>
 </html>
-''', ()
+'''
 
     render_api = render_service_factory()
     content = 'HTML never goes out of style.'
@@ -203,3 +203,37 @@ def test_render_template_functions_smoketest():
 </html>
 '''
 
+def test_render_template_components_cinfo_smoketest():
+
+    def PageComponent(embedded_template=None):
+        return t'''<div class="content">{embedded_template}</div>'''
+
+    def FooterComponent():
+        return t'<div class="footer"><a href="about">About</a></div>'
+
+    def LayoutComponent(embedded_template=None):
+        assert embedded_template
+        return t'''<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="scripts.js"></script>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>{embedded_template}<{FooterComponent:cinfo} /></body>
+</html>
+'''
+
+    render_api = render_service_factory()
+    content = 'HTML never goes out of style.'
+    content_str = render_api.render_template(t'<{LayoutComponent:cinfo}><{PageComponent:cinfo}>{content}</{PageComponent:cinfo}></{LayoutComponent:cinfo}>')
+    assert content_str == '''<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <script src="scripts.js"></script>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body><div class="content">HTML never goes out of style.</div><div class="footer"><a href="about">About</a></div></body>
+</html>
+'''
