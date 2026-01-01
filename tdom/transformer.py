@@ -8,7 +8,7 @@ from contextvars import ContextVar, Token
 import functools
 from markupsafe import Markup
 
-from .parser import TemplateParser
+from .parser import TemplateParser, HTMLAttributesDict
 from .tnodes import (
     TNode,
     TFragment,
@@ -31,12 +31,16 @@ from .escaping import (
     escape_html_comment as default_escape_html_comment,
     )
 from .utils import CachableTemplate
-from .processor import _resolve_t_attrs, AttributesDict
+from .processor import _resolve_t_attrs, AttributesDict, _resolve_html_attrs
 
 
 @dataclass
 class EndTag:
     end_tag: str
+
+
+def render_html_attrs(html_attrs: HTMLAttributesDict, escape: Callable = default_escape_html_text) -> str:
+    return ''.join((f' {k}="{v}"' if v is not None else f' {k}' for k, v in html_attrs.items()))
 
 
 class Interpolator(t.Protocol):
@@ -85,8 +89,8 @@ def interpolate_comment(render_api, struct_cache, q, bf, last_container_tag, tem
 
 def interpolate_attrs(render_api, struct_cache, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, attrs = ip_info
-    attrs = render_api.interpolate_attrs(attrs, template)
-    attrs_str = ''.join(f' {k}' if v is True else f' {k}="{render_api.escape_html_text(v)}"' for k, v in attrs.items() if v is not None and v is not False)
+    html_attrs = render_api.interpolate_attrs(attrs, template)
+    attrs_str = render_html_attrs(_resolve_html_attrs(html_attrs))
     bf.append(attrs_str)
 
 
@@ -257,8 +261,7 @@ class TransformService:
                     if self.has_dynamic_attrs(attrs):
                         yield self._stream_attrs_interpolation(tag, attrs)
                     else:
-                        # @TODO: Probably find a less risky way to do this.
-                        yield ''.join((f'{k}={default_escape_html_text(v)}' if v is not None else f'{k}' for k, v in _resolve_t_attrs(attrs, ()).items() if v is not False and v is not None))
+                        yield render_html_attrs(_resolve_html_attrs(_resolve_t_attrs(attrs, interpolations=())))
                     # This is just a want to have.
                     if self.slash_void and tag in VOID_ELEMENTS:
                         yield ' />'
