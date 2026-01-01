@@ -451,9 +451,9 @@ def cached_render_service_factory():
 class CachedTransformService(TransformService):
 
     @functools.lru_cache(512)
-    def _transform_template(self, cached_template: CachableTemplate) -> TNode:
+    def _transform_template(self, cached_template: CachableTemplate) -> Template:
         return super().transform_template(cached_template.template)
 
-    def transform_template(self, template: Template) -> TNode:
-        ct = CachableTemplate(template)
+    def transform_template(self, values_template: Template) -> Template:
+        ct = CachableTemplate(values_template)
         return self._transform_template(ct)
