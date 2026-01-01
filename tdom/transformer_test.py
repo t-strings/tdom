@@ -1,7 +1,7 @@
 from .transformer import render_service_factory, cached_render_service_factory, CachedTransformService
 from contextvars import ContextVar
 from string.templatelib import Template
-
+from markupsafe import Markup
 
 theme_context_var = ContextVar('theme', default='default')
 
@@ -12,6 +12,7 @@ def test_render_template_smoketest():
     text_in_element = 'text is not literal'
     templated = "not literal"
     spread_attrs={'data-on': True}
+    markup_content = Markup('<div>safe</div>')
     def comp(attrs, body_t, body_struct):
         return t'<div>{body_t}</div>', ()
     smoke_t = t'''<!doctype html>
@@ -23,6 +24,7 @@ def test_render_template_smoketest():
 <span>{text_in_element}</span>
 <span attr="literal" class={interpolated_class} title="is {templated}" {spread_attrs}>{text_in_element}</span>
 <{comp}><span>comp body</span></{comp}>
+{markup_content}
 </body>
 </html>'''
     smoke_str = '''<!doctype html>
@@ -34,6 +36,7 @@ def test_render_template_smoketest():
 <span>text is not literal</span>
 <span attr="literal" title="is not literal" data-on class="red">text is not literal</span>
 <div><span>comp body</span></div>
+<div>safe</div>
 </body>
 </html>'''
     render_api = render_service_factory()
