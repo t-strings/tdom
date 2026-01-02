@@ -189,6 +189,8 @@ class StyleAccumulator:
                         for pn, pv in value.items()
                     }
                 )
+            case None:
+                pass
             case _:
                 raise TypeError(
                     f"Unknown interpolated style value {value}, use '' to omit."
