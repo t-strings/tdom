@@ -94,4 +94,4 @@ class TComponent(TNode):
     children: tuple[TNode, ...] = field(default_factory=tuple)
 
 
-type TTag = TElement | TComponent | TFragment
+type TParentNode = TElement | TComponent | TFragment

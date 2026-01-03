@@ -18,6 +18,7 @@ from .tnodes import (
     TSpreadAttribute,
     TTemplatedAttribute,
     TText,
+    TParentNode,
 )
 
 type HTMLAttribute = tuple[str, str | None]
@@ -189,7 +190,7 @@ class TemplateParser(HTMLParser):
 
     def finalize_tag(
         self, open_tag: OpenTag, endtag_i_index: int | None = None
-    ) -> TNode:
+    ) -> TParentNode:
         """Finalize an OpenTag into a TNode."""
         match open_tag:
             case OpenTElement(tag=tag, attrs=attrs, children=children):
@@ -313,21 +314,17 @@ class TemplateParser(HTMLParser):
     # Getting the parsed node tree
     # ------------------------------------------
 
-    def get_tnode(self) -> TNode:
+    def get_tnode(self) -> TParentNode:
         """Get the Node tree parsed from the input HTML."""
-        # TODO: consider always returning a TTag?
-        if len(self.root.children) > 1:
-            # The parse structure results in multiple root elements, so we
-            # return a Fragment to hold them all.
+        if len(self.root.children) != 1:
+            # len > 1: use fragment to hold multiple elements
+            # len == 0: use fragment
             return self.finalize_tag(self.root)
-        elif len(self.root.children) == 1:
-            # The parse structure results in a single root element, so we
-            # return that element directly. This will be a non-Fragment Node.
+        elif isinstance(self.root.children[0], (TFragment, TElement, TComponent)):
+            # len == 1 and only child is a (potential) container: return child
             return self.root.children[0]
         else:
-            # Special case: the parse structure is empty; we treat
-            # this as an empty document fragment.
-            # CONSIDER: or as an empty text node?
+            # len == 1 and non-container: use fragment
             return self.finalize_tag(self.root)
 
     # ------------------------------------------
@@ -353,7 +350,7 @@ class TemplateParser(HTMLParser):
         self.feed_str(template.strings[-1])
 
     @staticmethod
-    def parse(t: Template) -> TNode:
+    def parse(t: Template) -> TParentNode:
         """
         Parse a Template containing valid HTML and substitutions and return
         a TNode tree representing its structure. This cachable structure can later

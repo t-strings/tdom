@@ -23,19 +23,19 @@ def test_parse_empty():
 
 def test_parse_text():
     node = html(t"Hello, world!")
-    assert node == Text("Hello, world!")
+    assert node == Fragment(children=[Text("Hello, world!")])
     assert str(node) == "Hello, world!"
 
 
 def test_parse_comment():
     node = html(t"<!--This is a comment-->")
-    assert node == Comment("This is a comment")
+    assert node == Fragment(children=[Comment("This is a comment")])
     assert str(node) == "<!--This is a comment-->"
 
 
 def test_parse_document_type():
     node = html(t"<!doctype html>")
-    assert node == DocumentType("html")
+    assert node == Fragment(children=[DocumentType("html")])
     assert str(node) == "<!DOCTYPE html>"
 
 
@@ -1056,7 +1056,7 @@ def test_nested_component_gh23():
         return html(t"{'Hello World'}")
 
     node = html(t"<{Header} />")
-    assert node == Text("Hello World")
+    assert node == Fragment(children=[Text("Hello World")])
     assert str(node) == "Hello World"
 
 
@@ -1289,7 +1289,7 @@ def test_attribute_type_component():
         t"data-false={a_false} data-none={a_none} data-float={a_float} "
         t"data-dt={a_dt} {spread_attrs}/>"
     )
-    assert node == Text("Looks good!")
+    assert node == Fragment(children=[Text("Looks good!")])
     assert str(node) == "Looks good!"
 
 
