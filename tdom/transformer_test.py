@@ -1,7 +1,10 @@
-from .transformer import render_service_factory, cached_render_service_factory, CachedTransformService
 from contextvars import ContextVar
 from string.templatelib import Template
 from markupsafe import Markup
+import typing as t
+
+from .transformer import render_service_factory, cached_render_service_factory, CachedTransformService
+
 
 theme_context_var = ContextVar('theme', default='default')
 
@@ -67,7 +70,8 @@ def test_process_template_internal_cache():
     assert cached_tnode1 is cached_tnode3
     assert struct_repr(tnode1) == struct_repr(cached_tnode1)
     assert struct_repr(tnode2) == struct_repr(cached_tnode1)
-    # @TODO: Maybe we should be acting directly on the transform service here?
+    # Technically this could be the superclass which doesn't have cached method.
+    assert isinstance(cached_render_api.transform_api, CachedTransformService)
     ci = cached_render_api.transform_api._transform_template.cache_info()
     assert ci.hits == 2, "lookup #2 and lookup #3"
     assert ci.misses == 1, "lookup #1"
@@ -104,7 +108,7 @@ def test_render_template_iterables():
         parts.append(t'</select>')
         return sum(parts, t"")
 
-    def get_color_select_t(selected_values: set, provider: Callable) -> Template:
+    def get_color_select_t(selected_values: set, provider: t.Callable) -> Template:
         PRIMARY_COLORS = [("R", "Red"), ("Y", "Yellow"), ("B", "Blue")]
         assert set(selected_values).issubset(set([opt[0] for opt in PRIMARY_COLORS]))
         return provider(PRIMARY_COLORS, selected_values)
