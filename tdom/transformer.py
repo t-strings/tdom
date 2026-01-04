@@ -359,10 +359,27 @@ class TransformService:
                 return True
         return False
 
-    def extract_embedded_template(self, template: Template, body_start_s_index: int, end_i_index: int):
+    def extract_embedded_template(self, template: Template, body_start_s_index: int, end_i_index: int) -> Template:
         """
         Extract the template parts exclusively from start tag to end tag.
 
+        Note that interpolations INSIDE the start tag make this more complex
+        than just "the `s_index` after the component callable's `i_index`".
+
+        Example:
+        ```python
+        template = (
+            t'<{comp} attr={attr}>'
+                t'<div>{content} <span>{footer}</span></div>'
+            t'</{comp}>'
+        )
+        assert self.extract_embedded_template(template, 2, 4) == (
+            t'<div>{content} <span>{footer}</span></div>'
+        )
+        starttag = t'<{comp} attr={attr}>'
+        endtag = t'</{comp}>'
+        assert template == starttag + self.extract_embedded_template(template, 2, 4) + endtag
+        ```
         @TODO: "There must be a better way."
         """
         # Copy the parts out of the containing template.
@@ -421,6 +438,14 @@ class RenderService:
         return ''.join(bf)
 
     def resolve_text_without_recursion(self, template, container_tag, content_t) -> str:
+        """
+        Resolve the text in the given template without recursing into more structured text.
+
+        This can be bypassed by interpolating an exact match with an object with `__html__()`.
+
+        A non-exact match is not allowed because we cannot process escaping
+        across the boundary between other content and the pass-through content.
+        """
         parts = list(content_t)
         exact = len(parts) == 1 and len(content_t.interpolations) == 1
         if exact:
@@ -495,7 +520,16 @@ class RenderService:
 
 
 class ContextVarSetter:
-    context_values: tuple[tuple[ContextVar, object],...]
+    """
+    Context manager for working with many context vars (instead of only 1).
+
+    This is meant to be created, used immediately and then discarded.
+
+    This allows for dynamically specifying a tuple of var / value pairs that
+    another part of the program can use to wrap some called code without knowing
+    anything about either.
+    """
+    context_values: tuple[tuple[ContextVar, object],...] # Cvar / value pair.
     tokens: tuple[Token,...]
 
     def __init__(self, context_values=()):
@@ -503,9 +537,11 @@ class ContextVarSetter:
         self.tokens = ()
 
     def __enter__(self):
+        """ Set every given context var to its paired value. """
         self.tokens = tuple([var.set(val) for var, val in self.context_values])
 
     def __exit__(self, exc_type, exc_value, traceback):
+        """ Reset every given context var. """
         for idx, var_value in enumerate(self.context_values):
             var_value[0].reset(self.tokens[idx])
 
