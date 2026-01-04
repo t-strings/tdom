@@ -31,7 +31,7 @@ from .escaping import (
     escape_html_comment as default_escape_html_comment,
     )
 from .utils import CachableTemplate
-from .processor import _resolve_t_attrs, AttributesDict, _resolve_html_attrs, _kebab_to_snake
+from .processor import _resolve_t_attrs, AttributesDict, _resolve_html_attrs as coerce_to_html_attrs, _kebab_to_snake
 from .callables import get_callable_info
 
 
@@ -84,8 +84,8 @@ def interpolate_comment(render_api, q, bf, last_container_tag, template, ip_info
 
 def interpolate_attrs(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, attrs = ip_info
-    html_attrs = render_api.interpolate_attrs(attrs, template)
-    attrs_str = render_html_attrs(_resolve_html_attrs(html_attrs))
+    resolved_attrs = render_api.resolve_attrs(attrs, template)
+    attrs_str = render_html_attrs(coerce_to_html_attrs(resolved_attrs))
     bf.append(attrs_str)
 
 
@@ -162,7 +162,7 @@ def interpolate_component(render_api, q, bf, last_container_tag, template, ip_in
     else:
         embedded_template = Template('')
     embedded_struct_t = render_api.process_template(embedded_template)
-    attrs = render_api.interpolate_attrs(attrs, template)
+    resolved_attrs = render_api.resolve_attrs(attrs, template)
     start_i = template.interpolations[start_i_index]
     component_callable = start_i.value
     if start_i_index != end_i_index and end_i_index is not None and component_callable != template.interpolations[end_i_index].value:
@@ -179,7 +179,7 @@ def interpolate_component(render_api, q, bf, last_container_tag, template, ip_in
         invoke_strat = invoke_cinfo_cvalues
     else:
         raise ValueError(f'Unknown format spec: {start_i.format_spec}')
-    result_template, context_values = invoke_strat(component_callable, attrs, embedded_template, embedded_struct_t)
+    result_template, context_values = invoke_strat(component_callable, resolved_attrs, embedded_template, embedded_struct_t)
     if result_template:
         result_struct = render_api.process_template(result_template)
         if context_values:
@@ -325,7 +325,7 @@ class TransformService:
                     if self.has_dynamic_attrs(attrs):
                         yield self._stream_attrs_interpolation(tag, attrs)
                     else:
-                        yield render_html_attrs(_resolve_html_attrs(_resolve_t_attrs(attrs, interpolations=())))
+                        yield render_html_attrs(coerce_to_html_attrs(_resolve_t_attrs(attrs, interpolations=())))
                     # This is just a want to have.
                     if self.slash_void and tag in VOID_ELEMENTS:
                         yield ' />'
@@ -462,8 +462,12 @@ class RenderService:
         """ This is just a wrap-point for caching. """
         return self.transform_api.transform_template(template)
 
-    def interpolate_attrs(self, attrs, template) -> AttributesDict:
-        """ Plug `template` values into any attribute interpolations. """
+    def resolve_attrs(self, attrs, template) -> AttributesDict:
+        """
+        - interpolate interpolations
+        - perform special attribute handling
+        - merge
+        """
         return _resolve_t_attrs(attrs, template.interpolations)
 
     def walk_template_with_context(self, bf, template, struct_t, context_values=None):
