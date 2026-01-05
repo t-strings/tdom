@@ -7,7 +7,7 @@ import pytest
 from markupsafe import Markup
 
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
-from .placeholders import _PLACEHOLDER_PREFIX, _PLACEHOLDER_SUFFIX
+from .placeholders import make_placeholder_config
 from .processor import html
 
 # --------------------------------------------------------------------------
@@ -597,25 +597,25 @@ def test_interpolated_attribute_value_tricky_multiple_placeholders():
 
 
 def test_placeholder_collision_avoidance():
+    config = make_placeholder_config()
     # This test is to ensure that our placeholder detection avoids collisions
     # even with content that might look like a placeholder.
     tricky = "123"
     template = Template(
         '<div data-tricky="',
-        _PLACEHOLDER_PREFIX,
+        config.prefix,
         Interpolation(tricky, "tricky"),
-        _PLACEHOLDER_SUFFIX,
+        config.suffix,
         '"></div>',
     )
     node = html(template)
     assert node == Element(
         "div",
-        attrs={"data-tricky": _PLACEHOLDER_PREFIX + tricky + _PLACEHOLDER_SUFFIX},
+        attrs={"data-tricky": config.prefix + tricky + config.suffix},
         children=[],
     )
     assert (
-        str(node)
-        == f'<div data-tricky="{_PLACEHOLDER_PREFIX}{tricky}{_PLACEHOLDER_SUFFIX}"></div>'
+        str(node) == f'<div data-tricky="{config.prefix}{tricky}{config.suffix}"></div>'
     )
 
 
