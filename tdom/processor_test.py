@@ -690,6 +690,20 @@ def test_interpolated_aria_attributes():
     )
 
 
+def test_special_aria_none():
+    button_aria = None
+    node = html(t"<button aria={button_aria}>X</button>")
+    assert node == Element("button", children=[Text("X")])
+    assert str(node) == "<button>X</button>"
+
+
+def test_special_data_none():
+    button_data = None
+    node = html(t"<button data={button_data}>X</button>")
+    assert node == Element("button", children=[Text("X")])
+    assert str(node) == "<button>X</button>"
+
+
 #
 # Special style attribute handling.
 #

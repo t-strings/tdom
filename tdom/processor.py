@@ -96,6 +96,8 @@ def _force_dict(value: t.Any, *, kind: str) -> dict:
 
 def _expand_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
     """Produce aria-* attributes based on the interpolated value for "aria"."""
+    if value is None:
+        return
     d = _force_dict(value, kind="aria")
     for sub_k, sub_v in d.items():
         if sub_v is True:
@@ -110,6 +112,8 @@ def _expand_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
 
 def _expand_data_attr(value: object) -> t.Iterable[Attribute]:
     """Produce data-* attributes based on the interpolated value for "data"."""
+    if value is None:
+        return
     d = _force_dict(value, kind="data")
     for sub_k, sub_v in d.items():
         if sub_v is True or sub_v is False or sub_v is None:
