@@ -130,21 +130,21 @@ button = html(t'<button class="{classes}">Click me</button>')
 # <button class="btn btn-primary active">Click me</button>
 ```
 
-For flexibility, you can also provide a list of strings, dictionaries, or a mix
-of both:
+The `class` attribute can also be a dictionary to toggle classes on or off:
 
 ```python
-classes = ["btn", "btn-primary", {"active": True}, None, False and "disabled"]
-button = html(t'<button class="{classes}">Click me</button>')
+classes = {"active": True, "btn-primary": True}
+button = html(t'<button class={classes}>Click me</button>')
 # <button class="btn btn-primary active">Click me</button>
 ```
 
-A `class` attribute hard coded in your template can also be merged with dynamic
-sources.  A common use case would be to extend a base css class:
+The `class` attribute can be specified more than once. The values are merged
+from left to right. A common use case would be to update and/or extend default
+classes:
 
 ```python
-add_classes = ["btn-primary"]
-button = html(t'<button class="btn" class={add_classes}>Click me</button>')
+classes = {"btn-primary": True, "btn-secondary": False}
+button = html(t'<button class="btn btn-secondary" class={classes}>Click me</button>')
 assert str(button) == '<button class="btn btn-primary">Click me</button>'
 ```
 
@@ -209,7 +209,7 @@ Special attributes likes `class` behave as expected when combined with
 spreading:
 
 ```python
-classes = ["btn", {"active": True}]
+classes = {"btn": True, "active": True}
 attrs = {"class": classes, "id": "act_now", "data": {"wow": "such-attr"}}
 button = html(t'<button {attrs}>Click me</button>')
 # <button class="btn active" id="act_now" data-wow="such-attr">Click me</button>

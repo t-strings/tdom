@@ -234,27 +234,30 @@ class ClassAccumulator:
         """
         Merge in an interpolated class value.
         """
-        if not isinstance(value, str) and isinstance(value, Sequence):
-            items = value[:]
+        if isinstance(value, dict):
+            self.toggled_classes.update(
+                {str(cn): bool(toggle) for cn, toggle in value.items()}
+            )
         else:
-            items = (value,)
-        for item in items:
-            match item:
-                case str():
-                    self.toggled_classes.update({cn: True for cn in item.split()})
-                case dict():
-                    self.toggled_classes.update(
-                        {str(cn): bool(toggle) for cn, toggle in item.items()}
-                    )
-                case True | False | None:
-                    pass
-                case _:
-                    if item == value:
-                        raise TypeError(f"Unknown interpolated class value: {value}")
-                    else:
-                        raise TypeError(
-                            f"Unknown interpolated class item in {value}: {item}"
-                        )
+            if not isinstance(value, str) and isinstance(value, Sequence):
+                items = value[:]
+            else:
+                items = (value,)
+            for item in items:
+                match item:
+                    case str():
+                        self.toggled_classes.update({cn: True for cn in item.split()})
+                    case True | False | None:
+                        pass
+                    case _:
+                        if item == value:
+                            raise TypeError(
+                                f"Unknown interpolated class value: {value}"
+                            )
+                        else:
+                            raise TypeError(
+                                f"Unknown interpolated class item in {value}: {item}"
+                            )
 
     def to_value(self) -> str | None:
         """
