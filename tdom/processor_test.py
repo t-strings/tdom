@@ -507,9 +507,10 @@ def test_multiple_attribute_spread_dicts():
 
 
 def test_interpolated_class_attribute():
-    class_list = ["btn", "btn-primary", None]
+    class_list = ["btn", "btn-primary", "one two", None]
     class_dict = {"active": True, "btn-secondary": False}
     class_str = "blue"
+    class_space_sep_str = "green yellow"
     class_none = None
     class_empty_list = []
     class_empty_dict = {}
@@ -518,17 +519,18 @@ def test_interpolated_class_attribute():
         t' class="red" class={class_list} class={class_dict}'
         t" class={class_empty_list} class={class_empty_dict}"  # ignored
         t" class={class_none}"  # ignored
-        t" class={class_str}"
+        t" class={class_str} class={class_space_sep_str}"
         t" >Click me</button>"
     )
     node = html(button_t)
     assert node == Element(
         "button",
-        attrs={"class": "red btn btn-primary active blue"},
+        attrs={"class": "red btn btn-primary one two active blue green yellow"},
         children=[Text("Click me")],
     )
     assert (
-        str(node) == '<button class="red btn btn-primary active blue">Click me</button>'
+        str(node)
+        == '<button class="red btn btn-primary one two active blue green yellow">Click me</button>'
     )
 
 
