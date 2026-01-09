@@ -1,13 +1,13 @@
 import sys
 import typing as t
-from collections.abc import Iterable
+from collections.abc import Iterable, Sequence
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
+from dataclasses import dataclass
 
 from markupsafe import Markup
 
 from .callables import get_callable_info
-from .classnames import classnames
 from .format import format_interpolation as base_format_interpolation
 from .format import format_template
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
@@ -94,8 +94,10 @@ def _force_dict(value: t.Any, *, kind: str) -> dict:
         ) from None
 
 
-def _process_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
+def _expand_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
     """Produce aria-* attributes based on the interpolated value for "aria"."""
+    if value is None:
+        return
     d = _force_dict(value, kind="aria")
     for sub_k, sub_v in d.items():
         if sub_v is True:
@@ -103,37 +105,21 @@ def _process_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
         elif sub_v is False:
             yield f"aria-{sub_k}", "false"
         elif sub_v is None:
-            pass
+            yield f"aria-{sub_k}", None
         else:
             yield f"aria-{sub_k}", str(sub_v)
 
 
-def _process_data_attr(value: object) -> t.Iterable[Attribute]:
+def _expand_data_attr(value: object) -> t.Iterable[Attribute]:
     """Produce data-* attributes based on the interpolated value for "data"."""
+    if value is None:
+        return
     d = _force_dict(value, kind="data")
     for sub_k, sub_v in d.items():
-        if sub_v is True:
-            yield f"data-{sub_k}", True
-        elif sub_v is not False and sub_v is not None:
+        if sub_v is True or sub_v is False or sub_v is None:
+            yield f"data-{sub_k}", sub_v
+        else:
             yield f"data-{sub_k}", str(sub_v)
-
-
-def _process_class_attr(value: object) -> t.Iterable[HTMLAttribute]:
-    """Substitute a class attribute based on the interpolated value."""
-    yield ("class", classnames(value))
-
-
-def _process_style_attr(value: object) -> t.Iterable[HTMLAttribute]:
-    """Substitute a style attribute based on the interpolated value."""
-    if isinstance(value, str):
-        yield ("style", value)
-        return
-    try:
-        d = _force_dict(value, kind="style")
-        style_str = "; ".join(f"{k}: {v}" for k, v in d.items())
-        yield ("style", style_str)
-    except TypeError:
-        raise TypeError("'style' attribute value must be a string or dict") from None
 
 
 def _substitute_spread_attrs(value: object) -> t.Iterable[Attribute]:
@@ -145,35 +131,153 @@ def _substitute_spread_attrs(value: object) -> t.Iterable[Attribute]:
     The value must be a dict or iterable of key-value pairs.
     """
     d = _force_dict(value, kind="spread")
-    for sub_k, sub_v in d.items():
-        yield from _process_attr(sub_k, sub_v)
+    yield from d.items()
 
 
-# A collection of custom handlers for certain attribute names that have
-# special semantics. This is in addition to the special-casing in
-# _substitute_attr() itself.
-CUSTOM_ATTR_PROCESSORS = {
-    "class": _process_class_attr,
-    "data": _process_data_attr,
-    "style": _process_style_attr,
-    "aria": _process_aria_attr,
+ATTR_EXPANDERS = {
+    "data": _expand_data_attr,
+    "aria": _expand_aria_attr,
 }
 
 
-def _process_attr(key: str, value: object) -> t.Iterable[Attribute]:
+def parse_style_attribute_value(style_str: str) -> list[tuple[str, str | None]]:
     """
-    Substitute a single attribute based on its key and the interpolated value.
+    Parse the style declarations out of a style attribute string.
+    """
+    props = [p.strip() for p in style_str.split(";")]
+    styles: list[tuple[str, str | None]] = []
+    for prop in props:
+        if prop:
+            prop_parts = [p.strip() for p in prop.split(":") if p.strip()]
+            if len(prop_parts) != 2:
+                raise ValueError(
+                    f"Invalid number of parts for style property {prop} in {style_str}"
+                )
+            styles.append((prop_parts[0], prop_parts[1]))
+    return styles
 
-    A single parsed attribute with a placeholder may result in multiple
-    attributes in the final output, for instance if the value is a dict or
-    iterable of key-value pairs. Likewise, a value of False will result in
-    the attribute being omitted entirely; nothing is yielded in that case.
+
+def make_style_accumulator(old_value: object) -> StyleAccumulator:
     """
-    # Special handling for certain attribute names that have special semantics
-    if custom_processor := CUSTOM_ATTR_PROCESSORS.get(key):
-        yield from custom_processor(value)
-        return
-    yield (key, value)
+    Initialize the style accumulator.
+    """
+    match old_value:
+        case str():
+            styles = {
+                name: value for name, value in parse_style_attribute_value(old_value)
+            }
+        case True:  # A bare attribute will just default to {}.
+            styles = {}
+        case _:
+            raise TypeError(f"Unexpected value: {old_value}")
+    return StyleAccumulator(styles=styles)
+
+
+@dataclass
+class StyleAccumulator:
+    styles: dict[str, str | None]
+
+    def merge_value(self, value: object) -> None:
+        """
+        Merge in an interpolated style value.
+        """
+        match value:
+            case str():
+                self.styles.update(
+                    {name: value for name, value in parse_style_attribute_value(value)}
+                )
+            case dict():
+                self.styles.update(
+                    {
+                        str(pn): str(pv) if pv is not None else None
+                        for pn, pv in value.items()
+                    }
+                )
+            case None:
+                pass
+            case _:
+                raise TypeError(
+                    f"Unknown interpolated style value {value}, use '' to omit."
+                )
+
+    def to_value(self) -> str | None:
+        """
+        Serialize the special style value back into a string.
+
+        @NOTE: If the result would be `''` then use `None` to omit the attribute.
+        """
+        style_value = "; ".join(
+            [f"{pn}: {pv}" for pn, pv in self.styles.items() if pv is not None]
+        )
+        return style_value if style_value else None
+
+
+def make_class_accumulator(old_value: object) -> ClassAccumulator:
+    """
+    Initialize the class accumulator.
+    """
+    match old_value:
+        case str():
+            toggled_classes = {cn: True for cn in old_value.split()}
+        case True:
+            toggled_classes = {}
+        case _:
+            raise ValueError(f"Unexpected value {old_value}")
+    return ClassAccumulator(toggled_classes=toggled_classes)
+
+
+@dataclass
+class ClassAccumulator:
+    toggled_classes: dict[str, bool]
+
+    def merge_value(self, value: object) -> None:
+        """
+        Merge in an interpolated class value.
+        """
+        if isinstance(value, dict):
+            self.toggled_classes.update(
+                {str(cn): bool(toggle) for cn, toggle in value.items()}
+            )
+        else:
+            if not isinstance(value, str) and isinstance(value, Sequence):
+                items = value[:]
+            else:
+                items = (value,)
+            for item in items:
+                match item:
+                    case str():
+                        self.toggled_classes.update({cn: True for cn in item.split()})
+                    case None:
+                        pass
+                    case _:
+                        if item == value:
+                            raise TypeError(
+                                f"Unknown interpolated class value: {value}"
+                            )
+                        else:
+                            raise TypeError(
+                                f"Unknown interpolated class item in {value}: {item}"
+                            )
+
+    def to_value(self) -> str | None:
+        """
+        Serialize the special class value back into a string.
+
+        @NOTE: If the result would be `''` then use `None` to omit the attribute.
+        """
+        class_value = " ".join(
+            [cn for cn, toggle in self.toggled_classes.items() if toggle]
+        )
+        return class_value if class_value else None
+
+
+ATTR_ACCUMULATOR_MAKERS = {
+    "class": make_class_accumulator,
+    "style": make_style_accumulator,
+}
+
+
+type AttributeValueAccumulator = StyleAccumulator | ClassAccumulator
 
 
 def _resolve_t_attrs(
@@ -186,26 +290,61 @@ def _resolve_t_attrs(
     in a later step.
     """
     new_attrs: AttributesDict = LastUpdatedOrderedDict()
+    attr_accs: dict[str, AttributeValueAccumulator] = {}
     for attr in attrs:
         match attr:
             case TLiteralAttribute(name=name, value=value):
-                new_attrs[name] = True if value is None else value
+                attr_value = True if value is None else value
+                if name in ATTR_ACCUMULATOR_MAKERS and name in new_attrs:
+                    if name not in attr_accs:
+                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](new_attrs[name])
+                    new_attrs[name] = attr_accs[name].merge_value(attr_value)
+                else:
+                    new_attrs[name] = attr_value
             case TInterpolatedAttribute(name=name, value_i_index=i_index):
                 interpolation = interpolations[i_index]
                 attr_value = format_interpolation(interpolation)
-                for sub_k, sub_v in _process_attr(name, attr_value):
-                    new_attrs[sub_k] = sub_v
+                if name in ATTR_ACCUMULATOR_MAKERS:
+                    if name not in attr_accs:
+                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](
+                            new_attrs.get(name, True)
+                        )
+                    new_attrs[name] = attr_accs[name].merge_value(attr_value)
+                elif expander := ATTR_EXPANDERS.get(name):
+                    for sub_k, sub_v in expander(attr_value):
+                        new_attrs[sub_k] = sub_v
+                else:
+                    new_attrs[name] = attr_value
             case TTemplatedAttribute(name=name, value_ref=ref):
                 attr_t = _resolve_ref(ref, interpolations)
                 attr_value = format_template(attr_t)
-                new_attrs[name] = attr_value
+                if name in ATTR_ACCUMULATOR_MAKERS:
+                    if name not in attr_accs:
+                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](
+                            new_attrs.get(name, True)
+                        )
+                    new_attrs[name] = attr_accs[name].merge_value(attr_value)
+                else:
+                    new_attrs[name] = attr_value
             case TSpreadAttribute(i_index=i_index):
                 interpolation = interpolations[i_index]
                 spread_value = format_interpolation(interpolation)
                 for sub_k, sub_v in _substitute_spread_attrs(spread_value):
-                    new_attrs[sub_k] = sub_v
+                    if sub_k in ATTR_ACCUMULATOR_MAKERS:
+                        if sub_k not in attr_accs:
+                            attr_accs[sub_k] = ATTR_ACCUMULATOR_MAKERS[sub_k](
+                                new_attrs.get(sub_k, True)
+                            )
+                        new_attrs[sub_k] = attr_accs[sub_k].merge_value(sub_v)
+                    elif expander := ATTR_EXPANDERS.get(sub_k):
+                        for exp_k, exp_v in expander(sub_v):
+                            new_attrs[exp_k] = exp_v
+                    else:
+                        new_attrs[sub_k] = sub_v
             case _:
                 raise ValueError(f"Unknown TAttribute type: {type(attr).__name__}")
+    for acc_name, acc in attr_accs.items():
+        new_attrs[acc_name] = acc.to_value()
     return new_attrs
 
 

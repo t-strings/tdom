@@ -130,29 +130,43 @@ button = html(t'<button class="{classes}">Click me</button>')
 # <button class="btn btn-primary active">Click me</button>
 ```
 
-For flexibility, you can also provide a list of strings, dictionaries, or a mix
-of both:
+The `class` attribute can also be a dictionary to toggle classes on or off:
 
 ```python
-classes = ["btn", "btn-primary", {"active": True}, None, False and "disabled"]
-button = html(t'<button class="{classes}">Click me</button>')
+classes = {"active": True, "btn-primary": True}
+button = html(t'<button class={classes}>Click me</button>')
 # <button class="btn btn-primary active">Click me</button>
 ```
 
-See the
-[`classnames()`](https://github.com/t-strings/tdom/blob/main/tdom/classnames_test.py)
-helper function for more information on how class names are combined.
+The `class` attribute can be specified more than once. The values are merged
+from left to right. A common use case would be to update and/or extend default
+classes:
+
+```python
+classes = {"btn-primary": True, "btn-secondary": False}
+button = html(t'<button class="btn btn-secondary" class={classes}>Click me</button>')
+assert str(button) == '<button class="btn btn-primary">Click me</button>'
+```
 
 #### The `style` Attribute
 
-In addition to strings, you can also provide a dictionary of CSS properties and
-values for the `style` attribute:
+The `style` attribute has special handling to make it easy to combine multiple
+styles from different sources.  The simplest way is to provide a dictionary of
+CSS properties and values for the `style` attribute:
 
 ```python
 # Style attributes from dictionaries
 styles = {"color": "red", "font-weight": "bold", "margin": "10px"}
 styled = html(t"<p style={styles}>Important text</p>")
 # <p style="color: red; font-weight: bold; margin: 10px">Important text</p>
+```
+
+Style attributes can also be merged to extend a base style:
+
+```python
+add_styles = {"font-weight": "bold"}
+para = html(t'<p style="color: red" style={add_styles}>Important text</p>')
+assert str(para) == '<p style="color: red; font-weight: bold">Important text</p>'
 ```
 
 #### The `data` and `aria` Attributes
@@ -195,7 +209,7 @@ Special attributes likes `class` behave as expected when combined with
 spreading:
 
 ```python
-classes = ["btn", {"active": True}]
+classes = {"btn": True, "active": True}
 attrs = {"class": classes, "id": "act_now", "data": {"wow": "such-attr"}}
 button = html(t'<button {attrs}>Click me</button>')
 # <button class="btn active" id="act_now" data-wow="such-attr">Click me</button>
@@ -538,42 +552,6 @@ All nodes implement the `__html__()` protocol, which means they can be used
 anywhere that expects an object with HTML representation. Converting a node to a
 string (via `str()` or `print()`) automatically renders it as HTML with proper
 escaping.
-
-#### The `classnames()` Helper
-
-The `classnames()` function provides a flexible way to build class name strings
-from various input types. It's particularly useful when you need to
-conditionally include classes:
-
-```python
-from tdom import classnames
-
-# Combine strings
-assert classnames("btn", "btn-primary") == "btn btn-primary"
-
-# Use dictionaries for conditional classes
-is_active = True
-is_disabled = False
-assert classnames("btn", {
-    "btn-active": is_active,
-    "btn-disabled": is_disabled
-}) == "btn btn-active"
-
-# Mix lists, dicts, and strings
-assert classnames(
-    "btn",
-    ["btn-large", "rounded"],
-    {"btn-primary": True, "btn-secondary": False},
-    None,  # Ignored
-    False  # Ignored
-) == "btn btn-large rounded btn-primary"
-
-# Nested lists are flattened
-assert classnames(["btn", ["btn-primary", ["active"]]]) == "btn btn-primary active"
-```
-
-This function is automatically used when processing `class` attributes in
-templates, so you can pass any of these input types directly in your t-strings.
 
 #### Utilities
 
