@@ -141,3 +141,6 @@ class Element(Node):
             return f"<{self.tag}{attrs_str}></{self.tag}>"
         children_str = self._children_to_str()
         return f"<{self.tag}{attrs_str}>{children_str}</{self.tag}>"
+
+
+type ParentNode = Element | Fragment

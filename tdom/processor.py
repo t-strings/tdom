@@ -10,7 +10,7 @@ from markupsafe import Markup
 from .callables import get_callable_info
 from .format import format_interpolation as base_format_interpolation
 from .format import format_template
-from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
+from .nodes import Comment, DocumentType, Element, Fragment, Node, Text, ParentNode
 from .parser import (
     HTMLAttribute,
     HTMLAttributesDict,
@@ -27,6 +27,7 @@ from .parser import (
     TSpreadAttribute,
     TTemplatedAttribute,
     TText,
+    TParentNode,
 )
 from .placeholders import TemplateRef
 from .template_utils import template_from_parts
@@ -44,7 +45,7 @@ class HasHTMLDunder(t.Protocol):
 
 
 @lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
-def _parse_and_cache(cachable: CachableTemplate) -> TNode:
+def _parse_and_cache(cachable: CachableTemplate) -> TParentNode:
     return TemplateParser.parse(cachable.template)
 
 
@@ -584,8 +585,12 @@ def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) ->
 # --------------------------------------------------------------------------
 
 
-def html(template: Template) -> Node:
-    """Parse an HTML t-string, substitue values, and return a tree of Nodes."""
+def html(template: Template) -> ParentNode:
+    """Parse an HTML t-string, substitute values, and return a tree of Nodes."""
     cachable = CachableTemplate(template)
     t_node = _parse_and_cache(cachable)
-    return _resolve_t_node(t_node, template.interpolations)
+    res = _resolve_t_node(t_node, template.interpolations)
+    if not isinstance(res, (Element, Fragment)):
+        return Fragment(children=[res])
+    else:
+        return res

@@ -23,12 +23,12 @@ def test_parse_empty():
 
 def test_parse_text():
     node = TemplateParser.parse(t"Hello, world!")
-    assert node == TText.literal("Hello, world!")
+    assert node == TFragment(children=(TText.literal("Hello, world!"),))
 
 
 def test_parse_text_with_entities():
     node = TemplateParser.parse(t"Panini&apos;s")
-    assert node == TText.literal("Panini's")
+    assert node == TFragment(children=(TText.literal("Panini's"),))
 
 
 def test_parse_void_element():
@@ -88,12 +88,12 @@ def test_parse_element_attribute_order():
 
 def test_parse_comment():
     node = TemplateParser.parse(t"<!-- This is a comment -->")
-    assert node == TComment.literal(" This is a comment ")
+    assert node == TFragment(children=(TComment.literal(" This is a comment "),))
 
 
 def test_parse_doctype():
     node = TemplateParser.parse(t"<!DOCTYPE html>")
-    assert node == TDocumentType("html")
+    assert node == TFragment(children=(TDocumentType("html"),))
 
 
 def test_parse_multiple_voids():
