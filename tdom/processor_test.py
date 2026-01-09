@@ -507,15 +507,31 @@ def test_multiple_attribute_spread_dicts():
 
 
 def test_interpolated_class_attribute():
-    classes = ["btn", "btn-primary", False and "disabled", None]
-    toggle_classes = {"active": True}
-    node = html(t'<button class="{classes}" class={toggle_classes}>Click me</button>')
+    class_list = ["btn", "btn-primary", True, False, None]
+    class_dict = {"active": True, "btn-secondary": False}
+    class_str = "blue"
+    class_none = None
+    class_true = True
+    class_false = False
+    class_empty_list = []
+    class_empty_dict = {}
+    button_t = (
+        t"<button "
+        t' class="red" class={class_list} class={class_dict}'
+        t" class={class_empty_list} class={class_empty_dict}"  # ignored
+        t" class={class_none} class={class_true} class={class_false}"  # ignored
+        t" class={class_str}"
+        t" >Click me</button>"
+    )
+    node = html(button_t)
     assert node == Element(
         "button",
-        attrs={"class": "btn btn-primary active"},
+        attrs={"class": "red btn btn-primary active blue"},
         children=[Text("Click me")],
     )
-    assert str(node) == '<button class="btn btn-primary active">Click me</button>'
+    assert (
+        str(node) == '<button class="red btn btn-primary active blue">Click me</button>'
+    )
 
 
 def test_interpolated_class_attribute_with_multiple_placeholders():
