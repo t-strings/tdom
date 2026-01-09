@@ -507,19 +507,17 @@ def test_multiple_attribute_spread_dicts():
 
 
 def test_interpolated_class_attribute():
-    class_list = ["btn", "btn-primary", True, False, None]
+    class_list = ["btn", "btn-primary", None]
     class_dict = {"active": True, "btn-secondary": False}
     class_str = "blue"
     class_none = None
-    class_true = True
-    class_false = False
     class_empty_list = []
     class_empty_dict = {}
     button_t = (
         t"<button "
         t' class="red" class={class_list} class={class_dict}'
         t" class={class_empty_list} class={class_empty_dict}"  # ignored
-        t" class={class_none} class={class_true} class={class_false}"  # ignored
+        t" class={class_none}"  # ignored
         t" class={class_str}"
         t" >Click me</button>"
     )

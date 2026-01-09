@@ -247,7 +247,7 @@ class ClassAccumulator:
                 match item:
                     case str():
                         self.toggled_classes.update({cn: True for cn in item.split()})
-                    case True | False | None:
+                    case None:
                         pass
                     case _:
                         if item == value:
