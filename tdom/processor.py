@@ -324,6 +324,8 @@ def _resolve_t_attrs(
                             new_attrs.get(name, True)
                         )
                     new_attrs[name] = attr_accs[name].merge_value(attr_value)
+                elif expander := ATTR_EXPANDERS.get(name):
+                    raise TypeError(f"{name} attributes cannot be templated")
                 else:
                     new_attrs[name] = attr_value
             case TSpreadAttribute(i_index=i_index):
