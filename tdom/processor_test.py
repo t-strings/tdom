@@ -683,12 +683,19 @@ def test_data_attr_unrelated_unaffected():
     assert str(node) == "<div data-selected data-active></div>"
 
 
-@pytest.mark.skip(reason="Waiting on attribute resolution ... resolution.")
-def test_interpolated_data_attribute_multiple_placeholders():
-    confusing = {"user-id": "user-123"}
-    placeholders = {"role": "admin"}
+def test_data_templated_error():
+    data1 = {"user-id": "user-123"}
+    data2 = {"role": "admin"}
     with pytest.raises(TypeError):
-        node = html(t'<div data="{confusing} {placeholders}">User Info</div>')
+        node = html(t'<div data="{data1} {data2}"></div>')
+        print(str(node))
+
+
+def test_aria_templated_error():
+    aria1 = {"label": "close"}
+    aria2 = {"hidden": "true"}
+    with pytest.raises(TypeError):
+        node = html(t'<div data="{aria1} {aria2}"></div>')
         print(str(node))
 
 
