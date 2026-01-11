@@ -294,13 +294,14 @@ class TemplateParser(HTMLParser):
         ref = self.placeholders.remove_placeholders(decl)
         if not ref.is_literal:
             raise ValueError("Interpolations are not allowed in declarations.")
-        if not decl.upper().startswith("DOCTYPE"):
+        elif decl.upper().startswith("DOCTYPE "):
+            doctype_content = decl[7:].strip()
+            doctype = TDocumentType(doctype_content)
+            self.append_child(doctype)
+        else:
             raise NotImplementedError(
-                "Only DOCTYPE declarations are currently supported."
+                "Only well formed DOCTYPE declarations are currently supported."
             )
-        doctype_content = decl[7:].strip()
-        doctype = TDocumentType(doctype_content)
-        self.append_child(doctype)
 
     def reset(self):
         super().reset()
