@@ -40,7 +40,6 @@ class OpenTFragment:
 
 @dataclass
 class OpenTComponent:
-    # TODO: hold on to start_s_index when we start to need it.
     start_i_index: int
     attrs: tuple[TAttribute, ...]
     children: list[TNode] = field(default_factory=list)
@@ -62,11 +61,6 @@ class SourceTracker:
     @property
     def interpolations(self) -> tuple[Interpolation, ...]:
         return self.template.interpolations
-
-    @property
-    def s_index(self) -> int:
-        """The current string index."""
-        return self.i_index + 1
 
     def advance_interpolation(self) -> int:
         """Call before processing an interpolation to move to the next one."""
