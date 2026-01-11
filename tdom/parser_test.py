@@ -72,6 +72,18 @@ def test_parse_text_with_entities():
     assert node == TText.literal("a < b")
 
 
+def test_parse_text_with_template_singleton():
+    greeting = "Hello, World!"
+    node = TemplateParser.parse(t"{greeting}")
+    assert node == TText(ref=TemplateRef(strings=("", ""), i_indexes=(0,)))
+
+
+def test_parse_text_with_template():
+    who = "World"
+    node = TemplateParser.parse(t"Hello, {who}!")
+    assert node == TText(ref=TemplateRef(strings=("Hello, ", "!"), i_indexes=(0,)))
+
+
 #
 # Elements
 #
@@ -103,6 +115,23 @@ def test_parse_nested_elements():
             TElement("span", children=(TText.literal("Nested"),)),
             TText.literal(" content"),
         ),
+    )
+
+
+def test_parse_element_with_template():
+    who = "World"
+    node = TemplateParser.parse(t"<div>Hello, {who}!</div>")
+    assert node == TElement(
+        "div",
+        children=(TText(ref=TemplateRef(strings=("Hello, ", "!"), i_indexes=(0,))),),
+    )
+
+
+def test_parse_element_with_template_singleton():
+    greeting = "Hello, World!"
+    node = TemplateParser.parse(t"<div>{greeting}</div>")
+    assert node == TElement(
+        "div", children=(TText(ref=TemplateRef(strings=("", ""), i_indexes=(0,))),)
     )
 
 
@@ -328,12 +357,26 @@ def test_parse_comment():
     assert node == TComment.literal(" This is a comment ")
 
 
+def test_parse_comment_interpolation():
+    text = "comment"
+    node = TemplateParser.parse(t"<!-- This is a {text} -->")
+    assert node == TComment(
+        ref=TemplateRef(strings=(" This is a ", " "), i_indexes=(0,))
+    )
+
+
 #
 # Doctypes
 #
 def test_parse_doctype():
     node = TemplateParser.parse(t"<!DOCTYPE html>")
     assert node == TDocumentType("html")
+
+
+def test_parse_doctype_interpolation_error():
+    extra = "SYSTEM"
+    with pytest.raises(ValueError):
+        _ = TemplateParser.parse(t"<!DOCTYPE html {extra}>")
 
 
 #
