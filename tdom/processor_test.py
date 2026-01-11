@@ -217,6 +217,14 @@ def test_interpolated_trusted_in_content_node():
     assert str(node) == ("<script>if (a < b && c > d) { alert('wow'); }</script>")
 
 
+def test_script_elements_error():
+    nested_template = t'<div></div>'
+    # Putting non-text content inside a script is not allowed.
+    with pytest.raises(ValueError):
+        node = html(t"<script>{nested_template}</script>")
+        _ = str(node)
+
+
 # --------------------------------------------------------------------------
 # Interpolated non-text content
 # --------------------------------------------------------------------------
