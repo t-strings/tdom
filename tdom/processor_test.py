@@ -2,6 +2,7 @@ import datetime
 import typing as t
 from dataclasses import dataclass, field
 from string.templatelib import Interpolation, Template
+from itertools import product
 
 import pytest
 from markupsafe import Markup
@@ -454,7 +455,7 @@ def test_literal_attrs():
             t" autofocus"  # bare / boolean
             t' title=""'  # empty attribute
             t' href="https://example.com" target="_blank"'
-            t">Link</a>"
+            t"></a>"
         )
     )
     assert node == Element(
@@ -466,182 +467,185 @@ def test_literal_attrs():
             "href": "https://example.com",
             "target": "_blank",
         },
-        children=[
-            Text("Link"),
-        ],
     )
     assert (
         str(node)
-        == '<a id="example_link" autofocus title="" href="https://example.com" target="_blank">Link</a>'
+        == '<a id="example_link" autofocus title="" href="https://example.com" target="_blank"></a>'
     )
 
 
 def test_literal_attr_escaped():
-    node = html(t'<a title="&lt;">Link</a>')
+    node = html(t'<a title="&lt;"></a>')
     assert node == Element(
         "a",
         attrs={"title": "<"},
-        children=[
-            Text("Link"),
-        ],
     )
-    assert str(node) == '<a title="&lt;">Link</a>'
+    assert str(node) == '<a title="&lt;"></a>'
 
 
-def test_interpolated_attribute_value():
+def test_interpolated_attr():
     url = "https://example.com/"
-    node = html(t'<a href="{url}">Link</a>')
-    assert node == Element(
-        "a", attrs={"href": "https://example.com/"}, children=[Text("Link")]
-    )
-    assert str(node) == '<a href="https://example.com/">Link</a>'
+    node = html(t'<a href="{url}"></a>')
+    assert node == Element("a", attrs={"href": "https://example.com/"})
+    assert str(node) == '<a href="https://example.com/"></a>'
 
 
-def test_escaping_of_interpolated_attribute_value():
+def test_interpolated_attr_escaped():
     url = 'https://example.com/?q="test"&lang=en'
-    node = html(t'<a href="{url}">Link</a>')
+    node = html(t'<a href="{url}"></a>')
     assert node == Element(
         "a",
         attrs={"href": 'https://example.com/?q="test"&lang=en'},
-        children=[Text("Link")],
     )
     assert (
-        str(node)
-        == '<a href="https://example.com/?q=&#34;test&#34;&amp;lang=en">Link</a>'
+        str(node) == '<a href="https://example.com/?q=&#34;test&#34;&amp;lang=en"></a>'
     )
 
 
-def test_interpolated_unquoted_attribute_value():
+def test_interpolated_attr_unquoted():
     id = "roquefort"
-    node = html(t"<div id={id}>Cheese</div>")
-    assert node == Element("div", attrs={"id": "roquefort"}, children=[Text("Cheese")])
-    assert str(node) == '<div id="roquefort">Cheese</div>'
+    node = html(t"<div id={id}></div>")
+    assert node == Element("div", attrs={"id": "roquefort"})
+    assert str(node) == '<div id="roquefort"></div>'
 
 
-def test_interpolated_attribute_value_true():
+def test_interpolated_attr_true():
     disabled = True
-    node = html(t"<button disabled={disabled}>Click me</button>")
-    assert node == Element(
-        "button", attrs={"disabled": None}, children=[Text("Click me")]
-    )
-    assert str(node) == "<button disabled>Click me</button>"
+    node = html(t"<button disabled={disabled}></button>")
+    assert node == Element("button", attrs={"disabled": None})
+    assert str(node) == "<button disabled></button>"
 
 
-def test_interpolated_attribute_value_falsy():
+def test_interpolated_attr_false():
     disabled = False
-    crumpled = None
-    node = html(t"<button disabled={disabled} crumpled={crumpled}>Click me</button>")
-    assert node == Element("button", attrs={}, children=[Text("Click me")])
-    assert str(node) == "<button>Click me</button>"
+    node = html(t"<button disabled={disabled}></button>")
+    assert node == Element("button")
+    assert str(node) == "<button></button>"
 
 
-def test_interpolated_attribute_spread_dict():
+def test_interpolated_attr_none():
+    disabled = None
+    node = html(t"<button disabled={disabled}></button>")
+    assert node == Element("button")
+    assert str(node) == "<button></button>"
+
+
+def test_interpolate_attr_empty_string():
+    node = html(t'<div title=""></div>')
+    assert node == Element(
+        "div",
+        attrs={"title": ""},
+    )
+    assert str(node) == '<div title=""></div>'
+
+
+def test_spread_attr():
     attrs = {"href": "https://example.com/", "target": "_blank"}
-    node = html(t"<a {attrs}>Link</a>")
+    node = html(t"<a {attrs}></a>")
     assert node == Element(
         "a",
         attrs={"href": "https://example.com/", "target": "_blank"},
-        children=[Text("Link")],
     )
-    assert str(node) == '<a href="https://example.com/" target="_blank">Link</a>'
+    assert str(node) == '<a href="https://example.com/" target="_blank"></a>'
 
 
-def test_interpolated_mixed_attribute_values_and_spread_dict():
-    attrs = {"href": "https://example.com/", "id": "link1"}
-    target = "_blank"
-    node = html(t'<a {attrs} target="{target}">Link</a>')
-    assert node == Element(
-        "a",
-        attrs={"href": "https://example.com/", "id": "link1", "target": "_blank"},
-        children=[Text("Link")],
-    )
-    assert (
-        str(node)
-        == '<a href="https://example.com/" id="link1" target="_blank">Link</a>'
-    )
+def test_templated_attr_mixed_interpolations_start_end_and_nest():
+    left, middle, right = 1, 3, 5
+    prefix, suffix = t'<div data-range="', t'"></div>'
+    # Check interpolations at start, middle and/or end of templated attr
+    # or a combination of those to make sure text is not getting dropped.
+    for left_part, middle_part, right_part in product(
+        (t"{left}", Template(str(left))),
+        (t"{middle}", Template(str(middle))),
+        (t"{right}", Template(str(right))),
+    ):
+        test_t = prefix + left_part + t"-" + middle_part + t"-" + right_part + suffix
+        node = html(test_t)
+        assert node == Element(
+            "div",
+            attrs={"data-range": "1-3-5"},
+        )
+        assert str(node) == '<div data-range="1-3-5"></div>'
 
 
-def test_multiple_attribute_spread_dicts():
-    attrs1 = {"href": "https://example.com/", "id": "overwrtten"}
-    attrs2 = {"target": "_blank", "id": "link1"}
-    node = html(t"<a {attrs1} {attrs2}>Link</a>")
-    assert node == Element(
-        "a",
-        attrs={"href": "https://example.com/", "target": "_blank", "id": "link1"},
-        children=[Text("Link")],
-    )
-    assert (
-        str(node)
-        == '<a href="https://example.com/" target="_blank" id="link1">Link</a>'
-    )
-
-
-def test_interpolated_attribute_value_embedded_placeholder():
-    slug = "item42"
-    node = html(t"<div data-id='prefix-{slug}'></div>")
-    assert node == Element(
-        "div",
-        attrs={"data-id": "prefix-item42"},
-        children=[],
-    )
-    assert str(node) == '<div data-id="prefix-item42"></div>'
-
-
-def test_interpolated_attribute_value_with_static_prefix_and_suffix():
-    counter = 3
-    node = html(t'<div data-id="item-{counter}-suffix"></div>')
-    assert node == Element(
-        "div",
-        attrs={"data-id": "item-3-suffix"},
-        children=[],
-    )
-    assert str(node) == '<div data-id="item-3-suffix"></div>'
-
-
-def test_attribute_value_empty_string():
-    node = html(t'<div data-id=""></div>')
-    assert node == Element(
-        "div",
-        attrs={"data-id": ""},
-        children=[],
-    )
-
-
-def test_interpolated_attribute_value_multiple_placeholders():
+def test_templated_attr_no_quotes():
     start = 1
     end = 5
-    node = html(t'<div data-range="{start}-{end}"></div>')
+    node = html(t"<div data-range={start}-{end}></div>")
     assert node == Element(
         "div",
         attrs={"data-range": "1-5"},
-        children=[],
     )
     assert str(node) == '<div data-range="1-5"></div>'
 
 
-def test_interpolated_attribute_value_tricky_multiple_placeholders():
-    start = "start"
-    end = "end"
-    node = html(t'<div data-range="{start}5-and-{end}12"></div>')
+def test_attr_merge_disjoint_interpolated_attr_spread_attr():
+    attrs = {"href": "https://example.com/", "id": "link1"}
+    target = "_blank"
+    node = html(t"<a {attrs} target={target}></a>")
     assert node == Element(
-        "div",
-        attrs={"data-range": "start5-and-end12"},
-        children=[],
+        "a",
+        attrs={"href": "https://example.com/", "id": "link1", "target": "_blank"},
     )
-    assert str(node) == '<div data-range="start5-and-end12"></div>'
+    assert str(node) == '<a href="https://example.com/" id="link1" target="_blank"></a>'
+
+
+def test_attr_merge_overlapping_spread_attrs():
+    attrs1 = {"href": "https://example.com/", "id": "overwrtten"}
+    attrs2 = {"target": "_blank", "id": "link1"}
+    node = html(t"<a {attrs1} {attrs2}></a>")
+    assert node == Element(
+        "a",
+        attrs={"href": "https://example.com/", "target": "_blank", "id": "link1"},
+    )
+    assert str(node) == '<a href="https://example.com/" target="_blank" id="link1"></a>'
+
+
+def test_attr_merge_replace_literal_attr_str_str():
+    node = html(t'<div title="default" {dict(title="fresh")}></div>')
+    assert node == Element("div", {"title": "fresh"})
+    assert str(node) == '<div title="fresh"></div>'
+
+
+def test_attr_merge_replace_literal_attr_str_true():
+    node = html(t'<div title="default" {dict(title=True)}></div>')
+    assert node == Element("div", {"title": None})
+    assert str(node) == "<div title></div>"
+
+
+def test_attr_merge_replace_literal_attr_true_str():
+    node = html(t"<div title {dict(title='fresh')}></div>")
+    assert node == Element("div", {"title": "fresh"})
+    assert str(node) == '<div title="fresh"></div>'
+
+
+def test_attr_merge_remove_literal_attr_str_none():
+    node = html(t'<div title="default" {dict(title=None)}></div>')
+    assert node == Element("div")
+    assert str(node) == "<div></div>"
+
+
+def test_attr_merge_remove_literal_attr_true_none():
+    node = html(t"<div title {dict(title=None)}></div>")
+    assert node == Element("div")
+    assert str(node) == "<div></div>"
+
+
+def test_attr_merge_other_literal_attr_intact():
+    node = html(t'<img title="default" {dict(alt="fresh")}>')
+    assert node == Element("img", {"title": "default", "alt": "fresh"})
+    assert str(node) == '<img title="default" alt="fresh" />'
 
 
 def test_placeholder_collision_avoidance():
     config = make_placeholder_config()
     # This test is to ensure that our placeholder detection avoids collisions
     # even with content that might look like a placeholder.
-    tricky = "123"
+    tricky = "0"
     template = Template(
-        '<div data-tricky="',
-        config.prefix,
-        Interpolation(tricky, "tricky"),
-        config.suffix,
-        '"></div>',
+        f'<div data-tricky="{config.prefix}',
+        Interpolation(tricky, "tricky", None, ""),
+        f'{config.suffix}"></div>',
     )
     node = html(template)
     assert node == Element(
@@ -652,54 +656,6 @@ def test_placeholder_collision_avoidance():
     assert (
         str(node) == f'<div data-tricky="{config.prefix}{tricky}{config.suffix}"></div>'
     )
-
-
-def test_interpolated_attribute_value_multiple_placeholders_no_quotes():
-    start = 1
-    end = 5
-    node = html(t"<div data-range={start}-{end}></div>")
-    assert node == Element(
-        "div",
-        attrs={"data-range": "1-5"},
-        children=[],
-    )
-    assert str(node) == '<div data-range="1-5"></div>'
-
-
-def test_replace_static_attr_str_str():
-    node = html(t'<div title="default" {dict(title="fresh")}></div>')
-    assert node == Element("div", {"title": "fresh"})
-    assert str(node) == '<div title="fresh"></div>'
-
-
-def test_replace_static_attr_str_true():
-    node = html(t'<div title="default" {dict(title=True)}></div>')
-    assert node == Element("div", {"title": None})
-    assert str(node) == "<div title></div>"
-
-
-def test_replace_static_attr_true_str():
-    node = html(t"<div title {dict(title='fresh')}></div>")
-    assert node == Element("div", {"title": "fresh"})
-    assert str(node) == '<div title="fresh"></div>'
-
-
-def test_remove_static_attr_str_none():
-    node = html(t'<div title="default" {dict(title=None)}></div>')
-    assert node == Element("div")
-    assert str(node) == "<div></div>"
-
-
-def test_remove_static_attr_true_none():
-    node = html(t"<div title {dict(title=None)}></div>")
-    assert node == Element("div")
-    assert str(node) == "<div></div>"
-
-
-def test_other_static_attr_intact():
-    node = html(t'<img title="default" {dict(alt="fresh")}>')
-    assert node == Element("img", {"title": "default", "alt": "fresh"})
-    assert str(node) == '<img title="default" alt="fresh" />'
 
 
 #
@@ -755,6 +711,15 @@ def test_data_attr_none():
     assert str(node) == "<button>X</button>"
 
 
+def test_data_literal_attr_bypass():
+    # Trigger overall attribute resolution with an unrelated interpolated attr.
+    node = html(t'<p data="passthru" id={"resolved"}></p>')
+    assert node == Element(
+        "p",
+        attrs={"data": "passthru", "id": "resolved"},
+    ), "A single literal attribute should not trigger data expansion."
+
+
 #
 # Special aria attribute handling.
 #
@@ -787,12 +752,13 @@ def test_aria_interpolate_attr_none():
     assert str(node) == "<button>X</button>"
 
 
-def test_aria_literal_attr_passthru():
-    node = html(t'<p aria="passthru"></p>')
+def test_aria_literal_attr_bypass():
+    # Trigger overall attribute resolution with an unrelated interpolated attr.
+    node = html(t'<p aria="passthru" id={"resolved"}></p>')
     assert node == Element(
         "p",
-        attrs={"aria": "passthru"},
-    ), "A single literal attribute should bypass resolution."
+        attrs={"aria": "passthru", "id": "resolved"},
+    ), "A single literal attribute should not trigger aria expansion."
 
 
 #
@@ -850,12 +816,13 @@ def test_interpolated_attribute_spread_with_class_attribute():
     assert str(node) == '<button id="button1" class="btn btn-primary">Click me</button>'
 
 
-def test_class_literal_attr_passthru():
-    node = html(t'<p class="red red"></p>')
+def test_class_literal_attr_bypass():
+    # Trigger overall attribute resolution with an unrelated interpolated attr.
+    node = html(t'<p class="red red" id={"veryred"}></p>')
     assert node == Element(
         "p",
-        attrs={"class": "red red"},
-    ), "A single literal attribute should bypass resolution."
+        attrs={"class": "red red", "id": "veryred"},
+    ), "A single literal attribute should not trigger class accumulator."
 
 
 #
@@ -993,8 +960,8 @@ def test_style_attribute_non_str_non_dict():
 
 
 def test_style_literal_attr_bypass():
-    p_id = "resolved"  # Force overall resolution with dynamic attribute.
-    node = html(t'<p style="invalid;invalid:" id={p_id}></p>')
+    # Trigger overall attribute resolution with an unrelated interpolated attr.
+    node = html(t'<p style="invalid;invalid:" id={"resolved"}></p>')
     assert node == Element(
         "p",
         attrs={"style": "invalid;invalid:", "id": "resolved"},
