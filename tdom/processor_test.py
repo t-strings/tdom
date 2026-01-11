@@ -218,7 +218,7 @@ def test_interpolated_trusted_in_content_node():
 
 
 def test_script_elements_error():
-    nested_template = t'<div></div>'
+    nested_template = t"<div></div>"
     # Putting non-text content inside a script is not allowed.
     with pytest.raises(ValueError):
         node = html(t"<script>{nested_template}</script>")
