@@ -62,13 +62,23 @@ def test_parse_nested_elements():
     )
 
 
-def test_parse_element_with_attributes():
-    node = TemplateParser.parse(
-        t'<a href="https://example.com" target="_blank">Link</a>'
+#
+# Attributes
+#
+def test_literal_attrs():
+    node = TemplateParser.parse((t'<a'
+        t' id=example_link' # no quotes allowed without spaces
+        t' autofocus' # bare / boolean
+        t' title=""' # empty attribute
+        t' href="https://example.com" target="_blank"'
+        t'>Link</a>')
     )
     assert node == TElement(
         "a",
         attrs=(
+            TLiteralAttribute("id", "example_link"),
+            TLiteralAttribute("autofocus", None),
+            TLiteralAttribute("title", ""),
             TLiteralAttribute("href", "https://example.com"),
             TLiteralAttribute("target", "_blank"),
         ),
@@ -76,13 +86,24 @@ def test_parse_element_with_attributes():
     )
 
 
-def test_parse_element_attribute_order():
+def test_literal_attr_entities():
+    node = TemplateParser.parse(t'<a title="&lt;">Link</a>')
+    assert node == TElement(
+        "a",
+        attrs=(
+            TLiteralAttribute("title", "<"),
+        ),
+        children=(TText.literal("Link"),),
+    )
+
+
+def test_literal_attr_order():
     node = TemplateParser.parse(t'<a title="a" href="b" title="c"></a>')
     assert isinstance(node, TElement)
     assert node.attrs == (
         TLiteralAttribute("title", "a"),
         TLiteralAttribute("href", "b"),
-        TLiteralAttribute("title", "c"),
+        TLiteralAttribute("title", "c"), # dupe IS allowed
     )
 
 
@@ -231,17 +252,6 @@ def test_self_closing_tags_unexpected_closing_tag():
 def test_self_closing_void_tags_unexpected_closing_tag():
     with pytest.raises(ValueError):
         _ = TemplateParser.parse(t"<input /></input>")
-
-
-def test_literal_attributes():
-    node = TemplateParser.parse(t'<input type="text" disabled />')
-    assert node == TElement(
-        "input",
-        attrs=(
-            TLiteralAttribute("type", "text"),
-            TLiteralAttribute("disabled", None),
-        ),
-    )
 
 
 def test_interpolated_attributes():
