@@ -19,6 +19,8 @@ from .tnodes import (
     TTemplatedAttribute,
     TText,
 )
+from .template_utils import combine_template_refs
+
 
 type HTMLAttribute = tuple[str, str | None]
 type HTMLAttributesDict = dict[str, str | None]
@@ -275,8 +277,13 @@ class TemplateParser(HTMLParser):
 
     def handle_data(self, data: str) -> None:
         ref = self.placeholders.remove_placeholders(data)
-        text = TText(ref)
-        self.append_child(text)
+        parent = self.get_parent()
+        if parent.children and isinstance(parent.children[-1], TText):
+            parent.children[-1] = TText(
+                ref=combine_template_refs(parent.children[-1].ref, ref)
+            )
+        else:
+            self.append_child(TText(ref=ref))
 
     def handle_comment(self, data: str) -> None:
         ref = self.placeholders.remove_placeholders(data)
