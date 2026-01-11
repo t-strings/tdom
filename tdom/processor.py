@@ -128,8 +128,14 @@ def _substitute_spread_attrs(value: object) -> t.Iterable[Attribute]:
     the entire attribute set should be replaced by the interpolated value.
     The value must be a dict or iterable of key-value pairs.
     """
-    d = _force_dict(value, kind="spread")
-    yield from d.items()
+    if value is None:
+        return
+    elif isinstance(value, dict):
+        yield from value.items()
+    else:
+        raise TypeError(
+            f"Cannot use {type(value).__name__} as value for spread attributes"
+        )
 
 
 ATTR_EXPANDERS = {
