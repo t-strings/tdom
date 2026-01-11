@@ -556,6 +556,12 @@ def test_spread_attr_none():
     assert str(node) == "<a></a>"
 
 
+def test_spread_attr_type_errors():
+    for attrs in (0, [], (), False, True):
+        with pytest.raises(TypeError):
+            _ = html(t"<a {attrs}></a>")
+
+
 def test_templated_attr_mixed_interpolations_start_end_and_nest():
     left, middle, right = 1, 3, 5
     prefix, suffix = t'<div data-range="', t'"></div>'
@@ -844,6 +850,34 @@ def test_class_literal_attr_bypass():
     ), "A single literal attribute should not trigger class accumulator."
 
 
+def test_class_none_ignored():
+    class_item = None
+    node = html(t"<p class={class_item}></p>")
+    assert node == Element("p")
+    # Also ignored inside a sequence.
+    node = html(t"<p class={[class_item]}></p>")
+    assert node == Element("p")
+
+
+def test_class_type_errors():
+    for class_item in (False, True, 0):
+        with pytest.raises(TypeError):
+            _ = html(t"<p class={class_item}></p>")
+        with pytest.raises(TypeError):
+            _ = html(t"<p class={[class_item]}></p>")
+
+
+def test_class_merge_literals():
+    node = html(t'<p class="red" class="blue"></p>')
+    assert node == Element("p", {"class": "red blue"})
+
+
+def test_class_merge_literal_then_interpolation():
+    class_item = "blue"
+    node = html(t'<p class="red" class="{[class_item]}"></p>')
+    assert node == Element("p", {"class": "red blue"})
+
+
 #
 # Special style attribute handling.
 #
@@ -985,6 +1019,12 @@ def test_style_literal_attr_bypass():
         "p",
         attrs={"style": "invalid;invalid:", "id": "resolved"},
     ), "A single literal attribute should bypass style accumulator."
+
+
+def test_style_none():
+    styles = None
+    node = html(t"<p style={styles}></p>")
+    assert node == Element("p")
 
 
 # --------------------------------------------------------------------------
