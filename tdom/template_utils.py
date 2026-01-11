@@ -14,6 +14,12 @@ def template_from_parts(
     return Template(*flat)
 
 
+def combine_template_refs(*template_refs: TemplateRef) -> TemplateRef:
+    return TemplateRef.from_naive_template(
+        sum((tr.to_naive_template() for tr in template_refs), t"")
+    )
+
+
 @dataclass(slots=True, frozen=True)
 class TemplateRef:
     """Reference to a template with indexes for its original interpolations."""
@@ -39,6 +45,11 @@ class TemplateRef:
         """Return True if there is exactly one interpolation and no other content."""
         return self.strings == ("", "")
 
+    def to_naive_template(self) -> Template:
+        return template_from_parts(
+            self.strings, [Interpolation(i, "", None, "") for i in self.i_indexes]
+        )
+
     @classmethod
     def literal(cls, s: str) -> t.Self:
         return cls((s,), ())
@@ -50,6 +61,13 @@ class TemplateRef:
     @classmethod
     def singleton(cls, i_index: int) -> t.Self:
         return cls(("", ""), (i_index,))
+
+    @classmethod
+    def from_naive_template(cls, t: Template) -> TemplateRef:
+        return cls(
+            strings=t.strings,
+            i_indexes=tuple([int(ip.value) for ip in t.interpolations]),
+        )
 
     def __post_init__(self):
         if len(self.strings) != len(self.i_indexes) + 1:
