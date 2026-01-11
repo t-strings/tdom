@@ -77,27 +77,9 @@ class SourceTracker:
         ip = self.interpolations[i_index]
         return ip.expression if ip.expression else f"{{{fallback_prefix}-{i_index}}}"
 
-    def get_interpolation_value(self, i_index: int):
-        """Get the runtime value at the given interpolation index."""
-        return self.interpolations[i_index].value
-
     def format_starttag(self, i_index: int) -> str:
         """Format a component start tag for error messages."""
         return self.get_expression(i_index, fallback_prefix="component-starttag")
-
-    def format_endtag(self, i_index: int) -> str:
-        """Format a component end tag for error messages."""
-        return self.get_expression(i_index, fallback_prefix="component-endtag")
-
-    def format_open_tag(self, open_tag: OpenTag) -> str:
-        """Format any open tag for error messages."""
-        match open_tag:
-            case OpenTElement(tag=tag):
-                return tag
-            case OpenTFragment():
-                return ""
-            case OpenTComponent(start_i_index=i_index):
-                return self.format_starttag(i_index)
 
 
 class TemplateParser(HTMLParser):
