@@ -16,6 +16,36 @@ from .tnodes import (
 )
 
 
+def test_parse_mixed_literal_content():
+    node = TemplateParser.parse(
+        t"<!DOCTYPE html>"
+        t"<!-- Comment -->"
+        t'<div class="container">'
+        t"Hello, <br class='funky' />world <!-- neato -->!"
+        t"</div>"
+    )
+    assert node == TFragment(
+        children=(
+            TDocumentType("html"),
+            TComment.literal(" Comment "),
+            TElement(
+                "div",
+                attrs=(TLiteralAttribute("class", "container"),),
+                children=(
+                    TText.literal("Hello, "),
+                    TElement("br", attrs=(TLiteralAttribute("class", "funky"),)),
+                    TText.literal("world "),
+                    TComment.literal(" neato "),
+                    TText.literal("!"),
+                ),
+            ),
+        )
+    )
+
+
+#
+# Text
+#
 def test_parse_empty():
     node = TemplateParser.parse(t"")
     assert node == TFragment()
@@ -26,11 +56,25 @@ def test_parse_text():
     assert node == TText.literal("Hello, world!")
 
 
+def test_parse_text_multiline():
+    node = TemplateParser.parse(t"""Hello, world!
+  Hello, moon!
+Hello, sun!
+""")
+    assert node == TText.literal("""Hello, world!
+  Hello, moon!
+Hello, sun!
+""")
+
+
 def test_parse_text_with_entities():
-    node = TemplateParser.parse(t"Panini&apos;s")
-    assert node == TText.literal("Panini's")
+    node = TemplateParser.parse(t"a &lt; b")
+    assert node == TText.literal("a < b")
 
 
+#
+# Elements
+#
 def test_parse_void_element():
     node = TemplateParser.parse(t"<br>")
     assert node == TElement("br")
@@ -62,61 +106,6 @@ def test_parse_nested_elements():
     )
 
 
-#
-# Attributes
-#
-def test_literal_attrs():
-    node = TemplateParser.parse((t'<a'
-        t' id=example_link' # no quotes allowed without spaces
-        t' autofocus' # bare / boolean
-        t' title=""' # empty attribute
-        t' href="https://example.com" target="_blank"'
-        t'>Link</a>')
-    )
-    assert node == TElement(
-        "a",
-        attrs=(
-            TLiteralAttribute("id", "example_link"),
-            TLiteralAttribute("autofocus", None),
-            TLiteralAttribute("title", ""),
-            TLiteralAttribute("href", "https://example.com"),
-            TLiteralAttribute("target", "_blank"),
-        ),
-        children=(TText.literal("Link"),),
-    )
-
-
-def test_literal_attr_entities():
-    node = TemplateParser.parse(t'<a title="&lt;">Link</a>')
-    assert node == TElement(
-        "a",
-        attrs=(
-            TLiteralAttribute("title", "<"),
-        ),
-        children=(TText.literal("Link"),),
-    )
-
-
-def test_literal_attr_order():
-    node = TemplateParser.parse(t'<a title="a" href="b" title="c"></a>')
-    assert isinstance(node, TElement)
-    assert node.attrs == (
-        TLiteralAttribute("title", "a"),
-        TLiteralAttribute("href", "b"),
-        TLiteralAttribute("title", "c"), # dupe IS allowed
-    )
-
-
-def test_parse_comment():
-    node = TemplateParser.parse(t"<!-- This is a comment -->")
-    assert node == TComment.literal(" This is a comment ")
-
-
-def test_parse_doctype():
-    node = TemplateParser.parse(t"<!DOCTYPE html>")
-    assert node == TDocumentType("html")
-
-
 def test_parse_multiple_voids():
     node = TemplateParser.parse(t"<br><hr><hr /><hr /><br /><br><br>")
     assert node == TFragment(
@@ -132,31 +121,7 @@ def test_parse_multiple_voids():
     )
 
 
-def test_parse_mixed_content():
-    node = TemplateParser.parse(
-        t'<!DOCTYPE html><!-- Comment --><div class="container">'
-        t"Hello, <br class='funky' />world <!-- neato -->!</div>"
-    )
-    assert node == TFragment(
-        children=(
-            TDocumentType("html"),
-            TComment.literal(" Comment "),
-            TElement(
-                "div",
-                attrs=(TLiteralAttribute("class", "container"),),
-                children=(
-                    TText.literal("Hello, "),
-                    TElement("br", attrs=(TLiteralAttribute("class", "funky"),)),
-                    TText.literal("world "),
-                    TComment.literal(" neato "),
-                    TText.literal("!"),
-                ),
-            ),
-        )
-    )
-
-
-def test_parse_entities_are_escaped():
+def test_parse_text_entities():
     node = TemplateParser.parse(t"<p>&lt;/p&gt;</p>")
     assert node == TElement(
         "p",
@@ -180,7 +145,7 @@ def test_parse_script_with_entities():
     assert node == TElement(
         "script",
         children=(TText.literal("var x = 'a &amp; b';"),),
-    )
+    ), "Entities SHOULD NOT be evaluated in scripts."
 
 
 def test_parse_textarea_tag_content():
@@ -199,7 +164,7 @@ def test_parse_textarea_with_entities():
     assert node == TElement(
         "textarea",
         children=(TText.literal("var x = 'a & b';"),),
-    )
+    ), "Entities SHOULD be evaluated in textarea/title."
 
 
 def test_parse_title_unusual():
@@ -254,7 +219,53 @@ def test_self_closing_void_tags_unexpected_closing_tag():
         _ = TemplateParser.parse(t"<input /></input>")
 
 
-def test_interpolated_attributes():
+#
+# Attributes
+#
+def test_literal_attrs():
+    node = TemplateParser.parse(
+        (
+            t"<a"
+            t" id=example_link"  # no quotes allowed without spaces
+            t" autofocus"  # bare / boolean
+            t' title=""'  # empty attribute
+            t' href="https://example.com" target="_blank"'
+            t">Link</a>"
+        )
+    )
+    assert node == TElement(
+        "a",
+        attrs=(
+            TLiteralAttribute("id", "example_link"),
+            TLiteralAttribute("autofocus", None),
+            TLiteralAttribute("title", ""),
+            TLiteralAttribute("href", "https://example.com"),
+            TLiteralAttribute("target", "_blank"),
+        ),
+        children=(TText.literal("Link"),),
+    )
+
+
+def test_literal_attr_entities():
+    node = TemplateParser.parse(t'<a title="&lt;">Link</a>')
+    assert node == TElement(
+        "a",
+        attrs=(TLiteralAttribute("title", "<"),),
+        children=(TText.literal("Link"),),
+    )
+
+
+def test_literal_attr_order():
+    node = TemplateParser.parse(t'<a title="a" href="b" title="c"></a>')
+    assert isinstance(node, TElement)
+    assert node.attrs == (
+        TLiteralAttribute("title", "a"),
+        TLiteralAttribute("href", "b"),
+        TLiteralAttribute("title", "c"),  # dupe IS allowed
+    )
+
+
+def test_interpolated_attr():
     value1 = 42
     value2 = 99
     node = TemplateParser.parse(t'<div value1="{value1}" value2={value2} />')
@@ -268,7 +279,7 @@ def test_interpolated_attributes():
     )
 
 
-def test_templated_attributes():
+def test_templated_attr():
     value1 = 42
     value2 = 99
     node = TemplateParser.parse(
@@ -286,6 +297,16 @@ def test_templated_attributes():
     )
 
 
+def test_spread_attr():
+    spread_attrs = {}
+    node = TemplateParser.parse(t"<div {spread_attrs} />")
+    assert node == TElement(
+        "div",
+        attrs=(TSpreadAttribute(i_index=0),),
+        children=(),
+    )
+
+
 def test_templated_attribute_name_error():
     with pytest.raises(ValueError):
         attr_name = "some-attr"
@@ -299,13 +320,34 @@ def test_templated_attribute_name_and_value_error():
         _ = TemplateParser.parse(t'<div {attr_name}="{value}" />')
 
 
-def test_spread_attribute():
-    props = "doesnt-matter-the-type"
-    node = TemplateParser.parse(t"<div {props} />")
-    assert node == TElement(
-        "div",
-        attrs=(TSpreadAttribute(i_index=0),),
-        children=(),
+#
+# Comments
+#
+def test_parse_comment():
+    node = TemplateParser.parse(t"<!-- This is a comment -->")
+    assert node == TComment.literal(" This is a comment ")
+
+
+#
+# Doctypes
+#
+def test_parse_doctype():
+    node = TemplateParser.parse(t"<!DOCTYPE html>")
+    assert node == TDocumentType("html")
+
+
+#
+# Components.
+#
+def test_component_element_with_children():
+    def Component(children):
+        return t"{children}"
+
+    node = TemplateParser.parse(t"<{Component}><div>Hello, World!</div></{Component}>")
+    assert node == TComponent(
+        start_i_index=0,
+        end_i_index=1,
+        children=(TElement("div", children=(TText.literal("Hello, World!"),)),),
     )
 
 
