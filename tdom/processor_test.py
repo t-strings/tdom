@@ -549,6 +549,13 @@ def test_spread_attr():
     assert str(node) == '<a href="https://example.com/" target="_blank"></a>'
 
 
+def test_spread_attr_none():
+    attrs = None
+    node = html(t"<a {attrs}></a>")
+    assert node == Element("a")
+    assert str(node) == "<a></a>"
+
+
 def test_templated_attr_mixed_interpolations_start_end_and_nest():
     left, middle, right = 1, 3, 5
     prefix, suffix = t'<div data-range="', t'"></div>'
@@ -711,6 +718,12 @@ def test_data_attr_none():
     assert str(node) == "<button>X</button>"
 
 
+def test_data_attr_errors():
+    for v in [False, [], (), 0, "data?"]:
+        with pytest.raises(TypeError):
+            _ = html(t"<button data={v}>X</button>")
+
+
 def test_data_literal_attr_bypass():
     # Trigger overall attribute resolution with an unrelated interpolated attr.
     node = html(t'<p data="passthru" id={"resolved"}></p>')
@@ -750,6 +763,12 @@ def test_aria_interpolate_attr_none():
     node = html(t"<button aria={button_aria}>X</button>")
     assert node == Element("button", children=[Text("X")])
     assert str(node) == "<button>X</button>"
+
+
+def test_aria_attr_errors():
+    for v in [False, [], (), 0, "aria?"]:
+        with pytest.raises(TypeError):
+            _ = html(t"<button aria={v}>X</button>")
 
 
 def test_aria_literal_attr_bypass():
