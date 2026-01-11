@@ -349,6 +349,13 @@ def test_templated_attribute_name_and_value_error():
         _ = TemplateParser.parse(t'<div {attr_name}="{value}" />')
 
 
+def test_adjacent_spread_attrs_error():
+    with pytest.raises(ValueError):
+        attrs1 = {}
+        attrs2 = {}
+        _ = TemplateParser.parse(t"<div {attrs1}{attrs2} />")
+
+
 #
 # Comments
 #
@@ -377,6 +384,13 @@ def test_parse_doctype_interpolation_error():
     extra = "SYSTEM"
     with pytest.raises(ValueError):
         _ = TemplateParser.parse(t"<!DOCTYPE html {extra}>")
+
+
+def test_unsupported_decl_error():
+    with pytest.raises(NotImplementedError):
+        _ = TemplateParser.parse(t"<!doctype-alt html500>")  # Unknown declaration
+    with pytest.raises(NotImplementedError):
+        _ = TemplateParser.parse(t"<!doctype>")  # missing DTD
 
 
 #
@@ -435,3 +449,19 @@ def test_component_element_invalid_opening_tag():
 
     with pytest.raises(ValueError):
         _ = TemplateParser.parse(t"<div></{Component}>")
+
+
+def test_adjacent_start_component_tag_error():
+    def Component():
+        pass
+
+    with pytest.raises(ValueError):
+        _ = TemplateParser.parse(t"<{Component}{Component}></{Component}>")
+
+
+def test_adjacent_end_component_tag_error():
+    def Component():
+        pass
+
+    with pytest.raises(ValueError):
+        _ = TemplateParser.parse(t"<{Component}></{Component}{Component}>")
