@@ -15,30 +15,77 @@ from .processor import html
 # --------------------------------------------------------------------------
 
 
-def test_parse_empty():
+#
+# Text
+#
+def test_empty():
     node = html(t"")
     assert node == Fragment(children=[])
     assert str(node) == ""
 
 
-def test_parse_text():
+def test_text_literal():
     node = html(t"Hello, world!")
     assert node == Text("Hello, world!")
     assert str(node) == "Hello, world!"
 
 
-def test_parse_comment():
+def test_text_singleton():
+    greeting = "Hello, Alice!"
+    node = html(t"{greeting}")
+    assert node == Text("Hello, Alice!")
+    assert str(node) == "Hello, Alice!"
+
+
+def test_text_template():
+    name = "Alice"
+    node = html(t"Hello, {name}!")
+    assert node == Fragment(children=[Text("Hello, "), Text("Alice"), Text("!")])
+    assert str(node) == "Hello, Alice!"
+
+
+def test_text_template_escaping():
+    name = "Alice & Bob"
+    node = html(t"Hello, {name}!")
+    assert node == Fragment(children=[Text("Hello, "), Text("Alice & Bob"), Text("!")])
+    assert str(node) == "Hello, Alice &amp; Bob!"
+
+
+#
+# Comments.
+#
+def test_comment():
     node = html(t"<!--This is a comment-->")
     assert node == Comment("This is a comment")
     assert str(node) == "<!--This is a comment-->"
 
 
+def test_comment_template():
+    text = "comment"
+    node = html(t"<!--This is a {text}-->")
+    assert node == Comment("This is a comment")
+    assert str(node) == "<!--This is a comment-->"
+
+
+def test_comment_template_escaping():
+    text = "-->comment"
+    node = html(t"<!--This is a {text}-->")
+    assert node == Comment("This is a -->comment")
+    assert str(node) == "<!--This is a --&gt;comment-->"
+
+
+#
+# Document types.
+#
 def test_parse_document_type():
     node = html(t"<!doctype html>")
     assert node == DocumentType("html")
     assert str(node) == "<!DOCTYPE html>"
 
 
+#
+# Elements
+#
 def test_parse_void_element():
     node = html(t"<br>")
     assert node == Element("br")
@@ -66,13 +113,6 @@ def test_parse_chain_of_void_elements():
     assert str(node) == '<br /><hr /><img src="image.png" /><br /><hr />'
 
 
-def test_static_boolean_attr_retained():
-    # Make sure a boolean attribute (bare attribute) is not omitted.
-    node = html(t"<input disabled>")
-    assert node == Element("input", {"disabled": None})
-    assert str(node) == "<input disabled />"
-
-
 def test_parse_element_with_text():
     node = html(t"<p>Hello, world!</p>")
     assert node == Element(
@@ -82,18 +122,6 @@ def test_parse_element_with_text():
         ],
     )
     assert str(node) == "<p>Hello, world!</p>"
-
-
-def test_parse_element_with_attributes():
-    node = html(t'<a href="https://example.com" target="_blank">Link</a>')
-    assert node == Element(
-        "a",
-        attrs={"href": "https://example.com", "target": "_blank"},
-        children=[
-            Text("Link"),
-        ],
-    )
-    assert str(node) == '<a href="https://example.com" target="_blank">Link</a>'
 
 
 def test_parse_nested_elements():
@@ -414,8 +442,50 @@ def test_nested_list_items():
 
 
 # --------------------------------------------------------------------------
-# Interpolated attribute content
+# Attributes
 # --------------------------------------------------------------------------
+
+
+def test_literal_attrs():
+    node = html(
+        (
+            t"<a "
+            t" id=example_link"  # no quotes allowed without spaces
+            t" autofocus"  # bare / boolean
+            t' title=""'  # empty attribute
+            t' href="https://example.com" target="_blank"'
+            t">Link</a>"
+        )
+    )
+    assert node == Element(
+        "a",
+        attrs={
+            "id": "example_link",
+            "autofocus": None,
+            "title": "",
+            "href": "https://example.com",
+            "target": "_blank",
+        },
+        children=[
+            Text("Link"),
+        ],
+    )
+    assert (
+        str(node)
+        == '<a id="example_link" autofocus title="" href="https://example.com" target="_blank">Link</a>'
+    )
+
+
+def test_literal_attr_escaped():
+    node = html(t'<a title="&lt;">Link</a>')
+    assert node == Element(
+        "a",
+        attrs={"title": "<"},
+        children=[
+            Text("Link"),
+        ],
+    )
+    assert str(node) == '<a title="&lt;">Link</a>'
 
 
 def test_interpolated_attribute_value():
@@ -504,58 +574,6 @@ def test_multiple_attribute_spread_dicts():
         str(node)
         == '<a href="https://example.com/" target="_blank" id="link1">Link</a>'
     )
-
-
-def test_interpolated_class_attribute():
-    class_list = ["btn", "btn-primary", "one two", None]
-    class_dict = {"active": True, "btn-secondary": False}
-    class_str = "blue"
-    class_space_sep_str = "green yellow"
-    class_none = None
-    class_empty_list = []
-    class_empty_dict = {}
-    button_t = (
-        t"<button "
-        t' class="red" class={class_list} class={class_dict}'
-        t" class={class_empty_list} class={class_empty_dict}"  # ignored
-        t" class={class_none}"  # ignored
-        t" class={class_str} class={class_space_sep_str}"
-        t" >Click me</button>"
-    )
-    node = html(button_t)
-    assert node == Element(
-        "button",
-        attrs={"class": "red btn btn-primary one two active blue green yellow"},
-        children=[Text("Click me")],
-    )
-    assert (
-        str(node)
-        == '<button class="red btn btn-primary one two active blue green yellow">Click me</button>'
-    )
-
-
-def test_interpolated_class_attribute_with_multiple_placeholders():
-    classes1 = ["btn", "btn-primary"]
-    classes2 = [False and "disabled", None, {"active": True}]
-    node = html(t'<button class="{classes1} {classes2}">Click me</button>')
-    # CONSIDER: Is this what we want? Currently, when we have multiple
-    # placeholders in a single attribute, we treat it as a string attribute.
-    assert node == Element(
-        "button",
-        attrs={"class": "['btn', 'btn-primary'] [False, None, {'active': True}]"},
-        children=[Text("Click me")],
-    )
-
-
-def test_interpolated_attribute_spread_with_class_attribute():
-    attrs = {"id": "button1", "class": ["btn", "btn-primary"]}
-    node = html(t"<button {attrs}>Click me</button>")
-    assert node == Element(
-        "button",
-        attrs={"id": "button1", "class": "btn btn-primary"},
-        children=[Text("Click me")],
-    )
-    assert str(node) == '<button id="button1" class="btn btn-primary">Click me</button>'
 
 
 def test_interpolated_attribute_value_embedded_placeholder():
@@ -648,6 +666,45 @@ def test_interpolated_attribute_value_multiple_placeholders_no_quotes():
     assert str(node) == '<div data-range="1-5"></div>'
 
 
+def test_replace_static_attr_str_str():
+    node = html(t'<div title="default" {dict(title="fresh")}></div>')
+    assert node == Element("div", {"title": "fresh"})
+    assert str(node) == '<div title="fresh"></div>'
+
+
+def test_replace_static_attr_str_true():
+    node = html(t'<div title="default" {dict(title=True)}></div>')
+    assert node == Element("div", {"title": None})
+    assert str(node) == "<div title></div>"
+
+
+def test_replace_static_attr_true_str():
+    node = html(t"<div title {dict(title='fresh')}></div>")
+    assert node == Element("div", {"title": "fresh"})
+    assert str(node) == '<div title="fresh"></div>'
+
+
+def test_remove_static_attr_str_none():
+    node = html(t'<div title="default" {dict(title=None)}></div>')
+    assert node == Element("div")
+    assert str(node) == "<div></div>"
+
+
+def test_remove_static_attr_true_none():
+    node = html(t"<div title {dict(title=None)}></div>")
+    assert node == Element("div")
+    assert str(node) == "<div></div>"
+
+
+def test_other_static_attr_intact():
+    node = html(t'<img title="default" {dict(alt="fresh")}>')
+    assert node == Element("img", {"title": "default", "alt": "fresh"})
+    assert str(node) == '<img title="default" alt="fresh" />'
+
+
+#
+# Special data attribute handling.
+#
 def test_interpolated_data_attributes():
     data = {"user-id": 123, "role": "admin", "wild": True, "false": False, "none": None}
     node = html(t"<div data={data}>User Info</div>")
@@ -683,7 +740,7 @@ def test_data_attr_unrelated_unaffected():
     assert str(node) == "<div data-selected data-active></div>"
 
 
-def test_data_templated_error():
+def test_data_attr_templated_error():
     data1 = {"user-id": "user-123"}
     data2 = {"role": "admin"}
     with pytest.raises(TypeError):
@@ -691,15 +748,25 @@ def test_data_templated_error():
         print(str(node))
 
 
-def test_aria_templated_error():
+def test_data_attr_none():
+    button_data = None
+    node = html(t"<button data={button_data}>X</button>")
+    assert node == Element("button", children=[Text("X")])
+    assert str(node) == "<button>X</button>"
+
+
+#
+# Special aria attribute handling.
+#
+def test_aria_templated_attr_error():
     aria1 = {"label": "close"}
     aria2 = {"hidden": "true"}
     with pytest.raises(TypeError):
-        node = html(t'<div data="{aria1} {aria2}"></div>')
+        node = html(t'<div aria="{aria1} {aria2}"></div>')
         print(str(node))
 
 
-def test_interpolated_aria_attributes():
+def test_aria_interpolated_attr_dict():
     aria = {"label": "Close", "hidden": True, "another": False, "more": None}
     node = html(t"<button aria={aria}>X</button>")
     assert node == Element(
@@ -713,24 +780,88 @@ def test_interpolated_aria_attributes():
     )
 
 
-def test_special_aria_none():
+def test_aria_interpolate_attr_none():
     button_aria = None
     node = html(t"<button aria={button_aria}>X</button>")
     assert node == Element("button", children=[Text("X")])
     assert str(node) == "<button>X</button>"
 
 
-def test_special_data_none():
-    button_data = None
-    node = html(t"<button data={button_data}>X</button>")
-    assert node == Element("button", children=[Text("X")])
-    assert str(node) == "<button>X</button>"
+def test_aria_literal_attr_passthru():
+    node = html(t'<p aria="passthru"></p>')
+    assert node == Element(
+        "p",
+        attrs={"aria": "passthru"},
+    ), "A single literal attribute should bypass resolution."
+
+
+#
+# Special class attribute handling.
+#
+def test_interpolated_class_attribute():
+    class_list = ["btn", "btn-primary", "one two", None]
+    class_dict = {"active": True, "btn-secondary": False}
+    class_str = "blue"
+    class_space_sep_str = "green yellow"
+    class_none = None
+    class_empty_list = []
+    class_empty_dict = {}
+    button_t = (
+        t"<button "
+        t' class="red" class={class_list} class={class_dict}'
+        t" class={class_empty_list} class={class_empty_dict}"  # ignored
+        t" class={class_none}"  # ignored
+        t" class={class_str} class={class_space_sep_str}"
+        t" >Click me</button>"
+    )
+    node = html(button_t)
+    assert node == Element(
+        "button",
+        attrs={"class": "red btn btn-primary one two active blue green yellow"},
+        children=[Text("Click me")],
+    )
+    assert (
+        str(node)
+        == '<button class="red btn btn-primary one two active blue green yellow">Click me</button>'
+    )
+
+
+def test_interpolated_class_attribute_with_multiple_placeholders():
+    classes1 = ["btn", "btn-primary"]
+    classes2 = [False and "disabled", None, {"active": True}]
+    node = html(t'<button class="{classes1} {classes2}">Click me</button>')
+    # CONSIDER: Is this what we want? Currently, when we have multiple
+    # placeholders in a single attribute, we treat it as a string attribute.
+    assert node == Element(
+        "button",
+        attrs={"class": "['btn', 'btn-primary'] [False, None, {'active': True}]"},
+        children=[Text("Click me")],
+    )
+
+
+def test_interpolated_attribute_spread_with_class_attribute():
+    attrs = {"id": "button1", "class": ["btn", "btn-primary"]}
+    node = html(t"<button {attrs}>Click me</button>")
+    assert node == Element(
+        "button",
+        attrs={"id": "button1", "class": "btn btn-primary"},
+        children=[Text("Click me")],
+    )
+    assert str(node) == '<button id="button1" class="btn btn-primary">Click me</button>'
+
+
+def test_class_literal_attr_passthru():
+    node = html(t'<p class="red red"></p>')
+    assert node == Element(
+        "p",
+        attrs={"class": "red red"},
+    ), "A single literal attribute should bypass resolution."
 
 
 #
 # Special style attribute handling.
 #
-def test_style_in_literal_attr():
+def test_style_literal_attr_passthru():
     p_id = "para1"  # non-literal attribute to cause attr resolution
     node = html(t'<p style="color: red" id={p_id}>Warning!</p>')
     assert node == Element(
@@ -861,12 +992,13 @@ def test_style_attribute_non_str_non_dict():
         _ = html(t"<p style={styles}>Warning!</p>")
 
 
-def test_special_attrs_as_static():
-    node = html(t'<p aria="aria?" data="data?" class="class?" style="style?"></p>')
+def test_style_literal_attr_bypass():
+    p_id = "resolved"  # Force overall resolution with dynamic attribute.
+    node = html(t'<p style="invalid;invalid:" id={p_id}></p>')
     assert node == Element(
         "p",
-        attrs={"aria": "aria?", "data": "data?", "class": "class?", "style": "style?"},
-    )
+        attrs={"style": "invalid;invalid:", "id": "resolved"},
+    ), "A single literal attribute should bypass style accumulator."
 
 
 # --------------------------------------------------------------------------
@@ -1319,39 +1451,3 @@ def test_mismatched_component_closing_tag_fails():
         _ = html(
             t"<{FunctionComponent} first=1 second={99} third-arg='comp1'>Hello</{ClassComponent}>"
         )
-
-
-def test_replace_static_attr_str_str():
-    node = html(t'<div title="default" {dict(title="fresh")}></div>')
-    assert node == Element("div", {"title": "fresh"})
-    assert str(node) == '<div title="fresh"></div>'
-
-
-def test_replace_static_attr_str_true():
-    node = html(t'<div title="default" {dict(title=True)}></div>')
-    assert node == Element("div", {"title": None})
-    assert str(node) == "<div title></div>"
-
-
-def test_replace_static_attr_true_str():
-    node = html(t"<div title {dict(title='fresh')}></div>")
-    assert node == Element("div", {"title": "fresh"})
-    assert str(node) == '<div title="fresh"></div>'
-
-
-def test_remove_static_attr_str_none():
-    node = html(t'<div title="default" {dict(title=None)}></div>')
-    assert node == Element("div")
-    assert str(node) == "<div></div>"
-
-
-def test_remove_static_attr_true_none():
-    node = html(t"<div title {dict(title=None)}></div>")
-    assert node == Element("div")
-    assert str(node) == "<div></div>"
-
-
-def test_other_static_attr_intact():
-    node = html(t'<img title="default" {dict(alt="fresh")}>')
-    assert node == Element("img", {"title": "default", "alt": "fresh"})
-    assert str(node) == '<img title="default" alt="fresh" />'
