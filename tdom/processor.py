@@ -84,42 +84,40 @@ def format_interpolation(interpolation: Interpolation) -> object:
 # --------------------------------------------------------------------------
 
 
-def _force_dict(value: t.Any, *, kind: str) -> dict:
-    """Try to convert a value to a dict, raising TypeError if not possible."""
-    try:
-        return dict(value)
-    except (TypeError, ValueError):
-        raise TypeError(
-            f"Cannot use {type(value).__name__} as value for {kind} attributes"
-        ) from None
-
-
 def _expand_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
     """Produce aria-* attributes based on the interpolated value for "aria"."""
     if value is None:
         return
-    d = _force_dict(value, kind="aria")
-    for sub_k, sub_v in d.items():
-        if sub_v is True:
-            yield f"aria-{sub_k}", "true"
-        elif sub_v is False:
-            yield f"aria-{sub_k}", "false"
-        elif sub_v is None:
-            yield f"aria-{sub_k}", None
-        else:
-            yield f"aria-{sub_k}", str(sub_v)
+    elif isinstance(value, dict):
+        for sub_k, sub_v in value.items():
+            if sub_v is True:
+                yield f"aria-{sub_k}", "true"
+            elif sub_v is False:
+                yield f"aria-{sub_k}", "false"
+            elif sub_v is None:
+                yield f"aria-{sub_k}", None
+            else:
+                yield f"aria-{sub_k}", str(sub_v)
+    else:
+        raise TypeError(
+            f"Cannot use {type(value).__name__} as value for aria attribute"
+        )
 
 
 def _expand_data_attr(value: object) -> t.Iterable[Attribute]:
     """Produce data-* attributes based on the interpolated value for "data"."""
     if value is None:
         return
-    d = _force_dict(value, kind="data")
-    for sub_k, sub_v in d.items():
-        if sub_v is True or sub_v is False or sub_v is None:
-            yield f"data-{sub_k}", sub_v
-        else:
-            yield f"data-{sub_k}", str(sub_v)
+    elif isinstance(value, dict):
+        for sub_k, sub_v in value.items():
+            if sub_v is True or sub_v is False or sub_v is None:
+                yield f"data-{sub_k}", sub_v
+            else:
+                yield f"data-{sub_k}", str(sub_v)
+    else:
+        raise TypeError(
+            f"Cannot use {type(value).__name__} as value for data attribute"
+        )
 
 
 def _substitute_spread_attrs(value: object) -> t.Iterable[Attribute]:
@@ -130,8 +128,14 @@ def _substitute_spread_attrs(value: object) -> t.Iterable[Attribute]:
     the entire attribute set should be replaced by the interpolated value.
     The value must be a dict or iterable of key-value pairs.
     """
-    d = _force_dict(value, kind="spread")
-    yield from d.items()
+    if value is None:
+        return
+    elif isinstance(value, dict):
+        yield from value.items()
+    else:
+        raise TypeError(
+            f"Cannot use {type(value).__name__} as value for spread attributes"
+        )
 
 
 ATTR_EXPANDERS = {
@@ -324,6 +328,8 @@ def _resolve_t_attrs(
                             new_attrs.get(name, True)
                         )
                     new_attrs[name] = attr_accs[name].merge_value(attr_value)
+                elif expander := ATTR_EXPANDERS.get(name):
+                    raise TypeError(f"{name} attributes cannot be templated")
                 else:
                     new_attrs[name] = attr_value
             case TSpreadAttribute(i_index=i_index):

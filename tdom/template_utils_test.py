@@ -2,7 +2,7 @@ from string.templatelib import Interpolation
 
 import pytest
 
-from .template_utils import TemplateRef, template_from_parts
+from .template_utils import TemplateRef, template_from_parts, combine_template_refs
 
 
 def test_template_from_parts() -> None:
@@ -40,3 +40,18 @@ def test_template_ref_is_singleton() -> None:
 def test_template_ref_post_init_validation() -> None:
     with pytest.raises(ValueError):
         _ = TemplateRef(("Hello",), (0, 1))
+
+
+def test_combine_template_refs():
+    template_refs = map(
+        TemplateRef.from_naive_template,
+        [
+            t"ab",
+            t"c{0}d",
+            t"ef{1}",
+            t"{2}ghi",
+        ],
+    )
+    assert combine_template_refs(*template_refs) == TemplateRef.from_naive_template(
+        t"abc{0}def{1}{2}ghi"
+    )

@@ -19,6 +19,8 @@ from .tnodes import (
     TTemplatedAttribute,
     TText,
 )
+from .template_utils import combine_template_refs
+
 
 type HTMLAttribute = tuple[str, str | None]
 type HTMLAttributesDict = dict[str, str | None]
@@ -38,7 +40,6 @@ class OpenTFragment:
 
 @dataclass
 class OpenTComponent:
-    # TODO: hold on to start_s_index when we start to need it.
     start_i_index: int
     attrs: tuple[TAttribute, ...]
     children: list[TNode] = field(default_factory=list)
@@ -61,11 +62,6 @@ class SourceTracker:
     def interpolations(self) -> tuple[Interpolation, ...]:
         return self.template.interpolations
 
-    @property
-    def s_index(self) -> int:
-        """The current string index."""
-        return self.i_index + 1
-
     def advance_interpolation(self) -> int:
         """Call before processing an interpolation to move to the next one."""
         self.i_index += 1
@@ -81,27 +77,9 @@ class SourceTracker:
         ip = self.interpolations[i_index]
         return ip.expression if ip.expression else f"{{{fallback_prefix}-{i_index}}}"
 
-    def get_interpolation_value(self, i_index: int):
-        """Get the runtime value at the given interpolation index."""
-        return self.interpolations[i_index].value
-
     def format_starttag(self, i_index: int) -> str:
         """Format a component start tag for error messages."""
         return self.get_expression(i_index, fallback_prefix="component-starttag")
-
-    def format_endtag(self, i_index: int) -> str:
-        """Format a component end tag for error messages."""
-        return self.get_expression(i_index, fallback_prefix="component-endtag")
-
-    def format_open_tag(self, open_tag: OpenTag) -> str:
-        """Format any open tag for error messages."""
-        match open_tag:
-            case OpenTElement(tag=tag):
-                return tag
-            case OpenTFragment():
-                return ""
-            case OpenTComponent(start_i_index=i_index):
-                return self.format_starttag(i_index)
 
 
 class TemplateParser(HTMLParser):
@@ -275,8 +253,13 @@ class TemplateParser(HTMLParser):
 
     def handle_data(self, data: str) -> None:
         ref = self.placeholders.remove_placeholders(data)
-        text = TText(ref)
-        self.append_child(text)
+        parent = self.get_parent()
+        if parent.children and isinstance(parent.children[-1], TText):
+            parent.children[-1] = TText(
+                ref=combine_template_refs(parent.children[-1].ref, ref)
+            )
+        else:
+            self.append_child(TText(ref=ref))
 
     def handle_comment(self, data: str) -> None:
         ref = self.placeholders.remove_placeholders(data)
@@ -287,13 +270,14 @@ class TemplateParser(HTMLParser):
         ref = self.placeholders.remove_placeholders(decl)
         if not ref.is_literal:
             raise ValueError("Interpolations are not allowed in declarations.")
-        if not decl.upper().startswith("DOCTYPE"):
+        elif decl.upper().startswith("DOCTYPE "):
+            doctype_content = decl[7:].strip()
+            doctype = TDocumentType(doctype_content)
+            self.append_child(doctype)
+        else:
             raise NotImplementedError(
-                "Only DOCTYPE declarations are currently supported."
+                "Only well formed DOCTYPE declarations are currently supported."
             )
-        doctype_content = decl[7:].strip()
-        doctype = TDocumentType(doctype_content)
-        self.append_child(doctype)
 
     def reset(self):
         super().reset()
