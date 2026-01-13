@@ -31,7 +31,12 @@ from .escaping import (
     escape_html_comment as default_escape_html_comment,
     )
 from .utils import CachableTemplate
-from .processor import _resolve_t_attrs, AttributesDict, _resolve_html_attrs as coerce_to_html_attrs, _kebab_to_snake
+from .processor import (
+    _resolve_t_attrs as resolve_dynamic_attrs,
+    AttributesDict,
+    _resolve_html_attrs as coerce_to_html_attrs,
+    _kebab_to_snake,
+)
 from .callables import get_callable_info
 
 
@@ -325,7 +330,7 @@ class TransformService:
                     if self.has_dynamic_attrs(attrs):
                         yield self._stream_attrs_interpolation(tag, attrs)
                     else:
-                        yield render_html_attrs(coerce_to_html_attrs(_resolve_t_attrs(attrs, interpolations=())))
+                        yield render_html_attrs(coerce_to_html_attrs(resolve_dynamic_attrs(attrs, interpolations=())))
                     # This is just a want to have.
                     if self.slash_void and tag in VOID_ELEMENTS:
                         yield ' />'
@@ -493,7 +498,7 @@ class RenderService:
         - perform special attribute handling
         - merge
         """
-        return _resolve_t_attrs(attrs, template.interpolations)
+        return resolve_dynamic_attrs(attrs, template.interpolations)
 
     def walk_template_with_context(self, bf, template, struct_t, context_values=None):
         if context_values:
