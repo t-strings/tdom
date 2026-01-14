@@ -94,18 +94,8 @@ def interpolate_attrs(render_api, q, bf, last_container_tag, template, ip_info) 
     bf.append(attrs_str)
 
 
-def invoke_passthru(component_callable, attrs, embedded_template, embedded_struct_t):
-    result_template = component_callable(attrs, embedded_template, embedded_struct_t)
-    return result_template, ()
-
-
-def invoke_passthru_cvalues(component_callable, attrs, embedded_template, embedded_struct_t):
-    result_template, context_values = component_callable(attrs, embedded_template, embedded_struct_t)
-    return result_template, context_values
-
-
-def _prep_cinfo(component_callable, attrs, embedded_template, embedded_struct_t):
-    # @TODO: This is lifted from the processor and then grossified.
+def _prep_cinfo(component_callable, attrs, system):
+    # @DESIGN: This is lifted from the processor and then grossified.
     # Not sure this will work out but maybe we'd unify these.
     callable_info = get_callable_info(component_callable)
 
@@ -116,18 +106,20 @@ def _prep_cinfo(component_callable, attrs, embedded_template, embedded_struct_t)
 
     kwargs: AttributesDict = {}
 
-    # Add all supported attributes
+    # Inject system kwargs first.
+    if system:
+        if callable_info.kwargs:
+            kwargs.update(system)
+        else:
+            for kw in system:
+                if kw in callable_info.named_params:
+                    kwargs[kw] = system[kw]
+
+    # Plaster attributes in over top of system kwargs.
     for attr_name, attr_value in attrs.items():
         snake_name = _kebab_to_snake(attr_name)
         if snake_name in callable_info.named_params or callable_info.kwargs:
             kwargs[snake_name] = attr_value
-
-    # Add system vars if appropriate
-    if "embedded_template" in callable_info.named_params or callable_info.kwargs:
-        kwargs["embedded_template"] = embedded_template
-    # I'm sure the phone is ringing of the hook for this one.
-    if "embedded_struct_t" in callable_info.named_params or callable_info.kwargs:
-        kwargs["embedded_struct_t"] = embedded_struct_t
 
     # Check to make sure we've fully satisfied the callable's requirements
     missing = callable_info.required_named_params - kwargs.keys()
@@ -135,19 +127,9 @@ def _prep_cinfo(component_callable, attrs, embedded_template, embedded_struct_t)
         raise TypeError(
             f"Missing required parameters for component: {', '.join(missing)}"
         )
-    return kwargs
 
-
-def invoke_cinfo(component_callable, attrs, embedded_template, embedded_struct_t):
-    kwargs = _prep_cinfo(component_callable, attrs, embedded_template, embedded_struct_t)
-    result = component_callable(**kwargs)
-    return result, ()
-
-
-def invoke_cinfo_cvalues(component_callable, attrs, embedded_template, embedded_struct_t):
-    kwargs = _prep_cinfo(component_callable, attrs, embedded_template, embedded_struct_t)
-    result, context_values = component_callable(**kwargs)
-    return result, context_values
+    expect_cvalues = (not callable_info.return_is_undefined) and (callable_info.return_origin is not Template)
+    return kwargs, expect_cvalues
 
 
 def interpolate_component(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
@@ -163,6 +145,7 @@ def interpolate_component(render_api, q, bf, last_container_tag, template, ip_in
     """
     (container_tag, attrs, start_i_index, end_i_index, body_start_s_index) = ip_info
     if start_i_index != end_i_index and end_i_index is not None:
+        # @DESIGN: We extract the embedded template from the original outer template.
         embedded_template = render_api.transform_api.extract_embedded_template(template, body_start_s_index, end_i_index)
     else:
         embedded_template = Template('')
@@ -173,18 +156,23 @@ def interpolate_component(render_api, q, bf, last_container_tag, template, ip_in
     if start_i_index != end_i_index and end_i_index is not None and component_callable != template.interpolations[end_i_index].value:
         raise TypeError('Component callable in start tag must match component callable in end tag.')
 
-    # @TODO: Amazingly this works!  It looks terrible though! Maybe we'll keep pushing symbols around...
-    if start_i.format_spec == '' or start_i.format_spec == 'passthru':
-        invoke_strat = invoke_passthru
-    elif start_i.format_spec == 'passthru+cvalues':
-        invoke_strat = invoke_passthru_cvalues
-    elif start_i.format_spec == 'cinfo':
-        invoke_strat = invoke_cinfo
-    elif start_i.format_spec == 'cinfo+cvalues':
-        invoke_strat = invoke_cinfo_cvalues
+    # @DESIGN: Inject system vars via manager?
+    system_dict = render_api.get_system(children=embedded_template, children_struct=embedded_struct_t)
+    # @DESIGN: Determine return signature from callable info (cached inspection) ?
+    kwargs, expect_cvalues = _prep_cinfo(component_callable, resolved_attrs, system_dict)
+    res = component_callable(**kwargs)
+    # @DESIGN: Determine return signature via runtime inspection?
+    if isinstance(res, tuple):
+        result_template, comp_info = res
+        context_values = comp_info.get('context_values', ()) if comp_info else ()
     else:
-        raise ValueError(f'Unknown format spec: {start_i.format_spec}')
-    result_template, context_values = invoke_strat(component_callable, resolved_attrs, embedded_template, embedded_struct_t)
+        result_template = res
+        comp_info = None
+        context_values = ()
+
+    # @DESIGN: Use open-ended dict for opt-in second return argument?
+    context_values = comp_info.get('context_values', ()) if comp_info else ()
+
     if result_template:
         result_struct = render_api.process_template(result_template)
         if context_values:
@@ -330,8 +318,10 @@ class TransformService:
                     if self.has_dynamic_attrs(attrs):
                         yield self._stream_attrs_interpolation(tag, attrs)
                     else:
+                        # @DESIGN: We can't customize the html attrs rendering here because we are not even
+                        # in the RENDERER!
                         yield render_html_attrs(coerce_to_html_attrs(resolve_dynamic_attrs(attrs, interpolations=())))
-                    # This is just a want to have.
+                    # @DESIGN: This is just a want to have.
                     if self.slash_void and tag in VOID_ELEMENTS:
                         yield ' />'
                     else:
@@ -385,7 +375,7 @@ class TransformService:
         endtag = t'</{comp}>'
         assert template == starttag + self.extract_embedded_template(template, 2, 4) + endtag
         ```
-        @TODO: "There must be a better way."
+        @DESIGN: "There must be a better way."
         """
         # Copy the parts out of the containing template.
         index = body_start_s_index
@@ -414,6 +404,9 @@ class RenderService:
 
     escape_html_content_in_tag: Callable = default_escape_html_content_in_tag
 
+    def get_system(self, children, children_struct):
+        return {'children': children, 'children_struct': children_struct}
+
     def render_template(self, template, last_container_tag=None) -> str:
         """
         Iterate left to right and pause and push new iterators when descending depth-first.
@@ -426,6 +419,8 @@ class RenderService:
         text processing.  When working with fragments we might not know the
         container tag until the fragment is included at render-time.
         """
+        # @DESIGN: We put all the strings in a list and then ''.join them at
+        # the end.
         bf: list[str] = []
         q: list[RenderQueueItem] = []
         q.append((last_container_tag, self.walk_template(bf, template, self.process_template(template))))
@@ -572,3 +567,4 @@ class CachedTransformService(TransformService):
     def transform_template(self, values_template: Template) -> Template:
         ct = CachableTemplate(values_template)
         return self._transform_template(ct)
+
