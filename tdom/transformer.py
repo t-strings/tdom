@@ -469,17 +469,17 @@ class RenderService:
                 value = template.interpolations[part.value].value
                 if value is None or value is False:
                     continue
-                elif isinstance(value , str):
+                elif isinstance(value, str):
                     if value:
                         text.append(value)
-                    elif isinstance(value, (Template, Iterable)):
-                        raise ValueError(f'Recursive includes are not supported within {container_tag}')
-                    elif hasattr(value, '__html__'):
-                        raise ValueError(f'Non-exact trusted interpolations are not supported within {container_tag}')
-                    else:
-                        value_str = str(value)
-                        if value_str:
-                            text.append(value_str)
+                elif isinstance(value, (Template, Iterable)):
+                    raise ValueError(f'Recursive includes are not supported within {container_tag}')
+                elif hasattr(value, '__html__'):
+                    raise ValueError(f'Non-exact trusted interpolations are not supported within {container_tag}')
+                else:
+                    value_str = str(value)
+                    if value_str:
+                        text.append(value_str)
             return ''.join(text)
 
     def process_template(self, template):
