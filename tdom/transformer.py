@@ -63,7 +63,8 @@ class Interpolator(t.Protocol):
         """
         Populates an interpolation or returns iterator to decende into.
 
-        If recursion is required then pushes current iterator
+        If recursion is required then pushes current iterator.
+
         render_api
             The current render api, provides various helper methods to the interpolator.
         bf
@@ -152,16 +153,6 @@ def _prep_cinfo(component_callable, attrs, system):
 def interpolate_component(
     render_api, bf, last_container_tag, template, ip_info
 ) -> RenderQueueItem | None:
-    """
-    - Extract children template or use empty template.
-    - Transform children template into struct template.
-    - Resolve attrs but don't stringify.
-    - Resolve callable.
-    - Invoke callable with attrs
-    - If callable returns a result template then
-         * transform it to a struct template
-         * iteratively recurse into that result template and start outputting it
-    """
     (container_tag, attrs, start_i_index, end_i_index, body_start_s_index) = ip_info
     if start_i_index != end_i_index and end_i_index is not None:
         # @DESIGN: We extract the children template from the original outer template.
