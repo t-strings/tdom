@@ -4,22 +4,28 @@ from markupsafe import Markup, escape as markupsafe_escape
 import typing as t
 import pytest
 
-from .transformer import render_service_factory, cached_render_service_factory, CachedTransformService
+from .transformer import (
+    render_service_factory,
+    cached_render_service_factory,
+    CachedTransformService,
+)
 
 
-THEME_CTX = ContextVar('theme', default='default')
+THEME_CTX = ContextVar("theme", default="default")
 
 
 def test_render_template_smoketest():
-    comment_text = 'comment is not literal'
-    interpolated_class = 'red'
-    text_in_element = 'text is not literal'
+    comment_text = "comment is not literal"
+    interpolated_class = "red"
+    text_in_element = "text is not literal"
     templated = "not literal"
-    spread_attrs={'data-on': True}
-    markup_content = Markup('<div>safe</div>')
+    spread_attrs = {"data-on": True}
+    markup_content = Markup("<div>safe</div>")
+
     def WrapperComponent(children):
-        return t'<div>{children}</div>'
-    smoke_t = t'''<!doctype html>
+        return t"<div>{children}</div>"
+
+    smoke_t = t"""<!doctype html>
 <html>
 <body>
 <!-- literal -->
@@ -30,8 +36,8 @@ def test_render_template_smoketest():
 <{WrapperComponent}><span>comp body</span></{WrapperComponent}>
 {markup_content}
 </body>
-</html>'''
-    smoke_str = '''<!doctype html>
+</html>"""
+    smoke_str = """<!doctype html>
 <html>
 <body>
 <!-- literal -->
@@ -42,21 +48,26 @@ def test_render_template_smoketest():
 <div><span>comp body</span></div>
 <div>safe</div>
 </body>
-</html>'''
+</html>"""
     render_api = render_service_factory()
     assert render_api.render_template(smoke_t) == smoke_str
 
 
 def struct_repr(st):
-    """ Breakdown Templates into comparable parts for test verification. """
-    return st.strings, tuple([(i.value, i.expression, i.conversion, i.format_spec) for i in st.interpolations])
+    """Breakdown Templates into comparable parts for test verification."""
+    return st.strings, tuple(
+        [
+            (i.value, i.expression, i.conversion, i.format_spec)
+            for i in st.interpolations
+        ]
+    )
 
 
 def test_process_template_internal_cache():
-    """ Test that cache and non-cache both generally work as expected. """
-    sample_t = t'''<div>{'content'}</div>'''
-    sample_diff_t = t'''<div>{'diffcontent'}</div>'''
-    alt_t = t'''<span>{'content'}</span>'''
+    """Test that cache and non-cache both generally work as expected."""
+    sample_t = t"""<div>{"content"}</div>"""
+    sample_diff_t = t"""<div>{"diffcontent"}</div>"""
+    alt_t = t"""<span>{"content"}</span>"""
     render_api = render_service_factory()
     cached_render_api = cached_render_service_factory()
     tnode1 = render_api.process_template(sample_t)
@@ -97,32 +108,51 @@ def test_process_template_internal_cache():
 
 
 def test_render_template_repeated():
-    """ Crude check for any unintended state being kept between calls. """
+    """Crude check for any unintended state being kept between calls."""
+
     def get_sample_t(idx, spread_attrs, button_text):
-        return t'''<div><button data-key={idx} {spread_attrs}>{button_text}</button></div>'''
+        return t"""<div><button data-key={idx} {spread_attrs}>{button_text}</button></div>"""
+
     render_apis = (render_service_factory(), cached_render_service_factory())
     for render_api in render_apis:
         for idx in range(3):
-            spread_attrs = {'data-enabled': True}
-            button_text = 'RENDER'
+            spread_attrs = {"data-enabled": True}
+            button_text = "RENDER"
             sample_t = get_sample_t(idx, spread_attrs, button_text)
-            assert render_api.render_template(sample_t) == f'<div><button data-key="{idx}" data-enabled>RENDER</button></div>'
+            assert (
+                render_api.render_template(sample_t)
+                == f'<div><button data-key="{idx}" data-enabled>RENDER</button></div>'
+            )
+
 
 def test_render_template_iterables():
     render_api = render_service_factory()
 
     def get_select_t_with_list(options, selected_values):
-        return t'''<select>{[
-            t"<option value={opt[0]} selected={opt[0] in selected_values}>{opt[1]}</option>" for opt in options]
-        }</select>'''
+        return t"""<select>{
+            [
+                t"<option value={opt[0]} selected={opt[0] in selected_values}>{opt[1]}</option>"
+                for opt in options
+            ]
+        }</select>"""
+
     def get_select_t_with_generator(options, selected_values):
-        return t'''<select>{(
-            t"<option value={opt[0]} selected={opt[0] in selected_values}>{opt[1]}</option>" for opt in options)
-        }</select>'''
+        return t"""<select>{
+            (
+                t"<option value={opt[0]} selected={opt[0] in selected_values}>{opt[1]}</option>"
+                for opt in options
+            )
+        }</select>"""
+
     def get_select_t_with_concat(options, selected_values):
-        parts = [t'<select>']
-        parts.extend([t"<option value={opt[0]} selected={opt[0] in selected_values}>{opt[1]}</option>" for opt in options])
-        parts.append(t'</select>')
+        parts = [t"<select>"]
+        parts.extend(
+            [
+                t"<option value={opt[0]} selected={opt[0] in selected_values}>{opt[1]}</option>"
+                for opt in options
+            ]
+        )
+        parts.append(t"</select>")
         return sum(parts, t"")
 
     def get_color_select_t(selected_values: set, provider: t.Callable) -> Template:
@@ -130,19 +160,29 @@ def test_render_template_iterables():
         assert set(selected_values).issubset(set([opt[0] for opt in PRIMARY_COLORS]))
         return provider(PRIMARY_COLORS, selected_values)
 
-    for provider in (get_select_t_with_list,get_select_t_with_generator,get_select_t_with_concat):
-        assert render_api.render_template(get_color_select_t(set(), provider)) == '<select><option value="R">Red</option><option value="Y">Yellow</option><option value="B">Blue</option></select>'
-        assert render_api.render_template(get_color_select_t({'Y'}, provider)) == '<select><option value="R">Red</option><option value="Y" selected>Yellow</option><option value="B">Blue</option></select>'
+    for provider in (
+        get_select_t_with_list,
+        get_select_t_with_generator,
+        get_select_t_with_concat,
+    ):
+        assert (
+            render_api.render_template(get_color_select_t(set(), provider))
+            == '<select><option value="R">Red</option><option value="Y">Yellow</option><option value="B">Blue</option></select>'
+        )
+        assert (
+            render_api.render_template(get_color_select_t({"Y"}, provider))
+            == '<select><option value="R">Red</option><option value="Y" selected>Yellow</option><option value="B">Blue</option></select>'
+        )
 
 
 def test_context_provider_pattern():
     def ThemeProvider(theme, children):
-        return children, {'context_values': ((THEME_CTX, theme),)}
+        return children, {"context_values": ((THEME_CTX, theme),)}
 
     def IntermediateWrapper(children):
         # Wrap in between the provider and consumer just to make sure there
         # is no direct interaction.
-        return t'<div>{children}</div>'
+        return t"<div>{children}</div>"
 
     def ThemeConsumer(children):
         theme = THEME_CTX.get()
@@ -152,25 +192,29 @@ def test_context_provider_pattern():
     body_t = t"<body><{ThemeProvider} theme='holiday'><{IntermediateWrapper}><{ThemeConsumer}><b>Cheers!</b></{ThemeConsumer}></{IntermediateWrapper}></{ThemeProvider}></body>"
     # Set the context var to a different value while rendering
     # to make sure this value will be masked
-    with THEME_CTX.set('not-the-default'):
+    with THEME_CTX.set("not-the-default"):
         # During rendering the provider should overlay a new value.
-        assert render_api.render_template(body_t) == '<body><div><p data-theme="holiday"><b>Cheers!</b></p></div></body>'
+        assert (
+            render_api.render_template(body_t)
+            == '<body><div><p data-theme="holiday"><b>Cheers!</b></p></div></body>'
+        )
         # But afterwards we should be back to the old value.
-        assert THEME_CTX.get() == 'not-the-default'
+        assert THEME_CTX.get() == "not-the-default"
     # But after all that we should be back to the context var's offical default.
-    assert THEME_CTX.get() == 'default'
+    assert THEME_CTX.get() == "default"
 
 
 def test_render_template_components_smoketest():
-    """ Broadly test that common template component usage works. """
-    def PageComponent(children, root_attrs=None):
-        return t'''<div class="content" {root_attrs}>{children}</div>'''
+    """Broadly test that common template component usage works."""
 
-    def FooterComponent(classes=('footer-default',)):
+    def PageComponent(children, root_attrs=None):
+        return t"""<div class="content" {root_attrs}>{children}</div>"""
+
+    def FooterComponent(classes=("footer-default",)):
         return t'<div class="footer" class={classes}><a href="about">About</a></div>'
 
     def LayoutComponent(children, body_classes=None):
-        return t'''<!doctype html>
+        return t"""<!doctype html>
 <html>
   <head>
     <meta charset="utf-8">
@@ -182,12 +226,16 @@ def test_render_template_components_smoketest():
     <{FooterComponent} />
   </body>
 </html>
-'''
+"""
 
     render_api = render_service_factory()
-    content = 'HTML never goes out of style.'
-    content_str = render_api.render_template(t'<{LayoutComponent} body_classes={["theme-default"]}><{PageComponent}>{content}</{PageComponent}></{LayoutComponent}>')
-    assert content_str == '''<!doctype html>
+    content = "HTML never goes out of style."
+    content_str = render_api.render_template(
+        t"<{LayoutComponent} body_classes={['theme-default']}><{PageComponent}>{content}</{PageComponent}></{LayoutComponent}>"
+    )
+    assert (
+        content_str
+        == """<!doctype html>
 <html>
   <head>
     <meta charset="utf-8">
@@ -199,21 +247,22 @@ def test_render_template_components_smoketest():
     <div class="footer footer-default"><a href="about">About</a></div>
   </body>
 </html>
-'''
+"""
+    )
 
 
 def test_render_template_functions_smoketest():
-    """ Broadly test that common template function usage works. """
+    """Broadly test that common template function usage works."""
 
     def make_page_t(content, root_attrs=None) -> Template:
-        return t'''<div class="content" {root_attrs}>{content}</div>'''
+        return t"""<div class="content" {root_attrs}>{content}</div>"""
 
-    def make_footer_t(classes=('footer-default',)) -> Template:
+    def make_footer_t(classes=("footer-default",)) -> Template:
         return t'<div class="footer" class={classes}><a href="about">About</a></div>'
 
     def make_layout_t(body_t, body_classes=None) -> Template:
         footer_t = make_footer_t()
-        return t'''<!doctype html>
+        return t"""<!doctype html>
 <html>
   <head>
     <meta charset="utf-8">
@@ -225,13 +274,15 @@ def test_render_template_functions_smoketest():
     {footer_t}
   </body>
 </html>
-'''
+"""
 
     render_api = render_service_factory()
-    content = 'HTML never goes out of style.'
+    content = "HTML never goes out of style."
     layout_t = make_layout_t(make_page_t(content), "theme-default")
     content_str = render_api.render_template(layout_t)
-    assert content_str == '''<!doctype html>
+    assert (
+        content_str
+        == """<!doctype html>
 <html>
   <head>
     <meta charset="utf-8">
@@ -243,37 +294,49 @@ def test_render_template_functions_smoketest():
     <div class="footer footer-default"><a href="about">About</a></div>
   </body>
 </html>
-'''
+"""
+    )
 
 
 def test_text_interpolation_with_dynamic_parent():
     render_api = render_service_factory()
-    with pytest.raises(ValueError, match='Recursive includes are not supported within script'):
+    with pytest.raises(
+        ValueError, match="Recursive includes are not supported within script"
+    ):
         content = '<script>console.log("123!");</script>'
-        content_t = t'{content}'
-        _ = render_api.render_template(t'<script>{content_t}</script>')
+        content_t = t"{content}"
+        _ = render_api.render_template(t"<script>{content_t}</script>")
 
 
-@pytest.mark.skip('Can we allow this?')
+@pytest.mark.skip("Can we allow this?")
 def test_escape_escapable_raw_text_with_dynamic_parent():
     content = '<script>console.log("123!");</script>'
-    content_t = t'{content}'
+    content_t = t"{content}"
     render_api = render_service_factory()
-    LT, GT, DQ = map(markupsafe_escape, ['<', '>', '"'])
-    assert render_api.render_template(t'<textarea>{content_t}</textarea>') == f'<textarea>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</textarea>'
+    LT, GT, DQ = map(markupsafe_escape, ["<", ">", '"'])
+    assert (
+        render_api.render_template(t"<textarea>{content_t}</textarea>")
+        == f"<textarea>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</textarea>"
+    )
 
 
 def test_escape_structured_text_with_dynamic_parent():
     content = '<script>console.log("123!");</script>'
-    content_t = t'{content}'
+    content_t = t"{content}"
     render_api = render_service_factory()
-    LT, GT, DQ = map(markupsafe_escape, ['<', '>', '"'])
-    assert render_api.render_template(t'<div>{content_t}</div>') == f'<div>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</div>'
+    LT, GT, DQ = map(markupsafe_escape, ["<", ">", '"'])
+    assert (
+        render_api.render_template(t"<div>{content_t}</div>")
+        == f"<div>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</div>"
+    )
 
 
 def test_escape_structured_text():
     content = '<script>console.log("123!");</script>'
-    content_t = t'<div>{content}</div>'
+    content_t = t"<div>{content}</div>"
     render_api = render_service_factory()
-    LT, GT, DQ = map(markupsafe_escape, ['<', '>', '"'])
-    assert render_api.render_template(content_t) == f'<div>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</div>'
+    LT, GT, DQ = map(markupsafe_escape, ["<", ">", '"'])
+    assert (
+        render_api.render_template(content_t)
+        == f"<div>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</div>"
+    )

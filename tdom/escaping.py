@@ -82,11 +82,11 @@ def escape_html_script(text: str) -> str:
 
 def escape_html_content_in_tag(parent_tag, content):
     parent_tag = parent_tag.lower()
-    if parent_tag == 'script':
+    if parent_tag == "script":
         return escape_html_script(content)
-    elif parent_tag == '<!--':
+    elif parent_tag == "<!--":
         return escape_html_comment(content)
-    elif parent_tag == 'style':
+    elif parent_tag == "style":
         LT = "&lt;"
         close_str = f"</{parent_tag}>"
         # @TODO: This whole escaping business is probably be misguided... but we should cache this.
