@@ -128,8 +128,7 @@ def _prep_cinfo(component_callable, attrs, system):
             f"Missing required parameters for component: {', '.join(missing)}"
         )
 
-    expect_cvalues = (not callable_info.return_is_undefined) and (callable_info.return_origin is not Template)
-    return kwargs, expect_cvalues
+    return kwargs
 
 
 def interpolate_component(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
@@ -159,7 +158,7 @@ def interpolate_component(render_api, q, bf, last_container_tag, template, ip_in
     # @DESIGN: Inject system vars via manager?
     system_dict = render_api.get_system(children=embedded_template, children_struct=embedded_struct_t)
     # @DESIGN: Determine return signature from callable info (cached inspection) ?
-    kwargs, expect_cvalues = _prep_cinfo(component_callable, resolved_attrs, system_dict)
+    kwargs = _prep_cinfo(component_callable, resolved_attrs, system_dict)
     res = component_callable(**kwargs)
     # @DESIGN: Determine return signature via runtime inspection?
     if isinstance(res, tuple):
