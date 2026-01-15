@@ -133,22 +133,22 @@ def _prep_cinfo(component_callable, attrs, system):
 
 def interpolate_component(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     """
-    - Extract embedded template or use empty template.
-    - Transform embedded template into struct template.
+    - Extract children template or use empty template.
+    - Transform children template into struct template.
     - Resolve attrs but don't stringify.
     - Resolve callable.
-    - Invoke callable with attrs, embedded template, embedded struct template. (no garbage barge? how can we pass the cache?)
+    - Invoke callable with attrs
     - If callable returns a result template then
          * transform it to a struct template
          * iteratively recurse into that result template and start outputting it
     """
     (container_tag, attrs, start_i_index, end_i_index, body_start_s_index) = ip_info
     if start_i_index != end_i_index and end_i_index is not None:
-        # @DESIGN: We extract the embedded template from the original outer template.
-        embedded_template = render_api.transform_api.extract_embedded_template(template, body_start_s_index, end_i_index)
+        # @DESIGN: We extract the children template from the original outer template.
+        children_template = render_api.transform_api.extract_children_template(template, body_start_s_index, end_i_index)
     else:
-        embedded_template = Template('')
-    embedded_struct_t = render_api.process_template(embedded_template)
+        children_template = Template('')
+    children_struct_t = render_api.process_template(children_template)
     resolved_attrs = render_api.resolve_attrs(attrs, template)
     start_i = template.interpolations[start_i_index]
     component_callable = start_i.value
@@ -156,7 +156,7 @@ def interpolate_component(render_api, q, bf, last_container_tag, template, ip_in
         raise TypeError('Component callable in start tag must match component callable in end tag.')
 
     # @DESIGN: Inject system vars via manager?
-    system_dict = render_api.get_system(children=embedded_template, children_struct=embedded_struct_t)
+    system_dict = render_api.get_system(children=children_template, children_struct=children_struct_t)
     # @DESIGN: Determine return signature from callable info (cached inspection) ?
     kwargs = _prep_cinfo(component_callable, resolved_attrs, system_dict)
     res = component_callable(**kwargs)
@@ -353,7 +353,7 @@ class TransformService:
                 return True
         return False
 
-    def extract_embedded_template(self, template: Template, body_start_s_index: int, end_i_index: int) -> Template:
+    def extract_children_template(self, template: Template, body_start_s_index: int, end_i_index: int) -> Template:
         """
         Extract the template parts exclusively from start tag to end tag.
 
@@ -367,12 +367,12 @@ class TransformService:
                 t'<div>{content} <span>{footer}</span></div>'
             t'</{comp}>'
         )
-        assert self.extract_embedded_template(template, 2, 4) == (
+        assert self.extract_children_template(template, 2, 4) == (
             t'<div>{content} <span>{footer}</span></div>'
         )
         starttag = t'<{comp} attr={attr}>'
         endtag = t'</{comp}>'
-        assert template == starttag + self.extract_embedded_template(template, 2, 4) + endtag
+        assert template == starttag + self.extract_children_template(template, 2, 4) + endtag
         ```
         @DESIGN: "There must be a better way."
         """
