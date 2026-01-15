@@ -181,8 +181,8 @@ def interpolate_component(render_api, q, bf, last_container_tag, template, ip_in
         return (container_tag, iter(walker))
 
 
-def interpolate_raw_text(render_api, q, bf, last_container_tag, template, value) -> RenderQueueItem | None:
-    container_tag, content_t = value
+def interpolate_raw_text(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
+    container_tag, content_t = ip_info
     bf.append(render_api.escape_html_content_in_tag(container_tag, render_api.resolve_text_without_recursion(template, container_tag, content_t)))
 
 
