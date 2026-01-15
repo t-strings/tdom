@@ -161,7 +161,7 @@ def interpolate_component(
         )
     else:
         children_template = Template("")
-    # @DESIGN: children_struct_t = render_api.process_template(children_template) ?
+    # @DESIGN: children_struct_t = render_api.transform_api.transform_template(children_template) ?
     resolved_attrs = render_api.resolve_attrs(attrs, template)
     start_i = template.interpolations[start_i_index]
     component_callable = start_i.value
@@ -194,7 +194,7 @@ def interpolate_component(
     context_values = comp_info.get("context_values", ()) if comp_info else ()
 
     if result_template:
-        result_struct = render_api.process_template(result_template)
+        result_struct = render_api.transform_api.transform_template(result_template)
         if context_values:
             walker = render_api.walk_template_with_context(
                 bf, result_template, result_struct, context_values=context_values
@@ -272,7 +272,7 @@ def interpolate_text(
                 container_tag,
                 iter(
                     render_api.walk_template(
-                        bf, value, render_api.process_template(value)
+                        bf, value, render_api.transform_api.transform_template(value)
                     )
                 ),
             )
@@ -544,7 +544,7 @@ class RenderService:
         q.append(
             (
                 last_container_tag,
-                self.walk_template(bf, template, self.process_template(template)),
+                self.walk_template(bf, template, self.transform_api.transform_template(template)),
             )
         )
         while q:
@@ -613,10 +613,6 @@ class RenderService:
                     if value_str:
                         text.append(value_str)
             return "".join(text)
-
-    def process_template(self, template):
-        """This is just a wrap-point for caching."""
-        return self.transform_api.transform_template(template)
 
     def resolve_attrs(self, attrs, template) -> AttributesDict:
         """

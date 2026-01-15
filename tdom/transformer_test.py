@@ -70,11 +70,11 @@ def test_process_template_internal_cache():
     alt_t = t"""<span>{"content"}</span>"""
     render_api = render_service_factory()
     cached_render_api = cached_render_service_factory()
-    tnode1 = render_api.process_template(sample_t)
-    tnode2 = render_api.process_template(sample_t)
-    cached_tnode1 = cached_render_api.process_template(sample_t)
-    cached_tnode2 = cached_render_api.process_template(sample_t)
-    cached_tnode3 = cached_render_api.process_template(sample_diff_t)
+    tnode1 = render_api.transform_api.transform_template(sample_t)
+    tnode2 = render_api.transform_api.transform_template(sample_t)
+    cached_tnode1 = cached_render_api.transform_api.transform_template(sample_t)
+    cached_tnode2 = cached_render_api.transform_api.transform_template(sample_t)
+    cached_tnode3 = cached_render_api.transform_api.transform_template(sample_diff_t)
     # Check that the uncached and cached services are actually
     # returning non-identical results.
     assert tnode1 is not cached_tnode1
@@ -99,7 +99,7 @@ def test_process_template_internal_cache():
     assert ci.hits == 2
     # cached_tnode1 was a miss because cache was empty (brand new)
     assert ci.misses == 1
-    cached_tnode4 = cached_render_api.process_template(alt_t)
+    cached_tnode4 = cached_render_api.transform_api.transform_template(alt_t)
     # A different template produces a brand new tnode.
     assert cached_tnode1 is not cached_tnode4
     # The template is new AND has a different structure so it also
