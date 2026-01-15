@@ -16,8 +16,8 @@ def test_render_template_smoketest():
     templated = "not literal"
     spread_attrs={'data-on': True}
     markup_content = Markup('<div>safe</div>')
-    def comp(attrs, body_t, body_struct):
-        return t'<div>{body_t}</div>'
+    def comp(children):
+        return t'<div>{children}</div>'
     smoke_t = t'''<!doctype html>
 <html>
 <body>
@@ -120,16 +120,15 @@ def test_render_template_iterables():
 
 def test_render_component_with_context():
 
-    def ThemeContext(attrs, embedded_t, embedded_struct):
-        context_values = ((theme_context_var, attrs.get('value', 'normal')),)
-        return embedded_t, context_values
+    def ThemeContext(theme, children):
+        return children, {'context_values': ((theme_context_var, theme),)}
 
-    def ThemedDiv(attrs, embedded_t, embedded_struct):
+    def ThemedDiv(children):
         theme = theme_context_var.get()
-        return t'<div data-theme="{theme}">{embedded_t}</div>'
+        return t'<div data-theme="{theme}">{children}</div>'
 
     render_api = render_service_factory()
-    body_t = t"<div><{ThemeContext:passthru+cvalues} value='holiday'><{ThemedDiv}><b>Cheers!</b></{ThemedDiv}></{ThemeContext}></div>"
+    body_t = t"<div><{ThemeContext} theme='holiday'><{ThemedDiv}><b>Cheers!</b></{ThemedDiv}></{ThemeContext}></div>"
     with theme_context_var.set('not-the-default'):
         assert render_api.render_template(body_t) == '<div><div data-theme="holiday"><b>Cheers!</b></div></div>'
         assert theme_context_var.get() == 'not-the-default'
@@ -138,13 +137,13 @@ def test_render_component_with_context():
 
 def test_render_template_components_smoketest():
 
-    def PageComponent(attrs, content_t, content_struct):
-        return t'''<div class="content">{content_t}</div>'''
+    def PageComponent(children):
+        return t'''<div class="content">{children}</div>'''
 
-    def FooterComponent(attrs, body_t, body_struct):
+    def FooterComponent():
         return t'<div class="footer"><a href="about">About</a></div>'
 
-    def LayoutComponent(attrs, body_t, body_struct):
+    def LayoutComponent(children):
         return t'''<!doctype html>
 <html>
   <head>
@@ -152,7 +151,7 @@ def test_render_template_components_smoketest():
     <script src="scripts.js"></script>
     <link rel="stylesheet" href="styles.css">
   </head>
-  <body>{body_t}<{FooterComponent} /></body>
+  <body>{children}<{FooterComponent} /></body>
 </html>
 '''
 
@@ -179,7 +178,7 @@ def test_render_template_functions_smoketest():
     def make_footer_t() -> Template:
         return t'<div class="footer"><a href="about">About</a></div>'
 
-    def make_layout_t(body_t: Template) -> Template:
+    def make_layout_t(children) -> Template:
         footer_t = make_footer_t()
         return t'''<!doctype html>
 <html>
@@ -188,7 +187,7 @@ def test_render_template_functions_smoketest():
     <script src="scripts.js"></script>
     <link rel="stylesheet" href="styles.css">
   </head>
-  <body>{body_t}{footer_t}</body>
+  <body>{children}{footer_t}</body>
 </html>
 '''
 
@@ -207,16 +206,15 @@ def test_render_template_functions_smoketest():
 </html>
 '''
 
-def test_render_template_components_cinfo_smoketest():
+def test_render_template_components_smoketest():
 
-    def PageComponent(embedded_template=None):
-        return t'''<div class="content">{embedded_template}</div>'''
+    def PageComponent(children):
+        return t'''<div class="content">{children}</div>'''
 
     def FooterComponent():
         return t'<div class="footer"><a href="about">About</a></div>'
 
-    def LayoutComponent(embedded_template=None):
-        assert embedded_template
+    def LayoutComponent(children):
         return t'''<!doctype html>
 <html>
   <head>
@@ -224,13 +222,13 @@ def test_render_template_components_cinfo_smoketest():
     <script src="scripts.js"></script>
     <link rel="stylesheet" href="styles.css">
   </head>
-  <body>{embedded_template}<{FooterComponent:cinfo} /></body>
+  <body>{children}<{FooterComponent} /></body>
 </html>
 '''
 
     render_api = render_service_factory()
     content = 'HTML never goes out of style.'
-    content_str = render_api.render_template(t'<{LayoutComponent:cinfo}><{PageComponent:cinfo}>{content}</{PageComponent:cinfo}></{LayoutComponent:cinfo}>')
+    content_str = render_api.render_template(t'<{LayoutComponent}><{PageComponent}>{content}</{PageComponent}></{LayoutComponent}>')
     assert content_str == '''<!doctype html>
 <html>
   <head>
