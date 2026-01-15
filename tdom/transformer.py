@@ -46,7 +46,7 @@ class EndTag:
 
 
 def render_html_attrs(html_attrs: HTMLAttributesDict, escape: Callable = default_escape_html_text) -> str:
-    return ''.join((f' {k}="{v}"' if v is not None else f' {k}' for k, v in html_attrs.items()))
+    return ''.join((f' {k}="{escape(v)}"' if v is not None else f' {k}' for k, v in html_attrs.items()))
 
 
 class Interpolator(t.Protocol):
