@@ -51,15 +51,13 @@ def render_html_attrs(html_attrs: HTMLAttributesDict, escape: Callable = default
 
 class Interpolator(t.Protocol):
 
-    def __call__(self, render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
+    def __call__(self, render_api, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
         """
         Populates an interpolation or returns iterator to decende into.
 
         If recursion is required then pushes current iterator
         render_api
             The current render api, provides various helper methods to the interpolator.
-        q
-            A list-like queue of iterators paired with the container tag the results are in.
         bf
             A list-like output buffer.
         last_container_tag
@@ -81,13 +79,13 @@ type InterpolationInfo = object | None
 type RenderQueueItem = tuple[str | None, Iterable[tuple[Interpolator, Template, InterpolationInfo]]]
 
 
-def interpolate_comment(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
+def interpolate_comment(render_api, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, comment_t = ip_info
     assert container_tag == '<!--'
     bf.append(render_api.escape_html_comment(render_api.resolve_text_without_recursion(template, container_tag, comment_t)))
 
 
-def interpolate_attrs(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
+def interpolate_attrs(render_api, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, attrs = ip_info
     resolved_attrs = render_api.resolve_attrs(attrs, template)
     attrs_str = render_html_attrs(coerce_to_html_attrs(resolved_attrs))
@@ -131,7 +129,7 @@ def _prep_cinfo(component_callable, attrs, system):
     return kwargs
 
 
-def interpolate_component(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
+def interpolate_component(render_api, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     """
     - Extract children template or use empty template.
     - Transform children template into struct template.
@@ -181,17 +179,17 @@ def interpolate_component(render_api, q, bf, last_container_tag, template, ip_in
         return (container_tag, iter(walker))
 
 
-def interpolate_raw_text(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
+def interpolate_raw_text(render_api, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, content_t = ip_info
     bf.append(render_api.escape_html_content_in_tag(container_tag, render_api.resolve_text_without_recursion(template, container_tag, content_t)))
 
 
-def interpolate_escapable_raw_text(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
+def interpolate_escapable_raw_text(render_api, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, content_t = ip_info
     bf.append(render_api.escape_html_text(render_api.resolve_text_without_recursion(template, container_tag, content_t)))
 
 
-def interpolate_struct_text(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
+def interpolate_struct_text(render_api, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, ip_index = ip_info
     # @TODO: We just completely ignore any conversion or format_spec here.
     # This is actually a much larger problem/decision of how can a user give us more information about what to do
@@ -201,14 +199,14 @@ def interpolate_struct_text(render_api, q, bf, last_container_tag, template, ip_
     #   - The 4th interpolation will be an iterator of html-aware Template strings
     #   - The 5th interpolation will be an iterator of strings to render and escape.
     value = template.interpolations[ip_index].value # data provided to a parsed t-string
-    return interpolate_text(render_api, q, bf, last_container_tag, template, (container_tag, value))
+    return interpolate_text(render_api, bf, last_container_tag, template, (container_tag, value))
 
 
-def interpolate_user_text(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
-    return interpolate_text(render_api, q, bf, last_container_tag, template, ip_info)
+def interpolate_user_text(render_api, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
+    return interpolate_text(render_api, bf, last_container_tag, template, ip_info)
 
 
-def interpolate_text(render_api, q, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
+def interpolate_text(render_api, bf, last_container_tag, template, ip_info) -> RenderQueueItem | None:
     container_tag, value = ip_info
     if container_tag is None:
         container_tag = last_container_tag
@@ -426,7 +424,7 @@ class RenderService:
         while q:
             last_container_tag, it = q.pop()
             for (interpolator, template, ip_info) in it:
-                render_queue_item = interpolator(self, q, bf, last_container_tag, template, ip_info)
+                render_queue_item = interpolator(self, bf, last_container_tag, template, ip_info)
                 if render_queue_item is not None:
                     #
                     # Pause the current iterator and push a new iterator on top of it.
