@@ -170,7 +170,7 @@ def interpolate_component(
         )
     else:
         children_template = Template("")
-    children_struct_t = render_api.process_template(children_template)
+    # @DESIGN: children_struct_t = render_api.process_template(children_template) ?
     resolved_attrs = render_api.resolve_attrs(attrs, template)
     start_i = template.interpolations[start_i_index]
     component_callable = start_i.value
@@ -185,7 +185,7 @@ def interpolate_component(
 
     # @DESIGN: Inject system vars via manager?
     system_dict = render_api.get_system(
-        children=children_template, children_struct=children_struct_t
+        children=children_template #@DESIGN: children_struct=children_struct_t ?
     )
     # @DESIGN: Determine return signature from callable info (cached inspection) ?
     kwargs = _prep_cinfo(component_callable, resolved_attrs, system_dict)
@@ -530,8 +530,9 @@ class RenderService:
 
     escape_html_content_in_tag: Callable = default_escape_html_content_in_tag
 
-    def get_system(self, children, children_struct):
-        return {"children": children, "children_struct": children_struct}
+    def get_system(self, **kwargs):
+        # @DESIGN: Maybe inject more here?
+        return {**kwargs}
 
     def render_template(self, template, last_container_tag=None) -> str:
         """
