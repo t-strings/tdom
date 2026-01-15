@@ -1,7 +1,8 @@
 from contextvars import ContextVar
 from string.templatelib import Template
-from markupsafe import Markup
+from markupsafe import Markup, escape as markupsafe_escape
 import typing as t
+import pytest
 
 from .transformer import render_service_factory, cached_render_service_factory, CachedTransformService
 
@@ -243,3 +244,36 @@ def test_render_template_functions_smoketest():
   </body>
 </html>
 '''
+
+
+def test_text_interpolation_with_dynamic_parent():
+    render_api = render_service_factory()
+    with pytest.raises(ValueError, match='Recursive includes are not supported within script'):
+        content = '<script>console.log("123!");</script>'
+        content_t = t'{content}'
+        _ = render_api.render_template(t'<script>{content_t}</script>')
+
+
+@pytest.mark.skip('Can we allow this?')
+def test_escape_escapable_raw_text_with_dynamic_parent():
+    content = '<script>console.log("123!");</script>'
+    content_t = t'{content}'
+    render_api = render_service_factory()
+    LT, GT, DQ = map(markupsafe_escape, ['<', '>', '"'])
+    assert render_api.render_template(t'<textarea>{content_t}</textarea>') == f'<textarea>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</textarea>'
+
+
+def test_escape_structured_text_with_dynamic_parent():
+    content = '<script>console.log("123!");</script>'
+    content_t = t'{content}'
+    render_api = render_service_factory()
+    LT, GT, DQ = map(markupsafe_escape, ['<', '>', '"'])
+    assert render_api.render_template(t'<div>{content_t}</div>') == f'<div>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</div>'
+
+
+def test_escape_structured_text():
+    content = '<script>console.log("123!");</script>'
+    content_t = t'<div>{content}</div>'
+    render_api = render_service_factory()
+    LT, GT, DQ = map(markupsafe_escape, ['<', '>', '"'])
+    assert render_api.render_template(content_t) == f'<div>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</div>'
