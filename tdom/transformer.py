@@ -8,6 +8,7 @@ from contextvars import ContextVar, Token
 import functools
 from markupsafe import Markup
 
+from .format import format_interpolation
 from .parser import TemplateParser, HTMLAttributesDict
 from .tnodes import (
     TNode,
@@ -287,16 +288,7 @@ def interpolate_struct_text(
     ip_info: InterpolateInfo,
 ) -> RenderQueueItem | None:
     container_tag, ip_index = t.cast(InterpolateStructTextInfo, ip_info)
-    # @TODO: We just completely ignore any conversion or format_spec here.
-    # This is actually a much larger problem/decision of how can a user give us more information about what to do
-    # with their input AND should that be a one-off OR cached with the structured template forever.
-    # For example
-    #   - The 3rd interpolation will always be a html-aware Template string
-    #   - The 4th interpolation will be an iterator of html-aware Template strings
-    #   - The 5th interpolation will be an iterator of strings to render and escape.
-    value = template.interpolations[
-        ip_index
-    ].value  # data provided to a parsed t-string
+    value = format_interpolation(template.interpolations[ip_index])
     return interpolate_text(
         render_api, bf, last_container_tag, template, (container_tag, value)
     )
