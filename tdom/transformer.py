@@ -33,9 +33,10 @@ from .escaping import (
 from .utils import CachableTemplate
 from .processor import (
     _resolve_t_attrs as resolve_dynamic_attrs,
-    AttributesDict,
     _resolve_html_attrs as coerce_to_html_attrs,
     _kebab_to_snake,
+    HasHTMLDunder,
+    AttributesDict,
 )
 from .callables import get_callable_info
 
@@ -56,9 +57,22 @@ def render_html_attrs(
     )
 
 
-class Interpolator(t.Protocol):
+type InterpolateInfo = tuple
+
+
+type RenderQueueItem = tuple[
+    str | None, t.Iterable[tuple[InterpolatorProto, Template, InterpolateInfo]]
+]
+
+
+class InterpolatorProto(t.Protocol):
     def __call__(
-        self, render_api, bf, last_container_tag, template, ip_info
+        self,
+        render_api: RenderService,
+        bf: list[str],
+        last_container_tag: str | None,
+        template: Template,
+        ip_info: InterpolateInfo,
     ) -> RenderQueueItem | None:
         """
         Populates an interpolation or returns iterator to decende into.
@@ -79,21 +93,20 @@ class Interpolator(t.Protocol):
 
         Returns a render queue item when the main iteration loops needs to be paused and restarted to descend.
         """
-        pass
+        raise NotImplementedError
 
 
-type InterpolationInfo = object | None
-
-
-type RenderQueueItem = tuple[
-    str | None, Iterable[tuple[Interpolator, Template, InterpolationInfo]]
-]
+type InterpolateCommentInfo = tuple[str, Template]
 
 
 def interpolate_comment(
-    render_api, bf, last_container_tag, template, ip_info
+    render_api: RenderService,
+    bf: list[str],
+    last_container_tag: str | None,
+    template: Template,
+    ip_info: InterpolateInfo,
 ) -> RenderQueueItem | None:
-    container_tag, comment_t = ip_info
+    container_tag, comment_t = t.cast(InterpolateCommentInfo, ip_info)
     assert container_tag == "<!--"
     bf.append(
         render_api.escape_html_comment(
@@ -104,16 +117,25 @@ def interpolate_comment(
     )
 
 
+type InterpolateAttrsInfo = tuple[str, Sequence[TAttribute]]
+
+
 def interpolate_attrs(
-    render_api, bf, last_container_tag, template, ip_info
+    render_api: RenderService,
+    bf: list[str],
+    last_container_tag: str | None,
+    template: Template,
+    ip_info: InterpolateInfo,
 ) -> RenderQueueItem | None:
-    container_tag, attrs = ip_info
+    container_tag, attrs = t.cast(InterpolateAttrsInfo, ip_info)
     resolved_attrs = render_api.resolve_attrs(attrs, template)
     attrs_str = render_html_attrs(coerce_to_html_attrs(resolved_attrs))
     bf.append(attrs_str)
 
 
-def _prep_cinfo(component_callable, attrs, system):
+def _prep_cinfo(
+    component_callable: Callable, attrs: AttributesDict, system: dict[str, object]
+):
     # @DESIGN: This is lifted from the processor and then grossified.
     # Not sure this will work out but maybe we'd unify these.
     callable_info = get_callable_info(component_callable)
@@ -150,10 +172,19 @@ def _prep_cinfo(component_callable, attrs, system):
     return kwargs
 
 
+type InterpolateComponentInfo = tuple[str, Sequence[TAttribute], int, int | None, int]
+
+
 def interpolate_component(
-    render_api, bf, last_container_tag, template, ip_info
+    render_api: RenderService,
+    bf: list[str],
+    last_container_tag: str | None,
+    template: Template,
+    ip_info: InterpolateInfo,
 ) -> RenderQueueItem | None:
-    (container_tag, attrs, start_i_index, end_i_index, body_start_s_index) = ip_info
+    (container_tag, attrs, start_i_index, end_i_index, body_start_s_index) = t.cast(
+        InterpolateComponentInfo, ip_info
+    )
     if start_i_index != end_i_index and end_i_index is not None:
         # @DESIGN: We extract the children template from the original outer template.
         children_template = render_api.transform_api.extract_children_template(
@@ -176,7 +207,7 @@ def interpolate_component(
 
     # @DESIGN: Inject system vars via manager?
     system_dict = render_api.get_system(
-        children=children_template #@DESIGN: children_struct=children_struct_t ?
+        children=children_template  # @DESIGN: children_struct=children_struct_t ?
     )
     # @DESIGN: Determine return signature from callable info (cached inspection) ?
     kwargs = _prep_cinfo(component_callable, resolved_attrs, system_dict)
@@ -204,10 +235,17 @@ def interpolate_component(
         return (container_tag, iter(walker))
 
 
+type InterpolateRawTextInfo = tuple[str, Template]
+
+
 def interpolate_raw_text(
-    render_api, bf, last_container_tag, template, ip_info
+    render_api: RenderService,
+    bf: list[str],
+    last_container_tag: str | None,
+    template: Template,
+    ip_info: InterpolateInfo,
 ) -> RenderQueueItem | None:
-    container_tag, content_t = ip_info
+    container_tag, content_t = t.cast(InterpolateRawTextInfo, ip_info)
     bf.append(
         render_api.escape_html_content_in_tag(
             container_tag,
@@ -218,10 +256,17 @@ def interpolate_raw_text(
     )
 
 
+type InterpolateEscapableRawTextInfo = tuple[str, Template]
+
+
 def interpolate_escapable_raw_text(
-    render_api, bf, last_container_tag, template, ip_info
+    render_api: RenderService,
+    bf: list[str],
+    last_container_tag: str | None,
+    template: Template,
+    ip_info: InterpolateInfo,
 ) -> RenderQueueItem | None:
-    container_tag, content_t = ip_info
+    container_tag, content_t = t.cast(InterpolateEscapableRawTextInfo, ip_info)
     bf.append(
         render_api.escape_html_text(
             render_api.resolve_text_without_recursion(
@@ -231,10 +276,17 @@ def interpolate_escapable_raw_text(
     )
 
 
+type InterpolateStructTextInfo = tuple[str, int]
+
+
 def interpolate_struct_text(
-    render_api, bf, last_container_tag, template, ip_info
+    render_api: RenderService,
+    bf: list[str],
+    last_container_tag: str | None,
+    template: Template,
+    ip_info: InterpolateInfo,
 ) -> RenderQueueItem | None:
-    container_tag, ip_index = ip_info
+    container_tag, ip_index = t.cast(InterpolateStructTextInfo, ip_info)
     # @TODO: We just completely ignore any conversion or format_spec here.
     # This is actually a much larger problem/decision of how can a user give us more information about what to do
     # with their input AND should that be a one-off OR cached with the structured template forever.
@@ -250,16 +302,35 @@ def interpolate_struct_text(
     )
 
 
+# @TODO: can we coerce this to still use typing even if we just str() everything ? -- `| object`
+type UserTextValueItem = None | str | Template | HasHTMLDunder
+# @TODO: See above about `| object`
+type UserTextValue = (
+    UserTextValueItem | Sequence[UserTextValueItem] | t.Iterable[UserTextValueItem]
+)
+
+
 def interpolate_user_text(
-    render_api, bf, last_container_tag, template, ip_info
+    render_api: RenderService,
+    bf: list[str],
+    last_container_tag: str | None,
+    template: Template,
+    ip_info: InterpolateInfo,
 ) -> RenderQueueItem | None:
     return interpolate_text(render_api, bf, last_container_tag, template, ip_info)
 
 
+type InterpolateTextInfo = tuple[str, object]
+
+
 def interpolate_text(
-    render_api, bf, last_container_tag, template, ip_info
+    render_api: RenderService,
+    bf: list[str],
+    last_container_tag: str | None,
+    template: Template,
+    ip_info: InterpolateInfo,
 ) -> RenderQueueItem | None:
-    container_tag, value = ip_info
+    container_tag, value = t.cast(InterpolateTextInfo, ip_info)
     if container_tag is None:
         container_tag = last_container_tag
 
@@ -276,17 +347,29 @@ def interpolate_text(
                     )
                 ),
             )
-        elif isinstance(value, Sequence) or hasattr(value, "__iter__"):
+        elif isinstance(value, t.Sequence) or hasattr(value, "__iter__"):
             return (
+                # yield (populate, template, value)
                 container_tag,
-                (((interpolate_user_text, template, (None, v)) for v in iter(value))),
+                (
+                    (
+                        interpolate_user_text,
+                        template,
+                        (container_tag, v if v is not None else None),
+                    )
+                    for v in t.cast(Iterable, value)
+                ),
             )
         elif value is False or value is None:
             # Do nothing here, we don't even need to yield ''.
             return
+        else:
+            # Fall's through, we should rewrite this.
+            pass
 
     if container_tag not in ("style", "script", "title", "textarea", "<!--"):
         if hasattr(value, "__html__"):
+            value = t.cast(HasHTMLDunder, value)
             bf.append(value.__html__())
         else:
             bf.append(render_api.escape_html_text(value))
@@ -313,25 +396,27 @@ class TransformService:
 
     slash_void: bool = False  # Apply a xhtml-style slash to void html elements.
 
-    def transform_template(self, values_template: Template) -> Template:
+    def transform_template(self, template: Template) -> Template:
         """Transform the given template into a template for rendering."""
-        struct_node = self.to_struct_node(values_template)
+        struct_node = self.to_struct_node(template)
         return self.to_struct_template(struct_node)
 
-    def to_struct_node(self, values_template: Template) -> TNode:
-        return TemplateParser.parse(values_template)
+    def to_struct_node(self, template: Template) -> TNode:
+        return TemplateParser.parse(template)
 
     def to_struct_template(self, struct_node: TNode) -> Template:
         """Recombine stream of tokens from node trees into a new template."""
         return Template(*self.streamer(struct_node))
 
-    def _stream_comment_interpolation(self, text_t):
+    def _stream_comment_interpolation(self, text_t: Template):
         info = ("<!--", text_t)
         return Interpolation(
             (interpolate_comment, info), "", None, "html_comment_template"
         )
 
-    def _stream_attrs_interpolation(self, last_container_tag, attrs):
+    def _stream_attrs_interpolation(
+        self, last_container_tag: str | None, attrs: t.Sequence[TAttribute]
+    ):
         info = (last_container_tag, attrs)
         return Interpolation((interpolate_attrs, info), "", None, "html_attrs_seq")
 
@@ -521,11 +606,13 @@ class RenderService:
 
     escape_html_content_in_tag: Callable = default_escape_html_content_in_tag
 
-    def get_system(self, **kwargs):
+    def get_system(self, **kwargs: object):
         # @DESIGN: Maybe inject more here?
         return {**kwargs}
 
-    def render_template(self, template, last_container_tag=None) -> str:
+    def render_template(
+        self, template: Template, last_container_tag: str | None = None
+    ) -> str:
         """
         Iterate left to right and pause and push new iterators when descending depth-first.
 
@@ -544,7 +631,9 @@ class RenderService:
         q.append(
             (
                 last_container_tag,
-                self.walk_template(bf, template, self.transform_api.transform_template(template)),
+                self.walk_template(
+                    bf, template, self.transform_api.transform_template(template)
+                ),
             )
         )
         while q:
@@ -562,7 +651,9 @@ class RenderService:
                     break
         return "".join(bf)
 
-    def resolve_text_without_recursion(self, template, container_tag, content_t) -> str:
+    def resolve_text_without_recursion(
+        self, template: Template, container_tag: str, content_t: Template
+    ) -> str:
         """
         Resolve the text in the given template without recursing into more structured text.
 
@@ -571,10 +662,9 @@ class RenderService:
         A non-exact match is not allowed because we cannot process escaping
         across the boundary between other content and the pass-through content.
         """
-        parts = list(content_t)
-        exact = len(parts) == 1 and len(content_t.interpolations) == 1
-        if exact:
-            value = template.interpolations[parts[0].value].value
+        if len(content_t.interpolations) == 1 and content_t.strings == ("", ""):
+            i_index = t.cast(int, content_t.interpolations[0].value)
+            value = template.interpolations[i_index].value
             if value is None or value is False:
                 return ""
             elif isinstance(value, str):
@@ -614,15 +704,18 @@ class RenderService:
                         text.append(value_str)
             return "".join(text)
 
-    def resolve_attrs(self, attrs, template) -> AttributesDict:
-        """
-        - interpolate interpolations
-        - perform special attribute handling
-        - merge
-        """
+    def resolve_attrs(
+        self, attrs: t.Sequence[TAttribute], template: Template
+    ) -> AttributesDict:
         return resolve_dynamic_attrs(attrs, template.interpolations)
 
-    def walk_template_with_context(self, bf, template, struct_t, context_values=None):
+    def walk_template_with_context(
+        self,
+        bf: list[str],
+        template: Template,
+        struct_t: Template,
+        context_values: tuple[tuple[ContextVar, object]] | None = None,
+    ) -> Iterable[tuple[InterpolatorProto, Template, InterpolateInfo]]:
         if context_values:
             cm = ContextVarSetter(context_values=context_values)
         else:
@@ -630,7 +723,9 @@ class RenderService:
         with cm:
             yield from self.walk_template(bf, template, struct_t)
 
-    def walk_template(self, bf, template, struct_t):
+    def walk_template(
+        self, bf: list[str], template: Template, struct_t: Template
+    ) -> Iterable[tuple[InterpolatorProto, Template, InterpolateInfo]]:
         strings = struct_t.strings
         ips = struct_t.interpolations
         last_str = len(strings) - 1
@@ -691,6 +786,6 @@ class CachedTransformService(TransformService):
     def _transform_template(self, cached_template: CachableTemplate) -> Template:
         return super().transform_template(cached_template.template)
 
-    def transform_template(self, values_template: Template) -> Template:
-        ct = CachableTemplate(values_template)
+    def transform_template(self, template: Template) -> Template:
+        ct = CachableTemplate(template)
         return self._transform_template(ct)
