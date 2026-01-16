@@ -326,10 +326,16 @@ def interpolate_text(
     if container_tag is None:
         container_tag = last_container_tag
 
-    #
-    # Try to optimize past this block if the value is a str.
-    #
-    if not isinstance(value, str):
+    if type(value) is str:  # ONLY native strings, not Markup/__html__, etc.
+        if container_tag not in ("style", "script", "title", "textarea", "<!--"):
+            bf.append(render_api.escape_html_text(value))
+        else:
+            # @TODO: How could this happen?
+            raise ValueError(
+                f"We cannot escape text within {container_tag} when multiple interpolations could occur."
+            )
+            # bf.append(render_api.escape_html_content_in_tag(container_tag, str(value)))
+    else:
         if isinstance(value, Template):
             return (
                 container_tag,
@@ -339,9 +345,12 @@ def interpolate_text(
                     )
                 ),
             )
-        elif isinstance(value, t.Sequence) or hasattr(value, "__iter__"):
+        elif not isinstance(value, str) and (
+            isinstance(value, t.Sequence) or hasattr(value, "__iter__")
+        ):
+            # If we don't guard against str instances then str subclasses will be
+            # treated as a sequence/iterable of chars.
             return (
-                # yield (populate, template, value)
                 container_tag,
                 (
                     (
@@ -356,21 +365,14 @@ def interpolate_text(
             # Do nothing here, we don't even need to yield ''.
             return
         else:
-            # Fall's through, we should rewrite this.
-            pass
-
-    if container_tag not in ("style", "script", "title", "textarea", "<!--"):
-        if hasattr(value, "__html__"):
-            value = t.cast(HasHTMLDunder, value)
-            bf.append(value.__html__())
-        else:
-            bf.append(render_api.escape_html_text(value))
-    else:
-        # @TODO: How could this happen?
-        raise ValueError(
-            f"We cannot escape text within {container_tag} when multiple interpolations could occur."
-        )
-        # bf.append(render_api.escape_html_content_in_tag(container_tag, str(value)))
+            if container_tag not in ("style", "script", "title", "textarea", "<!--"):
+                if hasattr(value, "__html__"):
+                    value = t.cast(HasHTMLDunder, value)
+                    bf.append(value.__html__())
+                else:
+                    bf.append(render_api.escape_html_text(str(value)))
+            else:
+                raise NotImplementedError("We cannot handle text escaping here.")
 
 
 @dataclass(frozen=True)
