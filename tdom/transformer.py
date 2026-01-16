@@ -361,8 +361,8 @@ def interpolate_text(
                     for v in t.cast(Iterable, value)
                 ),
             )
-        elif value is False or value is None:
-            # Do nothing here, we don't even need to yield ''.
+        elif value is None:
+            # @DESIGN: Ignore None.
             return
         else:
             if container_tag not in ("style", "script", "title", "textarea", "<!--"):
@@ -370,6 +370,8 @@ def interpolate_text(
                     value = t.cast(HasHTMLDunder, value)
                     bf.append(value.__html__())
                 else:
+                    # @DESIGN: Everything that isn't an object we recognize is
+                    # coerced to a str() and emitted.
                     bf.append(render_api.escape_html_text(str(value)))
             else:
                 raise NotImplementedError("We cannot handle text escaping here.")
