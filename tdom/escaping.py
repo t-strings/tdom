@@ -87,12 +87,7 @@ def escape_html_content_in_tag(parent_tag, content):
     elif parent_tag == "<!--":
         return escape_html_comment(content)
     elif parent_tag == "style":
-        LT = "&lt;"
-        close_str = f"</{parent_tag}>"
-        # @TODO: This whole escaping business is probably be misguided... but we should cache this.
-        close_str_re = re.compile(close_str, re.I | re.A)
-        replace_str = LT + close_str[1:]
-        return re.sub(close_str_re, replace_str, content)
+        return escape_html_style(content)
     else:
         # Fallback to nuclear solution.
         return escape_html_text(content)
