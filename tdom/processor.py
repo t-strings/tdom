@@ -1,13 +1,13 @@
 import sys
 import typing as t
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Sequence, Callable
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
 from dataclasses import dataclass
 
 from markupsafe import Markup
 
-from .callables import get_callable_info
+from .callables import get_callable_info, CallableInfo
 from .format import format_interpolation as base_format_interpolation
 from .format import format_template
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
@@ -437,6 +437,39 @@ def _kebab_to_snake(name: str) -> str:
     return name.replace("-", "_").lower()
 
 
+def _prep_component_kwargs(
+    callable_info: CallableInfo,
+    attrs: AttributesDict,
+    system: dict[str, object],
+    kebab_to_snake: Callable[[str], str] = _kebab_to_snake,
+):
+    if callable_info.requires_positional:
+        raise TypeError(
+            "Component callables cannot have required positional arguments."
+        )
+
+    kwargs: AttributesDict = {}
+
+    # Add all supported attributes
+    for attr_name, attr_value in attrs.items():
+        snake_name = kebab_to_snake(attr_name)
+        if snake_name in callable_info.named_params or callable_info.kwargs:
+            kwargs[snake_name] = attr_value
+
+    for attr_name, attr_value in system.items():
+        if attr_name in callable_info.named_params or callable_info.kwargs:
+            kwargs[attr_name] = attr_value
+
+    # Check to make sure we've fully satisfied the callable's requirements
+    missing = callable_info.required_named_params - kwargs.keys()
+    if missing:
+        raise TypeError(
+            f"Missing required parameters for component: {', '.join(missing)}"
+        )
+
+    return kwargs
+
+
 def _invoke_component(
     attrs: AttributesDict,
     children: list[Node],  # TODO: why not TNode, though?
@@ -477,29 +510,9 @@ def _invoke_component(
         )
     callable_info = get_callable_info(value)
 
-    if callable_info.requires_positional:
-        raise TypeError(
-            "Component callables cannot have required positional arguments."
-        )
-
-    kwargs: AttributesDict = {}
-
-    # Add all supported attributes
-    for attr_name, attr_value in attrs.items():
-        snake_name = _kebab_to_snake(attr_name)
-        if snake_name in callable_info.named_params or callable_info.kwargs:
-            kwargs[snake_name] = attr_value
-
-    # Add children if appropriate
-    if "children" in callable_info.named_params or callable_info.kwargs:
-        kwargs["children"] = tuple(children)
-
-    # Check to make sure we've fully satisfied the callable's requirements
-    missing = callable_info.required_named_params - kwargs.keys()
-    if missing:
-        raise TypeError(
-            f"Missing required parameters for component: {', '.join(missing)}"
-        )
+    kwargs = _prep_component_kwargs(
+        callable_info, attrs, system={"children": tuple(children)}
+    )
 
     result = value(**kwargs)
     return _node_from_value(result)
