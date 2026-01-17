@@ -35,9 +35,9 @@ from .utils import CachableTemplate
 from .processor import (
     _resolve_t_attrs as resolve_dynamic_attrs,
     _resolve_html_attrs as coerce_to_html_attrs,
-    _kebab_to_snake,
     HasHTMLDunder,
     AttributesDict,
+    _prep_component_kwargs,
 )
 from .callables import get_callable_info
 
@@ -134,45 +134,6 @@ def interpolate_attrs(
     bf.append(attrs_str)
 
 
-def _prep_cinfo(
-    component_callable: Callable, attrs: AttributesDict, system: dict[str, object]
-):
-    # @DESIGN: This is lifted from the processor and then grossified.
-    # Not sure this will work out but maybe we'd unify these.
-    callable_info = get_callable_info(component_callable)
-
-    if callable_info.requires_positional:
-        raise TypeError(
-            "Component callables cannot have required positional arguments."
-        )
-
-    kwargs: AttributesDict = {}
-
-    # Inject system kwargs first.
-    if system:
-        if callable_info.kwargs:
-            kwargs.update(system)
-        else:
-            for kw in system:
-                if kw in callable_info.named_params:
-                    kwargs[kw] = system[kw]
-
-    # Plaster attributes in over top of system kwargs.
-    for attr_name, attr_value in attrs.items():
-        snake_name = _kebab_to_snake(attr_name)
-        if snake_name in callable_info.named_params or callable_info.kwargs:
-            kwargs[snake_name] = attr_value
-
-    # Check to make sure we've fully satisfied the callable's requirements
-    missing = callable_info.required_named_params - kwargs.keys()
-    if missing:
-        raise TypeError(
-            f"Missing required parameters for component: {', '.join(missing)}"
-        )
-
-    return kwargs
-
-
 type InterpolateComponentInfo = tuple[str, Sequence[TAttribute], int, int | None, int]
 
 
@@ -211,7 +172,8 @@ def interpolate_component(
         children=children_template  # @DESIGN: children_struct=children_struct_t ?
     )
     # @DESIGN: Determine return signature from callable info (cached inspection) ?
-    kwargs = _prep_cinfo(component_callable, resolved_attrs, system_dict)
+    callable_info = get_callable_info(component_callable)
+    kwargs = _prep_component_kwargs(callable_info, resolved_attrs, system=system_dict)
     res = component_callable(**kwargs)
     # @DESIGN: Determine return signature via runtime inspection?
     if isinstance(res, tuple):
