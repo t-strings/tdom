@@ -335,7 +335,6 @@ def interpolate_escapable_raw_texts_from_template(
     bf.append(
         render_api.escape_html_text(
             resolve_text_without_recursion(template, container_tag, content_t),
-            allow_markup=True,
         )
     )
 
