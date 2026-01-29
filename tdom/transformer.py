@@ -8,7 +8,6 @@ from contextvars import ContextVar, Token
 import functools
 import inspect
 
-from .format import format_interpolation
 from .parser import TemplateParser, HTMLAttributesDict
 from .tnodes import (
     TNode,
@@ -38,6 +37,7 @@ from .processor import (
     _resolve_html_attrs as coerce_to_html_attrs,
     AttributesDict,
     _prep_component_kwargs,
+    format_interpolation,
 )
 from .callables import get_callable_info
 
