@@ -4,6 +4,7 @@ from collections.abc import Iterable, Sequence, Callable
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
 from dataclasses import dataclass
+from contextvars import ContextVar
 
 from markupsafe import Markup
 
@@ -65,7 +66,29 @@ def _format_unsafe(value: object, format_spec: str) -> str:
     return str(value)
 
 
-CUSTOM_FORMATTERS = (("safe", _format_safe), ("unsafe", _format_unsafe))
+def format_callback(converted_value: Callable, format_spec: str) -> object:
+    """Call the `convert-value` to get a replacement value."""
+    assert format_spec == "callback"
+    return converted_value()
+
+
+def format_cvar(
+    converted_value: ContextVar | tuple[ContextVar, object], format_spec: str
+) -> object:
+    """Assume the `converted_value` is a `ContextVar` and extract the current value."""
+    assert format_spec == "cvar"
+    if isinstance(converted_value, tuple):
+        return converted_value[0].get(converted_value[1])
+    else:
+        return converted_value.get()
+
+
+CUSTOM_FORMATTERS = (
+    ("safe", _format_safe),
+    ("unsafe", _format_unsafe),
+    ("callback", format_callback),
+    ("cvar", format_cvar),
+)
 
 
 def format_interpolation(interpolation: Interpolation) -> object:

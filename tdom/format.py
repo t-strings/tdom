@@ -29,8 +29,8 @@ def convert[T](value: T, conversion: t.Literal["a", "r", "s"] | None) -> T | str
 type FormatMatcher = t.Callable[[str], bool]
 """A predicate function that returns True if a given format specifier matches its criteria."""
 
-type CustomFormatter = t.Callable[[object, str], str]
-"""A function that takes a value and a format specifier and returns a formatted string."""
+type CustomFormatter = t.Callable[[t.Any, str], t.Any]
+"""A function that takes a value and a format specifier and returns a formatted value."""
 
 type MatcherAndFormatter = tuple[str | FormatMatcher, CustomFormatter]
 """

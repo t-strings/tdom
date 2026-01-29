@@ -3,6 +3,7 @@ import typing as t
 from dataclasses import dataclass, field
 from string.templatelib import Interpolation, Template
 from itertools import product
+from contextvars import ContextVar
 
 import pytest
 from markupsafe import Markup
@@ -1485,3 +1486,35 @@ def test_mismatched_component_closing_tag_fails():
         _ = html(
             t"<{FunctionComponent} first=1 second={99} third-arg='comp1'>Hello</{ClassComponent}>"
         )
+
+
+# -----------------------
+# Formatter tests.
+# -----------------------
+
+
+def test_formatter_callback():
+    state = {"count": 15}
+
+    def get_count():
+        return state["count"]
+
+    count_t = t"<div>{get_count:callback}</div>"
+    assert str(html(count_t)) == "<div>15</div>"
+    state["count"] = 1
+    assert str(html(count_t)) == "<div>1</div>", (
+        "Check that we are actually calling the function each run."
+    )
+
+
+COUNT_CTX = ContextVar("COUNT_CTX", default="1")
+
+
+def test_formatter_cvar():
+    count_t = t"<div>{COUNT_CTX:cvar}</div>"
+    assert str(html(count_t)) == "<div>1</div>"
+    with COUNT_CTX.set("15"):
+        assert str(html(count_t)) == "<div>15</div>"
+    assert str(html(count_t)) == "<div>1</div>", (
+        "Check that we check the ContextVar each run."
+    )
