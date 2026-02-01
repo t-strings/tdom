@@ -230,7 +230,7 @@ def interpolate_component(
                 "Component callable in start tag must match component callable in end tag."
             )
     else:
-        children_template = Template("")
+        children_template = t""
 
     # @DESIGN: Inject system vars via manager?
     system_kwargs = render_api.get_system(
