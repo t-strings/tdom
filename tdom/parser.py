@@ -288,7 +288,9 @@ class TemplateParser(HTMLParser):
 
     def close(self) -> None:
         if self.stack:
-            raise ValueError("Invalid HTML structure: unclosed tags remain.")
+            raise ValueError(
+                f"Invalid HTML structure: unclosed tags remain: {self.stack[-1]}"
+            )
         if not self.placeholders.is_empty:
             raise ValueError("Some placeholders were never resolved.")
         super().close()
