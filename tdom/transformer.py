@@ -268,7 +268,7 @@ def interpolate_component(
             )
         else:
             walker = render_api.walk_template(bf, result_template, result_struct)
-        return (container_tag, iter(walker))
+        return render_api.make_render_queue_item(container_tag, iter(walker))
     elif result_template is None:
         # DO NOTHING
         return
@@ -384,7 +384,7 @@ def interpolate_normal_text_from_value(
         # @DESIGN: Objects with `__html__` must be wrapped with markupsafe.Markup.
         bf.append(render_api.escape_html_text(value))
     elif isinstance(value, Template):
-        return (
+        return render_api.make_render_queue_item(
             container_tag,
             iter(
                 render_api.walk_template(
@@ -393,7 +393,7 @@ def interpolate_normal_text_from_value(
             ),
         )
     elif isinstance(value, Iterable):
-        return (
+        return render_api.make_render_queue_item(
             container_tag,
             (
                 (
@@ -440,7 +440,7 @@ def interpolate_dynamic_texts_from_template(
             render_api, bf, last_container_tag, template, (container_tag, text_t)
         )
     else:
-        return (
+        return render_api.make_render_queue_item(
             container_tag,
             iter(walk_dynamic_template(bf, template, text_t, container_tag)),
         )
@@ -816,6 +816,18 @@ class RenderService:
     def get_system(self, **kwargs: object):
         # @DESIGN: Maybe inject more here?
         return {**kwargs}
+
+    def make_render_queue_item(
+        self,
+        last_container_tag: str | None,
+        it: t.Iterable[tuple[InterpolatorProto, Template, InterpolateInfo]],
+    ) -> RenderQueueItem:
+        """
+        Coerce args into standard structure.
+
+        This is almost only here for tracking and readability.
+        """
+        return (last_container_tag, it)
 
     def render_template(
         self, template: Template, last_container_tag: str | None = None
