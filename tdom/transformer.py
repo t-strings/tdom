@@ -442,34 +442,8 @@ def interpolate_dynamic_texts_from_template(
     else:
         return render_api.make_render_queue_item(
             container_tag,
-            iter(walk_dynamic_template(bf, template, text_t, container_tag)),
+            iter(render_api.walk_dynamic_template(bf, template, text_t, container_tag)),
         )
-
-
-def walk_dynamic_template(
-    bf: list[str], template: Template, text_t: Template, container_tag: str
-) -> t.Iterable[tuple[InterpolatorProto, Template, InterpolateInfo]]:
-    """
-    Walk a `Text()` template that we determined was usable at runtime.
-
-    This happens when a container tag isn't resolvable at parse time and we
-    have to discover it at runtime.
-
-    bf:
-      The buffer to write strings out to.
-    template:
-      The original values template.
-    text_t:
-      A template with i_index references to the original values template.
-    container_tag:
-      The tag of the containing element.
-    """
-    for part in text_t:
-        if isinstance(part, str):
-            bf.append(part)
-        else:
-            ip_info = (container_tag, part.value)
-            yield (interpolate_normal_text_from_interpolation, template, ip_info)
 
 
 @dataclass(frozen=True)
@@ -902,6 +876,37 @@ class RenderService:
             # @TODO: Should the template just be jammed in here too?
             populate, value = ips[idx].value
             yield (populate, template, value)
+            idx += 1
+        if strings[idx]:
+            bf.append(strings[idx])
+
+    def walk_dynamic_template(
+        self, bf: list[str], template: Template, text_t: Template, container_tag: str
+    ) -> t.Iterable[tuple[InterpolatorProto, Template, InterpolateInfo]]:
+        """
+        Walk a `Text()` template that we determined was usable at runtime.
+
+        This happens when a container tag isn't resolvable at parse time and we
+        have to discover it at runtime.
+
+        bf:
+          The buffer to write strings out to.
+        template:
+          The original values template.
+        text_t:
+          A template with i_index references to the original values template.
+        container_tag:
+          The tag of the containing element.
+        """
+        strings = text_t.strings
+        ips = text_t.interpolations
+        last_s_index = len(strings) - 1
+        idx = 0
+        while idx < last_s_index:
+            if strings[idx]:
+                bf.append(strings[idx])
+            ip_info = (container_tag, ips[idx].value)
+            yield (interpolate_normal_text_from_interpolation, template, ip_info)
             idx += 1
         if strings[idx]:
             bf.append(strings[idx])
