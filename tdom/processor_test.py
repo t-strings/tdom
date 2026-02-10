@@ -8,7 +8,9 @@ import pytest
 from markupsafe import Markup
 
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
-from .processor import html
+from .processor import html, _prep_component_kwargs
+from .callables import get_callable_info
+
 
 # --------------------------------------------------------------------------
 # Basic HTML parsing tests
@@ -1079,6 +1081,20 @@ def test_interpolated_template_component_no_children_provided():
 def test_invalid_component_invocation():
     with pytest.raises(TypeError):
         _ = html(t"<{FunctionComponent}>Missing props</{FunctionComponent}>")
+
+
+def test_prep_component_kwargs_named():
+    def InputElement(size=10, type="text"):
+        pass
+
+    callable_info = get_callable_info(InputElement)
+    assert _prep_component_kwargs(callable_info, {"size": 20}, system_kwargs={}) == {
+        "size": 20
+    }
+    assert _prep_component_kwargs(
+        callable_info, {"type": "email"}, system_kwargs={}
+    ) == {"type": "email"}
+    assert _prep_component_kwargs(callable_info, {}, system_kwargs={}) == {}
 
 
 def FunctionComponentNoChildren(first: str, second: int, third_arg: str) -> Template:
