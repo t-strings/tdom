@@ -409,7 +409,7 @@ def _node_from_value(value: object) -> Node:
         case Node():
             return value
         case Template():
-            return html(value)
+            return to_node(value)
         # Consider: falsey values, not just False and None?
         case False | None:
             return Fragment(children=[])
@@ -598,8 +598,19 @@ def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) ->
 # --------------------------------------------------------------------------
 
 
-def html(template: Template) -> Node:
+def to_html(template: Template) -> str:
+    """Parse an HTML t-string, substitue values, and return a string of HTML."""
+    cachable = CachableTemplate(template)
+    t_node = _parse_and_cache(cachable)
+    return str(_resolve_t_node(t_node, template.interpolations))
+
+
+def to_node(template: Template) -> Node:
     """Parse an HTML t-string, substitue values, and return a tree of Nodes."""
     cachable = CachableTemplate(template)
     t_node = _parse_and_cache(cachable)
     return _resolve_t_node(t_node, template.interpolations)
+
+
+# BWC: SHIM
+html = to_node

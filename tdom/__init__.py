@@ -1,7 +1,7 @@
 from markupsafe import Markup, escape
 
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
-from .processor import html
+from .processor import to_html, to_node, html
 
 # We consider `Markup` and `escape` to be part of this module's public API
 
@@ -11,6 +11,8 @@ __all__ = [
     "Element",
     "escape",
     "Fragment",
+    "to_html",
+    "to_node",
     "html",
     "Markup",
     "Node",
