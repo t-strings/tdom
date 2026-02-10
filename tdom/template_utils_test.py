@@ -55,3 +55,39 @@ def test_combine_template_refs():
     assert combine_template_refs(*template_refs) == TemplateRef.from_naive_template(
         t"abc{0}def{1}{2}ghi"
     )
+
+
+def test_template_ref_iter_singleton():
+    assert list(TemplateRef.from_naive_template(t"{1}")) == [1]
+
+
+def test_template_ref_iter_empty():
+    assert list(TemplateRef.from_naive_template(t"")) == []
+
+
+def test_template_ref_iter_empty_prefix():
+    assert list(TemplateRef.from_naive_template(t"{1}def")) == [1, "def"]
+
+
+def test_template_ref_iter_empty_suffix():
+    assert list(TemplateRef.from_naive_template(t"abc{1}")) == ["abc", 1]
+
+
+def test_template_ref_iter_literal():
+    assert list(TemplateRef.from_naive_template(t"abc")) == ["abc"]
+
+
+def test_template_ref_iter_only_interpolations():
+    assert list(TemplateRef.from_naive_template(t"{1}{3}{5}")) == [1, 3, 5]
+
+
+def test_template_ref_iter_complete():
+    assert list(TemplateRef.from_naive_template(t"abc{1}def{3}ghi{5}jkl")) == [
+        "abc",
+        1,
+        "def",
+        3,
+        "ghi",
+        5,
+        "jkl",
+    ]
