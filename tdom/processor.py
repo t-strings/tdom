@@ -31,11 +31,7 @@ from .parser import (
 from .placeholders import TemplateRef
 from .template_utils import template_from_parts
 from .utils import CachableTemplate, LastUpdatedOrderedDict
-
-
-@t.runtime_checkable
-class HasHTMLDunder(t.Protocol):
-    def __html__(self) -> str: ...  # pragma: no cover
+from .protocols import HasHTMLDunder
 
 
 # TODO: in Ian's original PR, this caching was tethered to the
