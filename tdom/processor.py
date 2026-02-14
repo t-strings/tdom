@@ -591,7 +591,7 @@ def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) ->
 
 
 def html(template: Template) -> Node:
-    """Parse an HTML t-string, substitue values, and return a tree of Nodes."""
+    """Parse an HTML t-string, substitute values, and return a tree of Nodes."""
     cachable = CachableTemplate(template)
     t_node = _parse_and_cache(cachable)
     return _resolve_t_node(t_node, template.interpolations)
