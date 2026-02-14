@@ -6,35 +6,7 @@ from .escaping import (
     escape_html_style,
     escape_html_text,
 )
-
-# See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
-VOID_ELEMENTS = frozenset(
-    [
-        "area",
-        "base",
-        "br",
-        "col",
-        "embed",
-        "hr",
-        "img",
-        "input",
-        "link",
-        "meta",
-        "param",
-        "source",
-        "track",
-        "wbr",
-    ]
-)
-
-
-CDATA_CONTENT_ELEMENTS = frozenset(["script", "style"])
-RCDATA_CONTENT_ELEMENTS = frozenset(["textarea", "title"])
-CONTENT_ELEMENTS = CDATA_CONTENT_ELEMENTS | RCDATA_CONTENT_ELEMENTS
-
-
-# FUTURE: add a pretty-printer to nodes for debugging
-# FUTURE: make nodes frozen (and have the parser work with mutable builders)
+from .htmlspec import VOID_ELEMENTS, CONTENT_ELEMENTS
 
 
 @dataclass(slots=True)

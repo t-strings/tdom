@@ -17,6 +17,8 @@ from .nodes import (
     Fragment,
     Node,
     Text,
+)
+from .htmlspec import (
     VOID_ELEMENTS,
     CDATA_CONTENT_ELEMENTS,
     RCDATA_CONTENT_ELEMENTS,
