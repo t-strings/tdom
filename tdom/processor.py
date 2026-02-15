@@ -883,9 +883,9 @@ class TransformService:
                         ]
                     )
                     if ref.is_literal:
-                        if last_parent_tag == 'script':
+                        if last_parent_tag == "script":
                             yield default_escape_html_script(ref.strings[0])
-                        elif last_parent_tag == 'style':
+                        elif last_parent_tag == "style":
                             yield default_escape_html_style(ref.strings[0])
                         else:
                             # Fallback to escape everything.
