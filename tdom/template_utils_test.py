@@ -91,3 +91,13 @@ def test_template_ref_iter_complete():
         5,
         "jkl",
     ]
+
+
+def test_template_ref_resolve():
+    src_t = t"{'a'}b{'c'}d{'e'}f"
+    src_ref = TemplateRef(
+        strings=src_t.strings, i_indexes=tuple(range(len(src_t.interpolations)))
+    )
+    resolved_t = src_ref.resolve(src_t.interpolations)
+    assert resolved_t.values == ("a", "c", "e")
+    assert resolved_t.strings == ("", "b", "d", "f")

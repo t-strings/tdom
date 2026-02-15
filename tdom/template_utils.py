@@ -85,3 +85,8 @@ class TemplateRef:
             if index < last_s_index:
                 yield self.i_indexes[index]
             index += 1
+
+    def resolve(self, interpolations: tuple[Interpolation, ...]) -> Template:
+        """Use the given interpolations to resolve this reference template into a Template."""
+        resolved = [interpolations[i_index] for i_index in self.i_indexes]
+        return template_from_parts(self.strings, resolved)
