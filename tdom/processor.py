@@ -574,7 +574,6 @@ def interpolate_raw_texts_from_template(
     if parent_tag == "script":
         bf.append(
             process_api.escape_html_script(
-                parent_tag,
                 content,
                 allow_markup=True,
             )
@@ -582,7 +581,6 @@ def interpolate_raw_texts_from_template(
     elif parent_tag == "style":
         bf.append(
             process_api.escape_html_style(
-                parent_tag,
                 content,
                 allow_markup=True,
             )
