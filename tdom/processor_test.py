@@ -129,8 +129,8 @@ def test_parse_entities_are_escaped():
 
 
 def test_parse_entities_are_escaped_no_parent_tag():
-    with pytest.raises(NotImplementedError):
-        _ = to_html(t"&lt;/p&gt;")
+    res = to_html(t"&lt;/p&gt;")
+    assert res == "&lt;/p&gt;", "Default to standard escaping."
 
 
 """
