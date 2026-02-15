@@ -503,6 +503,8 @@ def interpolate_component(
     (parent_tag, attrs, start_i_index, end_i_index, body_start_s_index) = cast(
         InterpolateComponentInfo, ip_info
     )
+    if parent_tag is None:
+        parent_tag = last_parent_tag
     start_i = template.interpolations[start_i_index]
     component_callable = start_i.value
     if start_i_index != end_i_index and end_i_index is not None:

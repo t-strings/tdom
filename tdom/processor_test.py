@@ -959,7 +959,6 @@ def test_nested_component_gh23():
     def Header() -> Template:
         return t"{'Hello World'}"
 
-    assert False, "The last parent tag does not seem to pass to components"
     res = to_html(t"<{Header} />", last_parent_tag="div")
     assert res == "Hello World"
 
