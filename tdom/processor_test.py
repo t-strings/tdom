@@ -7,9 +7,9 @@ from itertools import product
 import pytest
 from markupsafe import Markup
 
-from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
+from .nodes import Comment, DocumentType, Element, Fragment, Node, Text, to_node
 from .placeholders import make_placeholder_config
-from .processor import to_node, to_html, _prep_component_kwargs
+from .processor import to_html, prep_component_kwargs
 from .callables import get_callable_info
 
 
@@ -1115,13 +1115,13 @@ def test_prep_component_kwargs_named():
         pass
 
     callable_info = get_callable_info(InputElement)
-    assert _prep_component_kwargs(callable_info, {"size": 20}, system_kwargs={}) == {
+    assert prep_component_kwargs(callable_info, {"size": 20}, system_kwargs={}) == {
         "size": 20
     }
-    assert _prep_component_kwargs(
+    assert prep_component_kwargs(
         callable_info, {"type": "email"}, system_kwargs={}
     ) == {"type": "email"}
-    assert _prep_component_kwargs(callable_info, {}, system_kwargs={}) == {}
+    assert prep_component_kwargs(callable_info, {}, system_kwargs={}) == {}
 
 
 @pytest.mark.skip("Should we just ignore unused user-specified kwargs?")
@@ -1132,7 +1132,7 @@ def test_prep_component_kwargs_unused_kwargs():
     callable_info = get_callable_info(InputElement)
     with pytest.raises(ValueError):
         assert (
-            _prep_component_kwargs(callable_info, {"type2": 15}, system_kwargs={}) == {}
+            prep_component_kwargs(callable_info, {"type2": 15}, system_kwargs={}) == {}
         )
 
 
