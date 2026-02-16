@@ -216,7 +216,8 @@ def test_interpolated_zero_arg_function():
         return "dynamic"
 
     assert (
-        to_html(t"<p>The value is {get_value}.</p>") == "<p>The value is dynamic.</p>"
+        to_html(t"<p>The value is {get_value:callback}.</p>")
+        == "<p>The value is dynamic.</p>"
     )
 
 
@@ -225,7 +226,7 @@ def test_interpolated_multi_arg_function_fails():
         return a + b
 
     with pytest.raises(TypeError):
-        _ = to_html(t"<p>The sum is {add}.</p>")
+        _ = to_html(t"<p>The sum is {add:callback}.</p>")
 
 
 # --------------------------------------------------------------------------

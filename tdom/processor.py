@@ -61,7 +61,17 @@ def _format_unsafe(value: object, format_spec: str) -> str:
     return str(value)
 
 
-CUSTOM_FORMATTERS = (("safe", _format_safe), ("unsafe", _format_unsafe))
+def _format_callback(value: Callable[..., object], format_spec: str) -> object:
+    """Execute a callback and return the value."""
+    assert format_spec == "callback"
+    return value()
+
+
+CUSTOM_FORMATTERS = (
+    ("safe", _format_safe),
+    ("unsafe", _format_unsafe),
+    ("callback", _format_callback),
+)
 
 
 def format_interpolation(interpolation: Interpolation) -> object:
