@@ -1382,48 +1382,45 @@ def test_process_template_functions_smoketest():
     )
 
 
-def test_text_interpolation_with_dynamic_parent():
-    process_api = process_service_factory()
-    with pytest.raises(
-        ValueError, match="Recursive includes are not supported within script"
-    ):
+class TestInterpolatingHTMLInTemplateWithDynamicParentTag:
+    """
+    When a template does not have a parent tag we cannot determine the type
+    of text that should be allowed and therefore we cannot determine how to
+    escape that text.  Once the type is known we should escape any
+    interpolations in that text correctly.
+    """
+
+    def test_dynamic_raw_text(self):
+        """Type raw text should fail because template is already not allowed."""
         content = '<script>console.log("123!");</script>'
         content_t = t"{content}"
-        _ = process_api.process_template(t"<script>{content_t}</script>")
+        process_api = process_service_factory()
+        with pytest.raises(
+            ValueError, match="Recursive includes are not supported within script"
+        ):
+            content_t = t'''<script>console.log("{123}!");</script>'''
+            _ = process_api.process_template(t"<script>{content_t}</script>")
 
+    def test_dynamic_escapable_raw_text(self):
+        """Type escapable raw text should fail because template is already not allowed."""
+        content = '<script>console.log("123!");</script>'
+        content_t = t"{content}"
+        process_api = process_service_factory()
+        with pytest.raises(
+            ValueError, match="Recursive includes are not supported within textarea"
+        ):
+            _ = process_api.process_template(t"<textarea>{content_t}</textarea>")
 
-@pytest.mark.skip("Can we allow this?")
-def test_escape_escapable_raw_text_with_dynamic_parent():
-    content = '<script>console.log("123!");</script>'
-    content_t = t"{content}"
-    process_api = process_service_factory()
-    LT, GT, DQ = map(markupsafe_escape, ["<", ">", '"'])
-    assert (
-        process_api.process_template(t"<textarea>{content_t}</textarea>")
-        == f"<textarea>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</textarea>"
-    )
-
-
-def test_escape_structured_text_with_dynamic_parent():
-    content = '<script>console.log("123!");</script>'
-    content_t = t"{content}"
-    process_api = process_service_factory()
-    LT, GT, DQ = map(markupsafe_escape, ["<", ">", '"'])
-    assert (
-        process_api.process_template(t"<div>{content_t}</div>")
-        == f"<div>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</div>"
-    )
-
-
-def test_escape_structured_text():
-    content = '<script>console.log("123!");</script>'
-    content_t = t"<div>{content}</div>"
-    process_api = process_service_factory()
-    LT, GT, DQ = map(markupsafe_escape, ["<", ">", '"'])
-    assert (
-        process_api.process_template(content_t)
-        == f"<div>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</div>"
-    )
+    def test_dynamic_normal_text(self):
+        """Escaping should be applied when normal text type is goes into effect."""
+        content = '<script>console.log("123!");</script>'
+        content_t = t"{content}"
+        process_api = process_service_factory()
+        LT, GT, DQ = map(markupsafe_escape, ["<", ">", '"'])
+        assert (
+            process_api.process_template(t"<div>{content_t}</div>")
+            == f"<div>{LT}script{GT}console.log({DQ}123!{DQ});{LT}/script{GT}</div>"
+        )
 
 
 @dataclass
