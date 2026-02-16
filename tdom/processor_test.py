@@ -166,9 +166,10 @@ def test_conversions():
     c = Convertible()
     assert f"{c!s}" == "string"
     assert f"{c!r}" == "repr"
+    assert to_html(t"<div>{c!s}</div>") == "<div>string</div>"
+    assert to_html(t"<div>{c!r}</div>") == "<div>repr</div>"
     assert (
-        to_html(t"<li>{c!s}</li><li>{c!r}</li><li>{'😊'!a}</li>")
-        == "<li>{c!s}</li><li>{c!r}</li><li>'\\U0001f60a'</li>"
+        to_html(t"<div>{'😊'!a}</div>") == f"<div>{escape_html_text(ascii('😊'))}</div>"
     )
 
 
