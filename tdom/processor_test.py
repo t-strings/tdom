@@ -303,23 +303,6 @@ def test_conditional_rendering_with_if_else():
     )
 
 
-@pytest.mark.skip(
-    "This is another design situation where we try to do everything and it complicates the API. If we take False then we probably take True which also does what False does?"
-)
-def test_conditional_rendering_with_and():
-    show_warning = True
-    warning_message = t'<div class="warning">Warning!</div>'
-    assert (
-        to_html(t"<main>{show_warning and warning_message}</main>")
-        == '<main><div class="warning">Warning!</div></main>'
-    )
-
-    show_warning = False
-    assert (
-        to_html(t"<main>{show_warning and warning_message}</main>") == "<main></main>"
-    )
-
-
 # --------------------------------------------------------------------------
 # Interpolated nesting of templates and elements
 # --------------------------------------------------------------------------
@@ -328,13 +311,6 @@ def test_conditional_rendering_with_and():
 def test_interpolated_template_content():
     child = t"<span>Child</span>"
     assert to_html(t"<div>{child}</div>") == "<div><span>Child</span></div>"
-
-
-@pytest.mark.skip("Allow node injection?")
-def test_interpolated_element_content():
-    # child = Element("span", children=[Text("Child")])
-    # assert to_html(t"<div>{child}</div>") == "<div><span>Child</span></div>"
-    pass
 
 
 def test_interpolated_nonstring_content():
@@ -972,24 +948,6 @@ def test_nested_component_gh23():
 
     res = to_html(t"<{Header} />", last_parent_tag="div")
     assert res == "Hello World"
-
-
-# @DESIGN: This seems to complicate component definitions.
-# Worst case we can just return an iterable in a template interpolation.
-@pytest.mark.skip(
-    "This seems to make component definitions more confusing.  Marking skip to then rewrite or remove."
-)
-def test_component_returning_iterable():
-    def generate_lis() -> t.Iterable:
-        for i in range(2):
-            yield t"<li>Item {i + 1}</li>"
-        yield t"<li>Item {3}</li>"
-
-    def Items() -> Template:
-        return t"{generate_lis()}"
-
-    res = to_html(t"<ul><{Items} /></ul>")
-    assert res == "<ul><li>Item 1</li><li>Item 2</li><li>Item 3</li></ul>"
 
 
 def test_component_returning_fragment():
