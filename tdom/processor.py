@@ -667,7 +667,6 @@ def interpolate_normal_text_from_value(
         parent_tag = last_parent_tag
 
     if isinstance(value, str):
-        # @DESIGN: Objects with `__html__` must be wrapped with markupsafe.Markup.
         bf.append(process_api.escape_html_text(value))
     elif isinstance(value, Template):
         return process_api.make_process_queue_item(
@@ -696,7 +695,7 @@ def interpolate_normal_text_from_value(
     else:
         # @DESIGN: Everything that isn't an object we recognize is
         # coerced to a str() and emitted.
-        bf.append(process_api.escape_html_text(str(value)))
+        bf.append(process_api.escape_html_text(value))
 
 
 type InterpolateDynamicTextsFromTemplateInfo = tuple[None, Template]
