@@ -544,9 +544,10 @@ class ProcessorService:
                 case TElement(tag, attrs, children):
                     bf.append(f"<{tag}")
                     our_ctx = last_ctx.copy(parent_tag=tag)
-                    res = self._stream_attrs(bf, template, our_ctx, attrs)
-                    if res is not None:
-                        yield res
+                    if attrs:
+                        res = self._stream_attrs(bf, template, our_ctx, attrs)
+                        if res is not None:
+                            yield res
                     # @TODO: How can we tell if we write out children or not in
                     # order to self-close in non-html contexts, ie. SVG?
                     if self.slash_void and tag in VOID_ELEMENTS:
