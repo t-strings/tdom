@@ -3,8 +3,9 @@ from markupsafe import Markup, escape
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text, to_node
 from .processor import to_html
 
-# @BWC: Temporary shim.
-html = to_node
+
+html = to_html
+
 
 # We consider `Markup` and `escape` to be part of this module's public API
 
@@ -14,8 +15,9 @@ __all__ = [
     "Element",
     "escape",
     "Fragment",
-    "to_html",
+    "html",
     "to_node",
+    "to_html",
     "html",
     "Markup",
     "Node",
