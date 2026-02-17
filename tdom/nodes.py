@@ -299,7 +299,10 @@ def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) ->
             )
             return Fragment(children=resolved_children)
         case TElement(tag=tag, attrs=attrs, children=children):
-            resolved_attrs = _resolve_attrs(attrs, interpolations)
+            if attrs:
+                resolved_attrs = _resolve_attrs(attrs, interpolations)
+            else:
+                resolved_attrs = {}
             resolved_children = _substitute_and_flatten_children(
                 children, interpolations
             )
