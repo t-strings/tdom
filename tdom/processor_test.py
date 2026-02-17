@@ -261,7 +261,7 @@ def test_raw_html_injection_with_dunder_html_protocol():
 
     content = SafeContent("emphasized")
     assert (
-        to_html(t"<p>Here is some {content:safe}.</p>")
+        to_html(t"<p>Here is some {content}.</p>")
         == "<p>Here is some <em>emphasized</em>.</p>"
     )
 
