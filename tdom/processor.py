@@ -38,6 +38,7 @@ from .escaping import (
     escape_html_text as default_escape_html_text,
     escape_html_comment as default_escape_html_comment,
 )
+from .protocols import HasHTMLDunder
 
 
 type Attribute = tuple[str, object]
@@ -964,8 +965,11 @@ def resolve_text_without_recursion(
         if value is None:
             return None
         elif isinstance(value, str):
-            # @DESIGN: Markup() must be used explicitly if you want __html__ supported.
             return value
+        elif isinstance(value, HasHTMLDunder):
+            # @DESIGN: We could also force callers to use `:safe` to trigger
+            # the interpolation in this special case.
+            return Markup(value.__html__())
         elif isinstance(value, (Template, Iterable)):
             raise ValueError(
                 f"Recursive includes are not supported within {parent_tag}"
