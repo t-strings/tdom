@@ -995,7 +995,7 @@ def resolve_text_without_recursion(
                 raise ValueError(
                     f"Recursive includes are not supported within {parent_tag}"
                 )
-            elif hasattr(value, "__html__"):
+            elif isinstance(value, HasHTMLDunder):
                 raise ValueError(
                     f"Non-exact trusted interpolations are not supported within {parent_tag}"
                 )
