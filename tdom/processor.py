@@ -465,7 +465,7 @@ type NormalTextInterpolationValue = (
 
 
 @dataclass(frozen=True)
-class ProcessorService:
+class BaseProcessorService:
     escape_html_text: Callable = default_escape_html_text
 
     escape_html_comment: Callable = default_escape_html_comment
@@ -474,12 +474,18 @@ class ProcessorService:
 
     escape_html_style: Callable = default_escape_html_style
 
+    def to_tnode(self, template: Template) -> TNode:
+        return TemplateParser.parse(template)
+
+    def get_system(self, **kwargs) -> dict[str, object]:
+        return {**kwargs}
+
+
+@dataclass(frozen=True)
+class ProcessorService(BaseProcessorService):
     slash_void: bool = False  # Apply a xhtml-style slash to void html elements.
 
     uppercase_doctype: bool = False  # DOCTYPE vs doctype
-
-    def to_tnode(self, template: Template) -> TNode:
-        return TemplateParser.parse(template)
 
     def process_template(
         self, root_template: Template, assume_ctx: ProcessContext | None = None
@@ -635,12 +641,14 @@ class ProcessorService:
         text_t: Template,
     ) -> None:
         assert last_ctx.parent_tag == "<!--"
-        bf.append(
-            self.escape_html_comment(
-                resolve_text_without_recursion(template, last_ctx.parent_tag, text_t),
-                allow_markup=True,
+        content = resolve_text_without_recursion(template, last_ctx.parent_tag, text_t)
+        if content:
+            bf.append(
+                self.escape_html_comment(
+                    content,
+                    allow_markup=True,
+                )
             )
-        )
 
     def _stream_attrs(
         self,
@@ -652,9 +660,6 @@ class ProcessorService:
         resolved_attrs = _resolve_t_attrs(attrs, template.interpolations)
         attrs_str = serialize_html_attrs(_resolve_html_attrs(resolved_attrs))
         bf.append(attrs_str)
-
-    def get_system(self, **kwargs) -> dict[str, object]:
-        return {**kwargs}
 
     def _stream_component(
         self,
@@ -883,21 +888,6 @@ def resolve_text_without_recursion(
             return "".join(text)
         else:
             return None
-
-
-def determine_body_start_s_index(tcomp):
-    """
-    Calculate the strings index when the embedded template starts after a component start tag.
-
-    This doesn't actually know or care if the component has a body it just
-    counts past the dynamic (non-literal) attributes and returns the first strings index
-    offset by interpolation index for the component callable itself.
-    """
-    return (
-        tcomp.start_i_index
-        + 1
-        + len([1 for attr in tcomp.attrs if not isinstance(attr, TLiteralAttribute)])
-    )
 
 
 def extract_embedded_template(

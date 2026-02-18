@@ -1,6 +1,7 @@
 from markupsafe import Markup, escape
 
-from .nodes import Comment, DocumentType, Element, Fragment, Node, Text, to_node
+from .nodes.nodes import Comment, DocumentType, Element, Fragment, Node, Text
+from .nodes.processor import to_node
 from .processor import to_html
 
 

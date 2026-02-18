@@ -1,230 +1,22 @@
-import pytest
-from markupsafe import Markup
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import datetime
-import typing as t
 from string.templatelib import Interpolation, Template
 from itertools import product
+import typing as t
+from collections.abc import Iterable, Callable
 
-from .placeholders import make_placeholder_config
-from .processor import prep_component_kwargs
-from .callables import get_callable_info
-from .nodes import Comment, DocumentType, Element, Fragment, Text, to_node, Node
+import pytest
+from markupsafe import Markup
 
-
-def test_doctype_default():
-    doctype = DocumentType()
-    assert str(doctype) == "<!DOCTYPE html>"
-
-
-def test_doctype_custom():
-    doctype = DocumentType("xml")
-    assert str(doctype) == "<!DOCTYPE xml>"
+from .processor import to_node
+from .nodes import Element, Text, Fragment, DocumentType, Comment, Node
+from ..placeholders import make_placeholder_config
 
 
-def test_text():
-    text = Text("Hello, world!")
-    assert str(text) == "Hello, world!"
+def test_to_node():
+    assert to_node(t"<div></div>") == Element("div")
 
 
-def test_text_escaping():
-    text = Text("<script>alert('XSS')</script>")
-    assert str(text) == "&lt;script&gt;alert(&#39;XSS&#39;)&lt;/script&gt;"
-
-
-def test_text_safe():
-    class CustomHTML(str):
-        def __html__(self) -> str:
-            return "<b>Bold Text</b>"
-
-    text = Text(CustomHTML())
-    assert str(text) == "<b>Bold Text</b>"
-
-
-def test_text_equality():
-    text1 = Text("<Hello>")
-    text2 = Text(Markup("&lt;Hello&gt;"))
-    text3 = Text(Markup("<Hello>"))
-    assert text1 == text2
-    assert text1 != text3
-
-
-def test_fragment_empty():
-    fragment = Fragment()
-    assert str(fragment) == ""
-
-
-def test_fragment_with_text():
-    fragment = Fragment(children=[Text("test")])
-    assert str(fragment) == "test"
-
-
-def test_fragment_with_multiple_texts():
-    fragment = Fragment(children=[Text("Hello"), Text(" "), Text("World")])
-    assert str(fragment) == "Hello World"
-
-
-def test_element_no_children():
-    div = Element("div")
-    assert not div.is_void
-    assert str(div) == "<div></div>"
-
-
-def test_void_element_no_children():
-    br = Element("br")
-    assert br.is_void
-    assert str(br) == "<br />"
-
-
-def test_element_invalid_empty_tag():
-    with pytest.raises(ValueError):
-        _ = Element("")
-
-
-def test_element_is_content():
-    assert Element("script").is_content
-    assert Element("title").is_content
-    assert not Element("div").is_content
-    assert not Element("br").is_content  # Void element
-
-
-def test_void_element_with_attributes():
-    br = Element("br", attrs={"class": "line-break", "hidden": None})
-    assert str(br) == '<br class="line-break" hidden />'
-
-
-def test_void_element_with_children():
-    with pytest.raises(ValueError):
-        _ = Element("br", children=[Text("should not be here")])
-
-
-def test_standard_element_with_attributes():
-    div = Element(
-        "div",
-        attrs={"id": "main", "data-role": "container", "hidden": None},
-    )
-    assert str(div) == '<div id="main" data-role="container" hidden></div>'
-
-
-def test_standard_element_with_text_child():
-    div = Element("div", children=[Text("Hello, world!")])
-    assert str(div) == "<div>Hello, world!</div>"
-
-
-def test_standard_element_with_element_children():
-    div = Element(
-        "div",
-        children=[
-            Element("h1", children=[Text("Title")]),
-            Element("p", children=[Text("This is a paragraph.")]),
-        ],
-    )
-    assert str(div) == "<div><h1>Title</h1><p>This is a paragraph.</p></div>"
-
-
-def test_element_with_fragment_with_children():
-    div = Element(
-        "div",
-        children=[
-            Fragment(
-                children=[
-                    Element("div", children=[Text("wow")]),
-                    Text("inside fragment"),
-                ]
-            )
-        ],
-    )
-    assert str(div) == "<div><div>wow</div>inside fragment</div>"
-
-
-def test_standard_element_with_mixed_children():
-    div = Element(
-        "div",
-        children=[
-            Text("Intro text."),
-            Element("h1", children=[Text("Title")]),
-            Text("Some more text."),
-            Element("hr"),
-            Element("p", children=[Text("This is a paragraph.")]),
-        ],
-    )
-    assert str(div) == (
-        "<div>Intro text.<h1>Title</h1>Some more text.<hr /><p>This is a paragraph.</p></div>"
-    )
-
-
-def test_complex_tree():
-    html = Fragment(
-        children=[
-            DocumentType(),
-            Element(
-                "html",
-                children=[
-                    Element(
-                        "head",
-                        children=[
-                            Element("title", children=[Text("Test Page")]),
-                            Element("meta", attrs={"charset": "UTF-8"}),
-                        ],
-                    ),
-                    Element(
-                        "body",
-                        attrs={"class": "main-body"},
-                        children=[
-                            Element("h1", children=[Text("Welcome to the Test Page")]),
-                            Element(
-                                "p",
-                                children=[
-                                    Text("This is a sample paragraph with "),
-                                    Element("strong", children=[Text("bold text")]),
-                                    Text(" and "),
-                                    Element("em", children=[Text("italic text")]),
-                                    Text("."),
-                                ],
-                            ),
-                            Element("br"),
-                            Element(
-                                "ul",
-                                children=[
-                                    Element("li", children=[Text("Item 1")]),
-                                    Element("li", children=[Text("Item 2")]),
-                                    Element("li", children=[Text("Item 3")]),
-                                ],
-                            ),
-                        ],
-                    ),
-                ],
-            ),
-        ]
-    )
-    assert str(html) == (
-        "<!DOCTYPE html><html><head><title>Test Page</title>"
-        '<meta charset="UTF-8" /></head><body class="main-body">'
-        "<h1>Welcome to the Test Page</h1>"
-        "<p>This is a sample paragraph with <strong>bold text</strong> and "
-        "<em>italic text</em>.</p><br /><ul><li>Item 1</li><li>Item 2</li>"
-        "<li>Item 3</li></ul></body></html>"
-    )
-
-
-def test_dunder_html_method():
-    div = Element("div", children=[Text("Hello")])
-    assert div.__html__() == str(div)
-
-
-def test_escaping_of_text_content():
-    div = Element("div", children=[Text("<script>alert('XSS')</script>")])
-    assert str(div) == "<div>&lt;script&gt;alert(&#39;XSS&#39;)&lt;/script&gt;</div>"
-
-
-def test_escaping_of_attribute_values():
-    div = Element("div", attrs={"class": '">XSS<'})
-    assert str(div) == '<div class="&#34;&gt;XSS&lt;"></div>'
-
-
-#
-# to_node()
-#
 def test_empty():
     node = to_node(t"")
     assert node == Fragment(children=[])
@@ -408,14 +200,21 @@ def test_conversions():
 
 
 def test_interpolated_in_content_node():
+    from ..escaping import escape_html_style
+
     # https://github.com/t-strings/tdom/issues/68
     evil = "</style><script>alert('whoops');</script><style>"
     node = to_node(t"<style>{evil}{evil}</style>")
     assert node == Element(
         "style",
         children=[
-            Text("</style><script>alert('whoops');</script><style>"),
-            Text("</style><script>alert('whoops');</script><style>"),
+            Text(
+                Markup(
+                    escape_html_style(
+                        "</style><script>alert('whoops');</script><style></style><script>alert('whoops');</script><style>"
+                    )
+                )
+            ),
         ],
     )
     LT = "&lt;"
@@ -427,10 +226,14 @@ def test_interpolated_in_content_node():
 
 def test_interpolated_trusted_in_content_node():
     # https://github.com/t-strings/tdom/issues/68
+    from ..escaping import escape_html_script
+
     node = to_node(t"<script>if (a < b && c > d) {{ alert('wow'); }}</script>")
     assert node == Element(
         "script",
-        children=[Text("if (a < b && c > d) { alert('wow'); }")],
+        children=[
+            Text(Markup(escape_html_script("if (a < b && c > d) { alert('wow'); }")))
+        ],
     )
     assert str(node) == ("<script>if (a < b && c > d) { alert('wow'); }</script>")
 
@@ -450,8 +253,8 @@ def test_script_elements_error():
 
 def test_interpolated_false_content():
     node = to_node(t"<div>{False}</div>")
-    assert node == Element("div")
-    assert str(node) == "<div></div>"
+    assert node == Element("div", children=[Text("False")])
+    assert str(node) == "<div>False</div>"
 
 
 def test_interpolated_none_content():
@@ -464,7 +267,7 @@ def test_interpolated_zero_arg_function():
     def get_value():
         return "dynamic"
 
-    node = to_node(t"<p>The value is {get_value}.</p>")
+    node = to_node(t"<p>The value is {get_value:callback}.</p>")
     assert node == Element(
         "p", children=[Text("The value is "), Text("dynamic"), Text(".")]
     )
@@ -475,7 +278,7 @@ def test_interpolated_multi_arg_function_fails():
         return a + b
 
     with pytest.raises(TypeError):
-        _ = to_node(t"<p>The sum is {add}.</p>")
+        _ = to_node(t"<p>The sum is {add:callback}.</p>")
 
 
 # --------------------------------------------------------------------------
@@ -561,25 +364,6 @@ def test_conditional_rendering_with_if_else():
     assert str(node) == '<div><a href="/login">Please log in</a></div>'
 
 
-def test_conditional_rendering_with_and():
-    show_warning = True
-    warning_message = t'<div class="warning">Warning!</div>'
-    node = to_node(t"<main>{show_warning and warning_message}</main>")
-
-    assert node == Element(
-        "main",
-        children=[
-            Element("div", attrs={"class": "warning"}, children=[Text("Warning!")]),
-        ],
-    )
-    assert str(node) == '<main><div class="warning">Warning!</div></main>'
-
-    show_warning = False
-    node = to_node(t"<main>{show_warning and warning_message}</main>")
-    # Assuming False renders nothing
-    assert str(node) == "<main></main>"
-
-
 # --------------------------------------------------------------------------
 # Interpolated nesting of templates and elements
 # --------------------------------------------------------------------------
@@ -592,6 +376,7 @@ def test_interpolated_template_content():
     assert str(node) == "<div><span>Child</span></div>"
 
 
+@pytest.mark.skip("We only handle nodes at the end of the pipeline.")
 def test_interpolated_element_content():
     child = to_node(t"<span>Child</span>")
     node = to_node(t"<div>{child}</div>")
@@ -1259,7 +1044,7 @@ def test_style_none():
 
 
 def FunctionComponent(
-    children: t.Iterable[Node], first: str, second: int, third_arg: str, **attrs: t.Any
+    children: Iterable[Node], first: str, second: int, third_arg: str, **attrs: t.Any
 ) -> Template:
     # Ensure type correctness of props at runtime for testing purposes
     assert isinstance(first, str)
@@ -1319,32 +1104,6 @@ def test_interpolated_template_component_no_children_provided():
 def test_invalid_component_invocation():
     with pytest.raises(TypeError):
         _ = to_node(t"<{FunctionComponent}>Missing props</{FunctionComponent}>")
-
-
-def test_prep_component_kwargs_named():
-    def InputElement(size=10, type="text"):
-        pass
-
-    callable_info = get_callable_info(InputElement)
-    assert prep_component_kwargs(callable_info, {"size": 20}, system_kwargs={}) == {
-        "size": 20
-    }
-    assert prep_component_kwargs(
-        callable_info, {"type": "email"}, system_kwargs={}
-    ) == {"type": "email"}
-    assert prep_component_kwargs(callable_info, {}, system_kwargs={}) == {}
-
-
-@pytest.mark.skip("Should we just ignore unused user-specified kwargs?")
-def test_prep_component_kwargs_unused_kwargs():
-    def InputElement(size=10, type="text"):
-        pass
-
-    callable_info = get_callable_info(InputElement)
-    with pytest.raises(ValueError):
-        assert (
-            prep_component_kwargs(callable_info, {"type2": 15}, system_kwargs={}) == {}
-        )
 
 
 def FunctionComponentNoChildren(first: str, second: int, third_arg: str) -> Template:
@@ -1444,7 +1203,7 @@ def test_fragment_from_component():
 
 def test_component_passed_as_attr_value():
     def Wrapper(
-        children: t.Iterable[Node], sub_component: t.Callable, **attrs: t.Any
+        children: Template, sub_component: Callable, **attrs: t.Any
     ) -> Template:
         return t"<{sub_component} {attrs}>{children}</{sub_component}>"
 
@@ -1469,8 +1228,8 @@ def test_component_passed_as_attr_value():
 
 def test_nested_component_gh23():
     # See https://github.com/t-strings/tdom/issues/23 for context
-    def Header():
-        return to_node(t"{'Hello World'}")
+    def Header() -> Template:
+        return t"{'Hello World'}"
 
     node = to_node(t"<{Header} />")
     assert node == Text("Hello World")
@@ -1478,12 +1237,16 @@ def test_nested_component_gh23():
 
 
 def test_component_returning_iterable():
-    def Items() -> t.Iterable:
+    def Items() -> Iterable:
         for i in range(2):
             yield t"<li>Item {i + 1}</li>"
-        yield to_node(t"<li>Item {3}</li>")
+        yield t"<li>Item {3}</li>"
 
-    node = to_node(t"<ul><{Items} /></ul>")
+    def ItemsComponent() -> Template:
+        # Wrap in Template
+        return t"{Items()}"
+
+    node = to_node(t"<ul><{ItemsComponent} /></ul>")
     assert node == Element(
         "ul",
         children=[
@@ -1496,8 +1259,8 @@ def test_component_returning_iterable():
 
 
 def test_component_returning_fragment():
-    def Items() -> Node:
-        return to_node(t"<li>Item {1}</li><li>Item {2}</li><li>Item {3}</li>")
+    def Items() -> Template:
+        return t"<li>Item {1}</li><li>Item {2}</li><li>Item {3}</li>"
 
     node = to_node(t"<ul><{Items} /></ul>")
     assert node == Element(
@@ -1517,18 +1280,18 @@ class ClassComponent:
 
     user_name: str
     image_url: str
+    children: Template = t""
     homepage: str = "#"
-    children: t.Iterable[Node] = field(default_factory=list)
 
-    def __call__(self) -> Node:
-        return to_node(
+    def __call__(self) -> Template:
+        return (
             t"<div class='avatar'>"
             t"<a href={self.homepage}>"
             t"<img src='{self.image_url}' alt='{f'Avatar of {self.user_name}'}' />"
             t"</a>"
             t"<span>{self.user_name}</span>"
             t"{self.children}"
-            t"</div>",
+            t"</div>"
         )
 
 
@@ -1604,15 +1367,15 @@ class ClassComponentNoChildren:
     image_url: str
     homepage: str = "#"
 
-    def __call__(self) -> Node:
-        return to_node(
+    def __call__(self) -> Template:
+        return (
             t"<div class='avatar'>"
             t"<a href={self.homepage}>"
             t"<img src='{self.image_url}' alt='{f'Avatar of {self.user_name}'}' />"
             t"</a>"
             t"<span>{self.user_name}</span>"
             t"ignore children"
-            t"</div>",
+            t"</div>"
         )
 
 
