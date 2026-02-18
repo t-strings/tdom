@@ -25,11 +25,11 @@ function with normal Python arguments and return values.
 ## Simple Heading
 
 Here is a component callable &mdash; a `Heading` function &mdash; which returns
-a `Node`:
+a `Template`:
 
 <!-- invisible-code-block: python
 from string.templatelib import Template
-from tdom import html, Node
+from tdom import html
 from typing import Callable, Iterable
 -->
 
@@ -39,7 +39,7 @@ def Heading() -> Template:
 
 
 result = html(t"<{Heading} />")
-assert str(result) == '<h1>My Title</h1>'
+assert result == '<h1>My Title</h1>'
 ```
 
 ## Simple Props
@@ -54,7 +54,7 @@ def Heading(title: str) -> Template:
 
 
 result = html(t'<{Heading} title="My Title"></{Heading}>')
-assert str(result) == '<h1>My Title</h1>'
+assert result == '<h1>My Title</h1>'
 ```
 
 ## Children As Props
@@ -63,32 +63,29 @@ If your template has children inside the component element, your component will
 receive them as a keyword argument:
 
 ```python
-def Heading(children: Iterable[Node], title: str) -> Node:
-  return html(t"<h1>{title}</h1><div>{children}</div>")
+def Heading(children: Template, title: str) -> Template:
+  return t"<h1>{title}</h1><div>{children}</div>"
 
 
 result = html(t'<{Heading} title="My Title">Child</{Heading}>')
-assert str(result) == '<h1>My Title</h1><div>Child</div>'
+assert result == '<h1>My Title</h1><div>Child</div>'
 ```
 
 Note how the component closes with `</{Heading}>` when it contains nested
 children, as opposed to the self-closing form in the first example. If no
-children are provided, the value of children is an empty tuple.
-
-Note also that components functions can return `Node` or `Template` values as
-they wish. Iterables of nodes and templates are also supported.
+children are provided, the value of children is an empty `Template`, ie. `t""`.
 
 The component does not have to list a `children` keyword argument. If it is
 omitted from the function parameters and passed in by the usage, it is silently
 ignored:
 
 ```python
-def Heading(title: str) -> Node:
-  return html(t"<h1>{title}</h1><div>Ignore the children.</div>")
+def Heading(title: str) -> Template:
+  return t"<h1>{title}</h1><div>Ignore the children.</div>"
 
 
 result = html(t'<{Heading} title="My Title">Child</{Heading}>')
-assert str(result) == '<h1>My Title</h1><div>Ignore the children.</div>'
+assert result == '<h1>My Title</h1><div>Ignore the children.</div>'
 ```
 
 ## Optional Props
@@ -102,7 +99,7 @@ def Heading(title: str = "My Title") -> Template:
 
 
 result = html(t"<{Heading} />")
-assert str(result) == '<h1>My Title</h1>'
+assert result == '<h1>My Title</h1>'
 ```
 
 ## Passsing Another Component as a Prop
@@ -121,7 +118,7 @@ def Body(heading: Callable) -> Template:
 
 
 result = html(t"<{Body} heading={DefaultHeading} />")
-assert str(result) == '<body><h1>Default Heading</h1></body>'
+assert result == '<body><h1>Default Heading</h1></body>'
 ```
 
 ## Default Component for Prop
@@ -139,11 +136,11 @@ def OtherHeading() -> Template:
 
 
 def Body(heading: Callable) -> Template:
-  return html(t"<body><{heading} /></body>")
+  return t"<body><{heading} /></body>"
 
 
 result = html(t"<{Body} heading={OtherHeading}></{Body}>")
-assert str(result) == '<body><h1>Other Heading</h1></body>'
+assert result == '<body><h1>Other Heading</h1></body>'
 ```
 
 ## Conditional Default
@@ -165,7 +162,7 @@ def Body(heading: Callable | None = None) -> Template:
 
 
 result = html(t"<{Body} heading={OtherHeading}></{Body}>")
-assert str(result) == '<body><h1>Other Heading</h1></body>'
+assert result == '<body><h1>Other Heading</h1></body>'
 ```
 
 ## Generators as Components
@@ -175,13 +172,11 @@ have a todo list. There might be a lot of todos, so you want to generate them in
 a memory-efficient way:
 
 ```python
-def Todos() -> Iterable[Template]:
-  for todo in ["first", "second", "third"]:
-    yield t"<li>{todo}</li>"
+def Todos() -> Template:
+  return t'<ul>{(t"<li>{todo}</li>" for todo in ["first", "second", "third"])}</ul>'
 
-
-result = html(t"<ul><{Todos} /></ul>")
-assert str(result) == '<ul><li>first</li><li>second</li><li>third</li></ul>'
+result = html(t"<{Todos} />")
+assert result == '<ul><li>first</li><li>second</li><li>third</li></ul>'
 ```
 
 ## Nested Components
@@ -200,5 +195,5 @@ def TodoList(labels: Iterable[str]) -> Template:
 title = "My Todos"
 labels = ["first", "second", "third"]
 result = html(t"<h1>{title}</h1><{TodoList} labels={labels} />")
-assert str(result) == '<h1>My Todos</h1><ul><li>first</li><li>second</li><li>third</li></ul>'
+assert result == '<h1>My Todos</h1><ul><li>first</li><li>second</li><li>third</li></ul>'
 ```
