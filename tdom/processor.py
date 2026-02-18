@@ -426,7 +426,6 @@ def serialize_html_attrs(
     )
 
 
-@lru_cache(1024)
 def make_ctx(parent_tag=None, ns="html"):
     return ProcessContext(parent_tag=parent_tag, ns=ns)
 
