@@ -15,7 +15,7 @@ from .processor import (
     ProcessorService,
     processor_service_factory,
     cached_processor_service_factory,
-    make_ctx
+    make_ctx,
 )
 from .callables import get_callable_info
 from .escaping import escape_html_text
@@ -48,7 +48,7 @@ def test_text_singleton():
 def test_text_singleton_without_parent():
     greeting = "</script>"
     with pytest.raises(NotImplementedError):
-         # Explicitly set the parent tag as None.
+        # Explicitly set the parent tag as None.
         ctx = make_ctx(parent_tag=None, ns="html")
         _ = to_html(t"{greeting}", assume_ctx=ctx)
 
@@ -69,13 +69,17 @@ def test_text_singleton_explicit_parent_div():
 
 def test_text_template():
     name = "Alice"
-    assert to_html(t"Hello, {name}!", assume_ctx=make_ctx(parent_tag="div")) == "Hello, Alice!"
+    assert (
+        to_html(t"Hello, {name}!", assume_ctx=make_ctx(parent_tag="div"))
+        == "Hello, Alice!"
+    )
 
 
 def test_text_template_escaping():
     name = "Alice & Bob"
     assert (
-        to_html(t"Hello, {name}!", assume_ctx=make_ctx(parent_tag="div")) == "Hello, Alice &amp; Bob!"
+        to_html(t"Hello, {name}!", assume_ctx=make_ctx(parent_tag="div"))
+        == "Hello, Alice &amp; Bob!"
     )
 
 
@@ -1158,7 +1162,8 @@ def struct_repr(st):
         ]
     )
 
-@pytest.mark.skip('Come back to this.')
+
+@pytest.mark.skip("Come back to this.")
 def test_process_template_internal_cache():
     '''
     """Test that cache and non-cache both generally work as expected."""
@@ -1207,6 +1212,7 @@ def test_process_template_internal_cache():
     # produces an unequivalent tf.
     assert struct_repr(cached_tf1) != struct_repr(cached_tf4)
     '''
+
 
 def test_process_template_repeated():
     """Crude check for any unintended state being kept between calls."""
@@ -1608,4 +1614,3 @@ def test_system_context():
     with pytest.raises(TypeError) as excinfo:
         res = process_api.process_template(page_t)
     assert "Missing required parameters" in str(excinfo.value)
-
