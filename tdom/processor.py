@@ -40,6 +40,7 @@ from .escaping import (
     escape_html_comment as default_escape_html_comment,
 )
 from .protocols import HasHTMLDunder
+from .sentinel import NOT_SET, NotSet
 
 
 type Attribute = tuple[str, object]
@@ -425,13 +426,6 @@ def serialize_html_attrs(
     )
 
 
-class NotSet:
-    pass
-
-
-NOT_SET = NotSet()
-
-
 @lru_cache(1024)
 def make_ctx(parent_tag=None, ns="html"):
     return ProcessContext(parent_tag=parent_tag, ns=ns)
@@ -439,7 +433,9 @@ def make_ctx(parent_tag=None, ns="html"):
 
 @dataclass(frozen=True, slots=True)
 class ProcessContext:
+    # None means unknown not just a missing value.
     parent_tag: str | None = None
+    # None means unknown not just a missing value.
     ns: str | None = None
 
     def copy(
