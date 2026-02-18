@@ -45,7 +45,11 @@ from ..utils import CachableTemplate
 
 @dataclass(frozen=True)
 class NodeProcessorService(BaseProcessorService):
-    def process_template(self, root_template, assume_ctx=None) -> Node:
+    """Iteratively process a tdom compatible Template into a `Node` tree."""
+
+    def process_template(
+        self, root_template: Template, assume_ctx: ProcessContext | None = None
+    ) -> Node:
         root_tnode = self.to_tnode(root_template)
         if assume_ctx is None:
             assume_ctx = make_ctx(parent_tag=DEFAULT_NORMAL_TEXT_ELEMENT, ns="html")
@@ -382,10 +386,10 @@ class NodeProcessorService(BaseProcessorService):
 @dataclass(frozen=True)
 class CachedNodeProcessorService(NodeProcessorService):
     @lru_cache(512)
-    def _to_tnode(self, ct: CachableTemplate):
+    def _to_tnode(self, ct: CachableTemplate) -> TNode:
         return super().to_tnode(ct.template)
 
-    def to_tnode(self, template: Template):
+    def to_tnode(self, template: Template) -> TNode:
         return self._to_tnode(CachableTemplate(template))
 
 
