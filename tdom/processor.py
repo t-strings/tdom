@@ -426,7 +426,7 @@ def serialize_html_attrs(
     )
 
 
-def make_ctx(parent_tag=None, ns="html"):
+def make_ctx(parent_tag: str | None = None, ns: str | None = "html"):
     return ProcessContext(parent_tag=parent_tag, ns=ns)
 
 
@@ -442,9 +442,17 @@ class ProcessContext:
         ns: NotSet | str | None = NOT_SET,
         parent_tag: NotSet | str | None = NOT_SET,
     ):
+        if isinstance(ns, NotSet):
+            resolved_ns = self.ns
+        else:
+            resolved_ns = ns
+        if isinstance(parent_tag, NotSet):
+            resolved_parent_tag = self.parent_tag
+        else:
+            resolved_parent_tag = parent_tag
         return make_ctx(
-            parent_tag=self.parent_tag if parent_tag is NOT_SET else parent_tag,
-            ns=self.ns if ns is NOT_SET else ns,
+            parent_tag=resolved_parent_tag,
+            ns=resolved_ns,
         )
 
 
