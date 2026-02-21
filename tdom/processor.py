@@ -642,7 +642,9 @@ class ProcessorService(BaseProcessorService):
     ) -> None:
         assert last_ctx.parent_tag == "<!--"
         content = resolve_text_without_recursion(template, last_ctx.parent_tag, text_t)
-        if content:
+        if content is None or content == "":
+            return
+        else:
             bf.append(
                 self.escape_html_comment(
                     content,
@@ -730,7 +732,9 @@ class ProcessorService(BaseProcessorService):
     ) -> None:
         assert last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS
         content = resolve_text_without_recursion(template, last_ctx.parent_tag, text_t)
-        if last_ctx.parent_tag == "script":
+        if content is None or content == "":
+            return
+        elif last_ctx.parent_tag == "script":
             bf.append(
                 self.escape_html_script(
                     content,
@@ -757,11 +761,15 @@ class ProcessorService(BaseProcessorService):
         text_t: Template,
     ) -> None:
         assert last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS
-        bf.append(
-            self.escape_html_text(
-                resolve_text_without_recursion(template, last_ctx.parent_tag, text_t),
+        content = resolve_text_without_recursion(template, last_ctx.parent_tag, text_t)
+        if content is None or content == "":
+            return
+        else:
+            bf.append(
+                self.escape_html_text(
+                    content,
+                )
             )
-        )
 
     def _stream_normal_text(
         self,
