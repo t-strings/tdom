@@ -202,9 +202,6 @@ class NodeProcessorService(BaseProcessorService):
         content = resolve_text_without_recursion(template, "<!--", text_t)
         parent_node.children.append(Comment(content if content else ""))
 
-    def get_system(self, **kwargs) -> dict[str, object]:
-        return {**kwargs}
-
     def _stream_component(
         self,
         parent_node: NodeContainer,
@@ -233,15 +230,13 @@ class NodeProcessorService(BaseProcessorService):
         else:
             children_template = t""
 
-        system_kwargs = self.get_system(children=children_template)
-
         if not callable(component_callable):
             raise TypeError("Component callable must be callable.")
 
         kwargs = prep_component_kwargs(
             get_callable_info(component_callable),
             _resolve_t_attrs(attrs, template.interpolations),
-            system_kwargs=system_kwargs,
+            system_kwargs={"children": children_template},
         )
 
         result_t = component_callable(**kwargs)

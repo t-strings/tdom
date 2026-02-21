@@ -480,9 +480,6 @@ class BaseProcessorService:
     def to_tnode(self, template: Template) -> TNode:
         return TemplateParser.parse(template)
 
-    def get_system(self, **kwargs) -> dict[str, object]:
-        return {**kwargs}
-
 
 @dataclass(frozen=True)
 class ProcessorService(BaseProcessorService):
@@ -692,15 +689,13 @@ class ProcessorService(BaseProcessorService):
         else:
             children_template = t""
 
-        system_kwargs = self.get_system(children=children_template)
-
         if not callable(component_callable):
             raise TypeError("Component callable must be callable.")
 
         kwargs = prep_component_kwargs(
             get_callable_info(component_callable),
             _resolve_t_attrs(attrs, template.interpolations),
-            system_kwargs=system_kwargs,
+            system_kwargs={"children": children_template},
         )
 
         result_t = component_callable(**kwargs)
