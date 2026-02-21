@@ -200,7 +200,9 @@ class NodeProcessorService(BaseProcessorService):
         text_t: Template,
     ) -> None:
         content = resolve_text_without_recursion(template, "<!--", text_t)
-        parent_node.children.append(Comment(content if content else ""))
+        if content is None or content == "":
+            content = ""
+        parent_node.children.append(Comment(content))
 
     def _stream_component(
         self,
@@ -271,7 +273,9 @@ class NodeProcessorService(BaseProcessorService):
     ) -> None:
         assert last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS
         content = resolve_text_without_recursion(template, last_ctx.parent_tag, text_t)
-        if last_ctx.parent_tag == "script":
+        if content is None or content == "":
+            return
+        elif last_ctx.parent_tag == "script":
             parent_node.children.append(
                 Text(
                     Markup(
@@ -306,17 +310,19 @@ class NodeProcessorService(BaseProcessorService):
         text_t: Template,
     ) -> None:
         assert last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS
-        parent_node.children.append(
-            Text(
-                Markup(
-                    self.escape_html_text(
-                        resolve_text_without_recursion(
-                            template, last_ctx.parent_tag, text_t
-                        ),
+        content = resolve_text_without_recursion(
+            template, last_ctx.parent_tag, text_t
+            )
+        if content is None or content == "":
+            return
+        else:
+            parent_node.children.append(
+                Text(
+                    Markup(
+                        self.escape_html_text(content)
                     )
                 )
             )
-        )
 
     def _stream_normal_text(
         self,
