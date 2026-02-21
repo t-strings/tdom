@@ -310,19 +310,11 @@ class NodeProcessorService(BaseProcessorService):
         text_t: Template,
     ) -> None:
         assert last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS
-        content = resolve_text_without_recursion(
-            template, last_ctx.parent_tag, text_t
-            )
+        content = resolve_text_without_recursion(template, last_ctx.parent_tag, text_t)
         if content is None or content == "":
             return
         else:
-            parent_node.children.append(
-                Text(
-                    Markup(
-                        self.escape_html_text(content)
-                    )
-                )
-            )
+            parent_node.children.append(Text(Markup(self.escape_html_text(content))))
 
     def _stream_normal_text(
         self,
