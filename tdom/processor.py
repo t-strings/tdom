@@ -808,8 +808,6 @@ def resolve_text_without_recursion(
     A non-exact match is not allowed because we cannot process escaping
     across the boundary between other content and the pass-through content.
     """
-    # @TODO: We should use formatting but not in a way that
-    # auto-interpolates structured values.
     if content_ref.is_singleton:
         value = format_interpolation(template.interpolations[content_ref.i_indexes[0]])
         if value is None:
