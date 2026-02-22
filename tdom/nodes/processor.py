@@ -97,11 +97,7 @@ class NodeProcessorService(BaseProcessorService):
                             for part in iter(ref)
                         ]
                     )
-                    res = self._stream_comment(
-                        parent_node, template, last_ctx.copy(parent_tag="<!--"), text_t
-                    )
-                    if res is not None:
-                        yield res
+                    self._process_comment(parent_node, template, last_ctx, text_t)
                 case TFragment(children):
                     q.extend(
                         [
@@ -110,7 +106,7 @@ class NodeProcessorService(BaseProcessorService):
                         ]
                     )
                 case TComponent(start_i_index, end_i_index, attrs, children):
-                    res = self._stream_component(
+                    res = self._process_component(
                         parent_node,
                         template,
                         last_ctx,
@@ -150,41 +146,36 @@ class NodeProcessorService(BaseProcessorService):
                         )
                     elif ref.is_literal:
                         if last_ctx.parent_tag == "script":
+                            # @TODO: These nodes probably should just have one big "data" blob.
+                            # Because that is essentially what we are doing here.
                             parent_node.children.append(
                                 Text(Markup(self.escape_html_script(ref.strings[0])))
                             )
                         elif last_ctx.parent_tag == "style":
+                            # @TODO: These nodes probably should just have one big "data" blob.
+                            # Because that is essentially what we are doing here.
                             parent_node.children.append(
                                 Text(Markup(self.escape_html_style(ref.strings[0])))
                             )
                         else:
-                            # Fallback to escape everything.
+                            # Assume this will be escaped as normal text.
                             # This works because you cannot interpolate a
                             # template into a script/style.
-                            # @TODO: Is this correct?
                             parent_node.children.append(Text(ref.strings[0]))
                     elif last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
                         # Must be handled all at once.
-                        res = self._stream_raw_texts(
-                            parent_node, template, last_ctx, text_t
-                        )
-                        if res is not None:
-                            yield res
+                        self._process_raw_texts(parent_node, template, last_ctx, text_t)
                     elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
                         # We can handle all at once because there are no non-text children and everything must be string-ified.
-                        res = self._stream_escapable_raw_texts(
+                        self._process_escapable_raw_texts(
                             parent_node, template, last_ctx, text_t
                         )
-                        if res is not None:
-                            yield res
                     else:
-                        # Flatten the template back out into the stream because each interpolation can
-                        # be escaped as is and structured content can be injected between text anyways.
                         for part in text_t:
                             if isinstance(part, str):
                                 parent_node.children.append(Text(part))
                             else:
-                                res = self._stream_normal_text(
+                                res = self._process_normal_text(
                                     parent_node, template, last_ctx, part.value
                                 )
                                 if res is not None:
@@ -192,7 +183,7 @@ class NodeProcessorService(BaseProcessorService):
                 case _:
                     raise ValueError(f"Unrecognized tnode: {tnode}")
 
-    def _stream_comment(
+    def _process_comment(
         self,
         parent_node: NodeContainer,
         template: Template,
@@ -204,7 +195,7 @@ class NodeProcessorService(BaseProcessorService):
             content = ""
         parent_node.children.append(Comment(content))
 
-    def _stream_component(
+    def _process_component(
         self,
         parent_node: NodeContainer,
         template: Template,
@@ -212,7 +203,7 @@ class NodeProcessorService(BaseProcessorService):
         attrs: tuple[TAttribute, ...],
         start_i_index: int,
         end_i_index: int | None,
-    ):
+    ) -> None | WalkerProto:
         body_start_s_index = (
             start_i_index
             + 1
@@ -264,7 +255,7 @@ class NodeProcessorService(BaseProcessorService):
         else:
             raise ValueError(f"Unknown component return value: {type(result_t)}")
 
-    def _stream_raw_texts(
+    def _process_raw_texts(
         self,
         parent_node: NodeContainer,
         template: Template,
@@ -302,7 +293,7 @@ class NodeProcessorService(BaseProcessorService):
                 f"Parent tag {last_ctx.parent_tag} is not supported."
             )
 
-    def _stream_escapable_raw_texts(
+    def _process_escapable_raw_texts(
         self,
         parent_node: NodeContainer,
         template: Template,
@@ -316,7 +307,7 @@ class NodeProcessorService(BaseProcessorService):
         else:
             parent_node.children.append(Text(Markup(self.escape_html_text(content))))
 
-    def _stream_normal_text(
+    def _process_normal_text(
         self,
         parent_node: NodeContainer,
         template: Template,
@@ -331,7 +322,7 @@ class NodeProcessorService(BaseProcessorService):
             return self.walk_from_tnode(parent_node, value, last_ctx, value_root)
         elif isinstance(value, Iterable):
             return iter(
-                self._stream_normal_text_from_value(parent_node, template, last_ctx, v)
+                self._process_normal_text_from_value(parent_node, template, last_ctx, v)
                 for v in value
             )
         elif value is None:
@@ -346,7 +337,7 @@ class NodeProcessorService(BaseProcessorService):
                 text = Text(str(value))
             parent_node.children.append(text)
 
-    def _stream_normal_text_from_value(
+    def _process_normal_text_from_value(
         self,
         parent_node: NodeContainer,
         template: Template,
@@ -360,7 +351,7 @@ class NodeProcessorService(BaseProcessorService):
             return self.walk_from_tnode(parent_node, value, last_ctx, value_root)
         elif isinstance(value, Iterable):
             return iter(
-                self._stream_normal_text_from_value(parent_node, template, last_ctx, v)
+                self._process_normal_text_from_value(parent_node, template, last_ctx, v)
                 for v in value
             )
         elif value is None:
