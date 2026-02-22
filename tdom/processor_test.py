@@ -12,6 +12,7 @@ from .processor import (
     to_html as to_html_str,
     prep_component_kwargs,
     processor_service_factory,
+    cached_processor_service_factory,
     make_ctx,
 )
 from .callables import get_callable_info
@@ -1681,57 +1682,50 @@ def struct_repr(st):
     )
 
 
-'''
-@pytest.mark.skip("Come back to this.")
-def test_process_template_internal_cache(to_html):
+def test_process_template_internal_cache():
     """Test that cache and non-cache both generally work as expected."""
-    """
-    sample_t = t'<div>{"content"}</div>'
-    sample_diff_t = t'<div>{"diffcontent"}</div>'
-    alt_t = t'<span>{"content"}</span>'
+    sample_t = t"<div>{'content'}</div>"
+    sample_diff_t = t"<div>{'diffcontent'}</div>"
+    alt_t = t"<span>{'content'}</span>"
     process_api = processor_service_factory()
     cached_process_api = cached_processor_service_factory()
-    # Technically this could be the superclass which doesn't have cached method.
-    assert isinstance(cached_process_api.transform_api, CachedTransformService)
     # Because the cache is stored on the class itself this can be affect by
-    # other tests, so save this off and take the difference to determin the result,
+    # other tests, so save this off and take the difference to determine the result,
     # this is not great and hopefully we can find a better solution.
-    start_ci = cached_process_api.transform_api._transform_template.cache_info()
-    tf1 = process_api.transform_api.transform_template(sample_t)
-    tf2 = process_api.transform_api.transform_template(sample_t)
-    cached_tf1 = cached_process_api.transform_api.transform_template(sample_t)
-    cached_tf2 = cached_process_api.transform_api.transform_template(sample_t)
-    cached_tf3 = cached_process_api.transform_api.transform_template(sample_diff_t)
+    start_ci = cached_process_api._to_tnode.cache_info()
+    tnode1 = process_api.to_tnode(sample_t)
+    tnode2 = process_api.to_tnode(sample_t)
+    cached_tnode1 = cached_process_api.to_tnode(sample_t)
+    cached_tnode2 = cached_process_api.to_tnode(sample_t)
+    cached_tnode3 = cached_process_api.to_tnode(sample_diff_t)
     # Check that the uncached and cached services are actually
     # returning non-identical results.
-    assert tf1 is not cached_tf1
-    assert tf1 is not cached_tf2
-    assert tf1 is not cached_tf3
+    assert tnode1 is not cached_tnode1
+    assert tnode1 is not cached_tnode2
+    assert tnode1 is not cached_tnode3
     # Check that the uncached service returns a brand new result everytime.
-    assert tf1 is not tf2
+    assert tnode1 is not tnode2
     # Check that the cached service is returning the exact same, identical, result.
-    assert cached_tf1 is cached_tf2
+    assert cached_tnode1 is cached_tnode2
     # Even if the input templates are not identical (but are still equivalent).
-    assert cached_tf1 is cached_tf3 and sample_t is not sample_diff_t
+    assert cached_tnode1 is cached_tnode3 and sample_t is not sample_diff_t
     # Check that the cached service and uncached services return
     # results that are equivalent (even though they are not (id)entical).
-    assert struct_repr(tf1) == struct_repr(cached_tf1)
-    assert struct_repr(tf2) == struct_repr(cached_tf1)
+    assert tnode1 == cached_tnode1
+    assert tnode2 == cached_tnode1
     # Now that we are setup we check that the cache is internally
     # working as we intended.
-    ci = cached_process_api.transform_api._transform_template.cache_info()
-    # cached_tf2 and cached_tf3 are hits after cached_tf1
+    ci = cached_process_api._to_tnode.cache_info()
+    # cached_tnode2 and cached_tnode3 are hits after cached_tnode1
     assert ci.hits - start_ci.hits == 2
     # cached_tf1 was a miss because cache was empty (brand new)
     assert ci.misses - start_ci.misses == 1
-    cached_tf4 = cached_process_api.transform_api.transform_template(alt_t)
+    cached_tnode4 = cached_process_api.to_tnode(alt_t)
     # A different template produces a brand new tf.
-    assert cached_tf1 is not cached_tf4
+    assert cached_tnode1 is not cached_tnode4
     # The template is new AND has a different structure so it also
     # produces an unequivalent tf.
-    assert struct_repr(cached_tf1) != struct_repr(cached_tf4)
-    """
-'''
+    assert cached_tnode1 != cached_tnode4
 
 
 @pytest.mark.parametrize("to_html", PROCESSORS)
