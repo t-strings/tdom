@@ -476,7 +476,6 @@ class ParserService:
 
 @dataclass(frozen=True)
 class CachedParserService(ParserService):
-
     @lru_cache(512)
     def _to_tnode(self, ct: CachableTemplate):
         return super().to_tnode(ct.template)

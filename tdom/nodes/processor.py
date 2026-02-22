@@ -339,7 +339,9 @@ class NodeProcessorService(BaseProcessorService):
             parent_node.children.append(text)
 
 
-_default_cached_node_processor_api = NodeProcessorService(parser_api=CachedParserService())
+_default_cached_node_processor_api = NodeProcessorService(
+    parser_api=CachedParserService()
+)
 
 
 def to_node(template: Template, assume_ctx: ProcessContext | None = None) -> Node:
