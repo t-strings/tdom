@@ -299,6 +299,13 @@ class TestNormalTextElementDynamic:
             == "<p>Response: &lt;&gt;&amp;&#39;&#34;.</p>"
         )
 
+    def test_templated_escaping_in_literals(self, to_html):
+        text = "This text is fine"
+        assert (
+            to_html(t"<p>The literal has &lt; in it: {text}.</p>")
+            == "<p>The literal has &lt; in it: This text is fine.</p>"
+        )
+
     def test_iterable_of_templates(self, to_html):
         items = ["Apple", "Banana", "Cherry"]
         assert (
