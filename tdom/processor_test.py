@@ -732,47 +732,117 @@ def test_convertible_fixture():
     assert f"{c!r}" == "repr"
 
 
+def wrap_template_in_tags(
+    start_tag: str, template: Template, end_tag: str | None = None
+):
+    """Utility for testing templated text but with different containing tags."""
+    if end_tag is None:
+        end_tag = start_tag
+    return Template(f"<{start_tag}>") + template + Template(f"</{end_tag}>")
+
+
+def wrap_text_in_tags(start_tag: str, content: str, end_tag: str | None = None):
+    """Utility for testing expected text but with different containing tags."""
+    if end_tag is None:
+        end_tag = start_tag
+    # Stringify to flatten `Markup()`
+    content = str(content)
+    return f"<{start_tag}>" + content + f"</{end_tag}>"
+
+
 @pytest.mark.parametrize("to_html", PROCESSORS)
 class TestInterpolationConversion:
     def test_str(self, to_html):
         c = Convertible()
-        assert to_html(t"<div>{c!s}</div>") == "<div>string</div>"
+        for tag in ("p", "script", "title"):
+            assert to_html(wrap_template_in_tags(tag, t"{c!s}")) == wrap_text_in_tags(
+                tag, "string"
+            )
 
     def test_repr(self, to_html):
         c = Convertible()
-        assert to_html(t"<div>{c!r}</div>") == "<div>repr</div>"
+        for tag in ("p", "script", "title"):
+            assert to_html(wrap_template_in_tags(tag, t"{c!r}")) == wrap_text_in_tags(
+                tag, "repr"
+            )
 
-    def test_ascii(self, to_html):
-        assert (
-            to_html(t"<div>{'😊'!a}</div>")
-            == f"<div>{escape_html_text(ascii('😊'))}</div>"
-        )
+    def test_ascii_raw_text(self, to_html):
+        # single quotes are not escaped in raw text
+        assert to_html(
+            wrap_template_in_tags("script", t"{'😊'!a}")
+        ) == wrap_text_in_tags("script", ascii("😊"))
+
+    def test_ascii_escapable_normal_and_raw(self, to_html):
+        # single quotes are escaped
+        for tag in ("p", "title"):
+            assert to_html(
+                wrap_template_in_tags(tag, t"{'😊'!a}")
+            ) == wrap_text_in_tags(tag, escape_html_text(ascii("😊")))
 
 
 @pytest.mark.parametrize("to_html", PROCESSORS)
 class TestInterpolationFormatSpec:
-    def test_safe(self, to_html):
+    def test_normal_text_safe(self, to_html):
         raw_content = "<u>underlined</u>"
         assert (
             to_html(t"<p>This is {raw_content:safe} text.</p>")
             == "<p>This is <u>underlined</u> text.</p>"
         )
 
-    def test_unsafe(self, to_html):
+    def test_raw_text_safe(self, to_html):
+        # @TODO: What should even happen here?
+        raw_content = "</script>"
+        assert (
+            to_html(t"<script>{raw_content:safe}</script>")
+            == "<script></script></script>"
+        ), "DO NOT DO THIS! This is an advanced escape hatch."
+
+    def test_escapable_raw_text_safe(self, to_html):
+        raw_content = "<u>underlined</u>"
+        assert (
+            to_html(t"<textarea>{raw_content:safe}</textarea>")
+            == "<textarea><u>underlined</u></textarea>"
+        )
+
+    def test_normal_text_unsafe(self, to_html):
         supposedly_safe = Markup("<i>italic</i>")
         assert (
             to_html(t"<p>This is {supposedly_safe:unsafe} text.</p>")
             == "<p>This is &lt;i&gt;italic&lt;/i&gt; text.</p>"
         )
 
-    def test_callback(self, to_html):
+    def test_raw_text_unsafe(self, to_html):
+        # @TODO: What should even happen here?
+        supposedly_safe = "</script>"
+        assert (
+            to_html(t"<script>{supposedly_safe:unsafe}</script>")
+            == "<script>\\x3c/script></script>"
+        )
+        assert (
+            to_html(t"<script>{supposedly_safe:unsafe}</script>")
+            != "<script></script></script>"
+        )  # Sanity check
+
+    def test_escapable_raw_text_unsafe(self, to_html):
+        supposedly_safe = Markup("<i>italic</i>")
+        assert (
+            to_html(t"<textarea>{supposedly_safe:unsafe}</textarea>")
+            == "<textarea>&lt;i&gt;italic&lt;/i&gt;</textarea>"
+        )
+
+    def test_all_text_callback(self, to_html):
         def get_value():
             return "dynamic"
 
-        assert (
-            to_html(t"<p>The value is {get_value:callback}.</p>")
-            == "<p>The value is dynamic.</p>"
-        )
+        for tag in ("p", "script", "style"):
+            assert (
+                to_html(
+                    Template(f"<{tag}>")
+                    + t"The value is {get_value:callback}."
+                    + Template(f"</{tag}>")
+                )
+                == f"<{tag}>The value is dynamic.</{tag}>"
+            )
 
     def test_callback_nonzero_callable_error(self, to_html):
         def add(a, b):
@@ -781,7 +851,12 @@ class TestInterpolationFormatSpec:
         assert add(1, 2) == 3, "Make sure fixture could work..."
 
         with pytest.raises(TypeError):
-            _ = to_html(t"<p>The sum is {add:callback}.</p>")
+            for tag in ("p", "script", "style"):
+                _ = to_html(
+                    Template(f"<{tag}>")
+                    + t"The sum is {add:callback}."
+                    + Template(f"</{tag}>")
+                )
 
 
 # --------------------------------------------------------------------------
