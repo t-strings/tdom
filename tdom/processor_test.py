@@ -14,6 +14,7 @@ from .processor import (
     processor_service_factory,
     cached_processor_service_factory,
     make_ctx,
+    CachedParserService,
 )
 from .callables import get_callable_info
 from .escaping import escape_html_text
@@ -1700,6 +1701,7 @@ def test_process_template_internal_cache():
     # Because the cache is stored on the class itself this can be affect by
     # other tests, so save this off and take the difference to determine the result,
     # this is not great and hopefully we can find a better solution.
+    assert isinstance(cached_process_api.parser_api, CachedParserService)
     start_ci = cached_process_api.parser_api._to_tnode.cache_info()
     tnode1 = process_api.parser_api.to_tnode(sample_t)
     tnode2 = process_api.parser_api.to_tnode(sample_t)
