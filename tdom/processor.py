@@ -382,8 +382,8 @@ def _kebab_to_snake(name: str) -> str:
 def prep_component_kwargs(
     callable_info: CallableInfo,
     attrs: AttributesDict,
-    system_kwargs: dict[str, object],
-):
+    system_kwargs: AttributesDict,
+) -> AttributesDict:
     if callable_info.requires_positional:
         raise TypeError(
             "Component callables cannot have required positional arguments."
@@ -457,7 +457,10 @@ class ProcessContext:
         )
 
 
-type ComponentObjectProto = Callable[..., Template]
+type FunctionComponentProto = Callable[..., Template]
+type FactoryComponentProto = Callable[..., ComponentObjectProto]
+type ComponentCallableProto = FunctionComponentProto | FactoryComponentProto
+type ComponentObjectProto = Callable[[], Template]
 
 
 type WalkerProto = Iterable[WalkerProto | None]
@@ -466,6 +469,10 @@ type WalkerProto = Iterable[WalkerProto | None]
 type NormalTextInterpolationValue = (
     None | str | Template | Iterable[NormalTextInterpolationValue] | object
 )
+# Applies to both escapable raw text and raw text.
+type RawTextExactInterpolationValue = None | str | HasHTMLDunder | object
+# Applies to both escapable raw text and raw text.
+type RawTextInexactInterpolationValue = None | str | object
 
 
 @dataclass(frozen=True)
@@ -653,7 +660,7 @@ class ProcessorService(BaseProcessorService):
             + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
         )
         start_i = template.interpolations[start_i_index]
-        component_callable = start_i.value
+        component_callable = cast(ComponentCallableProto, start_i.value)
         if start_i_index != end_i_index and end_i_index is not None:
             # @TODO: We should do this during parsing.
             children_template = extract_embedded_template(
@@ -692,9 +699,6 @@ class ProcessorService(BaseProcessorService):
                 return
             result_root = self.parser_api.to_tnode(result_t)
             return self.walk_from_tnode(bf, result_t, last_ctx, result_root)
-        elif result_t is None:
-            # DO NOTHING
-            return
         else:
             raise ValueError(f"Unknown component return value: {type(result_t)}")
 
@@ -815,6 +819,7 @@ def resolve_text_without_recursion(
     """
     if content_ref.is_singleton:
         value = format_interpolation(template.interpolations[content_ref.i_indexes[0]])
+        value = cast(RawTextExactInterpolationValue, value)
         if value is None:
             return None
         elif isinstance(value, str):
@@ -837,6 +842,7 @@ def resolve_text_without_recursion(
                     text.append(part)
                 continue
             value = format_interpolation(template.interpolations[part])
+            value = cast(RawTextInexactInterpolationValue, value)
             if value is None:
                 continue
             elif (

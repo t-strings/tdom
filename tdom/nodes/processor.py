@@ -16,6 +16,7 @@ from ..processor import (
     make_ctx,
     extract_embedded_template,
     ComponentObjectProto,
+    ComponentCallableProto,
     format_interpolation,
     WalkerProto,
     NormalTextInterpolationValue,
@@ -176,7 +177,7 @@ class NodeProcessorService(BaseProcessorService):
             + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
         )
         start_i = template.interpolations[start_i_index]
-        component_callable = start_i.value
+        component_callable = cast(ComponentCallableProto, start_i.value)
         if start_i_index != end_i_index and end_i_index is not None:
             # @TODO: We should do this during parsing.
             children_template = extract_embedded_template(
@@ -215,9 +216,6 @@ class NodeProcessorService(BaseProcessorService):
                 return
             result_root = self.parser_api.to_tnode(result_t)
             return self.walk_from_tnode(parent_node, result_t, last_ctx, result_root)
-        elif result_t is None:
-            # DO NOTHING
-            return
         else:
             raise ValueError(f"Unknown component return value: {type(result_t)}")
 
