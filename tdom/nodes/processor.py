@@ -2,7 +2,6 @@ from dataclasses import dataclass
 from string.templatelib import Template
 from typing import cast
 from collections.abc import Iterable
-from functools import lru_cache
 
 from markupsafe import Markup
 
@@ -41,7 +40,6 @@ from ..parser import (
     TNode,
     TText,
 )
-from ..utils import CachableTemplate
 from ..template_utils import TemplateRef
 
 
