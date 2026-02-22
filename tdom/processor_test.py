@@ -34,7 +34,11 @@ def to_html_str_no_cache(*args, **kwargs):
     return processor_api.process_template(*args, **kwargs)
 
 
-PROCESSORS = [to_html_str, to_node_str, to_html_str_no_cache]
+PROCESSORS = [
+    to_html_str,  # by default this is cached
+    to_node_str,  # by default this is cached
+    to_html_str_no_cache,  # we only test one without a cache for test run speed
+]
 " List of processor functions to test against. "
 
 # --------------------------------------------------------------------------
@@ -1684,20 +1688,24 @@ def struct_repr(st):
 
 def test_process_template_internal_cache():
     """Test that cache and non-cache both generally work as expected."""
-    sample_t = t"<div>{'content'}</div>"
-    sample_diff_t = t"<div>{'diffcontent'}</div>"
+    # @NOTE: We use a made-up custom element so that we can be sure to
+    # miss the cache.  If this element is used elsewhere than the global
+    # cache might cache it and it will ruin our counting, specifically
+    # the first miss will instead be a hit.
+    sample_t = t"<div>{'content'}<tdom-cache-test-element /></div>"
+    sample_diff_t = t"<div>{'diffcontent'}<tdom-cache-test-element /></div>"
     alt_t = t"<span>{'content'}</span>"
     process_api = processor_service_factory()
     cached_process_api = cached_processor_service_factory()
     # Because the cache is stored on the class itself this can be affect by
     # other tests, so save this off and take the difference to determine the result,
     # this is not great and hopefully we can find a better solution.
-    start_ci = cached_process_api._to_tnode.cache_info()
-    tnode1 = process_api.to_tnode(sample_t)
-    tnode2 = process_api.to_tnode(sample_t)
-    cached_tnode1 = cached_process_api.to_tnode(sample_t)
-    cached_tnode2 = cached_process_api.to_tnode(sample_t)
-    cached_tnode3 = cached_process_api.to_tnode(sample_diff_t)
+    start_ci = cached_process_api.parser_api._to_tnode.cache_info()
+    tnode1 = process_api.parser_api.to_tnode(sample_t)
+    tnode2 = process_api.parser_api.to_tnode(sample_t)
+    cached_tnode1 = cached_process_api.parser_api.to_tnode(sample_t)
+    cached_tnode2 = cached_process_api.parser_api.to_tnode(sample_t)
+    cached_tnode3 = cached_process_api.parser_api.to_tnode(sample_diff_t)
     # Check that the uncached and cached services are actually
     # returning non-identical results.
     assert tnode1 is not cached_tnode1
@@ -1715,12 +1723,12 @@ def test_process_template_internal_cache():
     assert tnode2 == cached_tnode1
     # Now that we are setup we check that the cache is internally
     # working as we intended.
-    ci = cached_process_api._to_tnode.cache_info()
+    ci = cached_process_api.parser_api._to_tnode.cache_info()
     # cached_tnode2 and cached_tnode3 are hits after cached_tnode1
     assert ci.hits - start_ci.hits == 2
     # cached_tf1 was a miss because cache was empty (brand new)
     assert ci.misses - start_ci.misses == 1
-    cached_tnode4 = cached_process_api.to_tnode(alt_t)
+    cached_tnode4 = cached_process_api.parser_api.to_tnode(alt_t)
     # A different template produces a brand new tf.
     assert cached_tnode1 is not cached_tnode4
     # The template is new AND has a different structure so it also
