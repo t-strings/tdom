@@ -41,7 +41,7 @@ from ..parser import (
     TText,
 )
 from ..utils import CachableTemplate
-from .template_utils import TemplateRef
+from ..template_utils import TemplateRef
 
 
 @dataclass(frozen=True)
@@ -267,7 +267,7 @@ class NodeProcessorService(BaseProcessorService):
         parent_node: NodeContainer,
         template: Template,
         last_ctx: ProcessContext,
-        content_ref: Template,
+        content_ref: TemplateRef,
     ) -> None:
         assert last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS
         content = resolve_text_without_recursion(
