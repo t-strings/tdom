@@ -551,9 +551,7 @@ class ProcessorService(BaseProcessorService):
                             for part in iter(ref)
                         ]
                     )
-                    self._process_comment(
-                        bf, template, last_ctx.copy(parent_tag="<!--"), text_t
-                    )
+                    self._process_comment(bf, template, last_ctx, text_t)
                 case TFragment(children):
                     q.extend([(last_ctx, child) for child in reversed(children)])
                 case TComponent(start_i_index, end_i_index, attrs, children):
