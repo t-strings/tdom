@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from string.templatelib import Template, Interpolation
+from string.templatelib import Template
 from typing import cast
 from collections.abc import Iterable
 from functools import lru_cache
@@ -41,6 +41,7 @@ from ..parser import (
     TText,
 )
 from ..utils import CachableTemplate
+from .template_utils import TemplateRef
 
 
 @dataclass(frozen=True)
@@ -89,15 +90,7 @@ class NodeProcessorService(BaseProcessorService):
                         )
                     parent_node.children.append(DocumentType(text))
                 case TComment(ref):
-                    text_t = Template(
-                        *[
-                            part
-                            if isinstance(part, str)
-                            else Interpolation(part, "", None, "")
-                            for part in iter(ref)
-                        ]
-                    )
-                    self._process_comment(parent_node, template, last_ctx, text_t)
+                    self._process_comment(parent_node, template, last_ctx, ref)
                 case TFragment(children):
                     q.extend(
                         [
@@ -132,51 +125,25 @@ class NodeProcessorService(BaseProcessorService):
                             [(our_ctx, tchild, el) for tchild in reversed(children)]
                         )
                 case TText(ref):
-                    text_t = Template(
-                        *[
-                            part
-                            if isinstance(part, str)
-                            else Interpolation(part, "", None, "")
-                            for part in iter(ref)
-                        ]
-                    )
                     if last_ctx.parent_tag is None:
                         raise NotImplementedError(
                             "We cannot interpolate texts without knowing what tag they are contained in."
                         )
-                    elif ref.is_literal:
-                        if last_ctx.parent_tag == "script":
-                            # @TODO: These nodes probably should just have one big "data" blob.
-                            # Because that is essentially what we are doing here.
-                            parent_node.children.append(
-                                Text(Markup(self.escape_html_script(ref.strings[0])))
-                            )
-                        elif last_ctx.parent_tag == "style":
-                            # @TODO: These nodes probably should just have one big "data" blob.
-                            # Because that is essentially what we are doing here.
-                            parent_node.children.append(
-                                Text(Markup(self.escape_html_style(ref.strings[0])))
-                            )
-                        else:
-                            # Assume this will be escaped as normal text.
-                            # This works because you cannot interpolate a
-                            # template into a script/style.
-                            parent_node.children.append(Text(ref.strings[0]))
                     elif last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
                         # Must be handled all at once.
-                        self._process_raw_texts(parent_node, template, last_ctx, text_t)
+                        self._process_raw_texts(parent_node, template, last_ctx, ref)
                     elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
                         # We can handle all at once because there are no non-text children and everything must be string-ified.
                         self._process_escapable_raw_texts(
-                            parent_node, template, last_ctx, text_t
+                            parent_node, template, last_ctx, ref
                         )
                     else:
-                        for part in text_t:
+                        for part in ref:
                             if isinstance(part, str):
                                 parent_node.children.append(Text(part))
                             else:
                                 res = self._process_normal_text(
-                                    parent_node, template, last_ctx, part.value
+                                    parent_node, template, last_ctx, part
                                 )
                                 if res is not None:
                                     yield res
@@ -188,9 +155,9 @@ class NodeProcessorService(BaseProcessorService):
         parent_node: NodeContainer,
         template: Template,
         last_ctx: ProcessContext,
-        text_t: Template,
+        content_ref: TemplateRef,
     ) -> None:
-        content = resolve_text_without_recursion(template, "<!--", text_t)
+        content = resolve_text_without_recursion(template, "<!--", content_ref)
         if content is None or content == "":
             content = ""
         parent_node.children.append(Comment(content))
@@ -260,10 +227,12 @@ class NodeProcessorService(BaseProcessorService):
         parent_node: NodeContainer,
         template: Template,
         last_ctx: ProcessContext,
-        text_t: Template,
+        content_ref: TemplateRef,
     ) -> None:
         assert last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS
-        content = resolve_text_without_recursion(template, last_ctx.parent_tag, text_t)
+        content = resolve_text_without_recursion(
+            template, last_ctx.parent_tag, content_ref
+        )
         if content is None or content == "":
             return
         elif last_ctx.parent_tag == "script":
@@ -298,10 +267,12 @@ class NodeProcessorService(BaseProcessorService):
         parent_node: NodeContainer,
         template: Template,
         last_ctx: ProcessContext,
-        text_t: Template,
+        content_ref: Template,
     ) -> None:
         assert last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS
-        content = resolve_text_without_recursion(template, last_ctx.parent_tag, text_t)
+        content = resolve_text_without_recursion(
+            template, last_ctx.parent_tag, content_ref
+        )
         if content is None or content == "":
             return
         else:

@@ -1,7 +1,7 @@
 from typing import cast
 from collections.abc import Iterable, Sequence, Callable
 from functools import lru_cache
-from string.templatelib import Interpolation, Template
+from string.templatelib import Template, Interpolation
 from dataclasses import dataclass
 
 from markupsafe import Markup
@@ -41,6 +41,7 @@ from .escaping import (
 )
 from .protocols import HasHTMLDunder
 from .sentinel import NOT_SET, NotSet
+from .template_utils import TemplateRef
 
 
 type Attribute = tuple[str, object]
@@ -543,15 +544,7 @@ class ProcessorService(BaseProcessorService):
                     else:
                         bf.append(f"<!doctype {text}>")
                 case TComment(ref):
-                    text_t = Template(
-                        *[
-                            part
-                            if isinstance(part, str)
-                            else Interpolation(part, "", None, "")
-                            for part in iter(ref)
-                        ]
-                    )
-                    self._process_comment(bf, template, last_ctx, text_t)
+                    self._process_comment(bf, template, last_ctx, ref)
                 case TFragment(children):
                     q.extend([(last_ctx, child) for child in reversed(children)])
                 case TComponent(start_i_index, end_i_index, attrs, children):
@@ -575,44 +568,23 @@ class ProcessorService(BaseProcessorService):
                         q.append((last_ctx, EndTag(f"</{tag}>")))
                         q.extend([(our_ctx, child) for child in reversed(children)])
                 case TText(ref):
-                    text_t = Template(
-                        *[
-                            part
-                            if isinstance(part, str)
-                            else Interpolation(part, "", None, "")
-                            for part in iter(ref)
-                        ]
-                    )
                     if last_ctx.parent_tag is None:
                         raise NotImplementedError(
                             "We cannot interpolate texts without knowing what tag they are contained in."
                         )
-                    elif ref.is_literal:
-                        if last_ctx.parent_tag == "script":
-                            bf.append(self.escape_html_script(ref.strings[0]))
-                        elif last_ctx.parent_tag == "style":
-                            bf.append(self.escape_html_style(ref.strings[0]))
-                        else:
-                            # Fallback to escape everything.
-                            # This works because you cannot interpolate a
-                            # template into a script/style.
-                            # @TODO: Is this correct?
-                            bf.append(self.escape_html_text(ref.strings[0]))
                     elif last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
                         # Must be handled all at once.
-                        self._process_raw_texts(bf, template, last_ctx, text_t)
+                        self._process_raw_texts(bf, template, last_ctx, ref)
                     elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
                         # We can handle all at once because there are no non-text children and everything must be string-ified.
-                        self._process_escapable_raw_texts(
-                            bf, template, last_ctx, text_t
-                        )
+                        self._process_escapable_raw_texts(bf, template, last_ctx, ref)
                     else:
-                        for part in text_t:
+                        for part in ref:
                             if isinstance(part, str):
-                                bf.append(part)
+                                bf.append(self.escape_html_text(part))
                             else:
                                 res = self._process_normal_text(
-                                    bf, template, last_ctx, part.value
+                                    bf, template, last_ctx, part
                                 )
                                 if res is not None:
                                     yield res
@@ -624,9 +596,9 @@ class ProcessorService(BaseProcessorService):
         bf: list[str],
         template: Template,
         last_ctx: ProcessContext,
-        text_t: Template,
+        content_ref: TemplateRef,
     ) -> None:
-        content = resolve_text_without_recursion(template, "<!--", text_t)
+        content = resolve_text_without_recursion(template, "<!--", content_ref)
         bf.append("<!--")
         if content is None or content == "":
             pass
@@ -716,10 +688,12 @@ class ProcessorService(BaseProcessorService):
         bf: list[str],
         template: Template,
         last_ctx: ProcessContext,
-        text_t: Template,
+        content_ref: TemplateRef,
     ) -> None:
         assert last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS
-        content = resolve_text_without_recursion(template, last_ctx.parent_tag, text_t)
+        content = resolve_text_without_recursion(
+            template, last_ctx.parent_tag, content_ref
+        )
         if content is None or content == "":
             return
         elif last_ctx.parent_tag == "script":
@@ -746,10 +720,12 @@ class ProcessorService(BaseProcessorService):
         bf: list[str],
         template: Template,
         last_ctx: ProcessContext,
-        text_t: Template,
+        content_ref: TemplateRef,
     ) -> None:
         assert last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS
-        content = resolve_text_without_recursion(template, last_ctx.parent_tag, text_t)
+        content = resolve_text_without_recursion(
+            template, last_ctx.parent_tag, content_ref
+        )
         if content is None or content == "":
             return
         else:
@@ -822,7 +798,7 @@ class CachedProcessorService(ProcessorService):
 
 
 def resolve_text_without_recursion(
-    template: Template, parent_tag: str, content_t: Template
+    template: Template, parent_tag: str, content_ref: TemplateRef
 ) -> str | None:
     """
     Resolve the text in the given template without recursing into more structured text.
@@ -834,9 +810,8 @@ def resolve_text_without_recursion(
     """
     # @TODO: We should use formatting but not in a way that
     # auto-interpolates structured values.
-    if len(content_t.interpolations) == 1 and content_t.strings == ("", ""):
-        i_index = cast(int, content_t.interpolations[0].value)
-        value = template.interpolations[i_index].value
+    if content_ref.is_singleton:
+        value = template.interpolations[content_ref.i_indexes[0]].value
         if value is None:
             return None
         elif isinstance(value, str):
@@ -853,12 +828,12 @@ def resolve_text_without_recursion(
             return str(value)
     else:
         text = []
-        for part in content_t:
+        for part in content_ref:
             if isinstance(part, str):
                 if part:
                     text.append(part)
                 continue
-            value = template.interpolations[part.value].value
+            value = template.interpolations[part].value
             if value is None:
                 continue
             elif (
