@@ -469,7 +469,26 @@ type NormalTextInterpolationValue = (
 
 
 @dataclass(frozen=True)
+class ParserService:
+    def to_tnode(self, template: Template) -> TNode:
+        return TemplateParser.parse(template)
+
+
+@dataclass(frozen=True)
+class CachedParserService(ParserService):
+
+    @lru_cache(512)
+    def _to_tnode(self, ct: CachableTemplate):
+        return super().to_tnode(ct.template)
+
+    def to_tnode(self, template: Template):
+        return self._to_tnode(CachableTemplate(template))
+
+
+@dataclass(frozen=True)
 class BaseProcessorService:
+    parser_api: ParserService
+
     escape_html_text: Callable = default_escape_html_text
 
     escape_html_comment: Callable = default_escape_html_comment
@@ -477,9 +496,6 @@ class BaseProcessorService:
     escape_html_script: Callable = default_escape_html_script
 
     escape_html_style: Callable = default_escape_html_style
-
-    def to_tnode(self, template: Template) -> TNode:
-        return TemplateParser.parse(template)
 
 
 @dataclass(frozen=True)
@@ -500,7 +516,7 @@ class ProcessorService(BaseProcessorService):
             # @DESIGN: What do we want to do here?  Should we assume we are in
             # a tag with normal text?
             assume_ctx = make_ctx(parent_tag=DEFAULT_NORMAL_TEXT_ELEMENT, ns="html")
-        root = self.to_tnode(root_template)
+        root = self.parser_api.to_tnode(root_template)
 
         bf: list[str] = []
         q: list[WalkerProto] = [
@@ -675,7 +691,7 @@ class ProcessorService(BaseProcessorService):
             if result_t.strings == ("",):
                 # DO NOTHING
                 return
-            result_root = self.to_tnode(result_t)
+            result_root = self.parser_api.to_tnode(result_t)
             return self.walk_from_tnode(bf, result_t, last_ctx, result_root)
         elif result_t is None:
             # DO NOTHING
@@ -746,7 +762,7 @@ class ProcessorService(BaseProcessorService):
         if isinstance(value, str):
             bf.append(self.escape_html_text(value))
         elif isinstance(value, Template):
-            value_root = self.to_tnode(value)
+            value_root = self.parser_api.to_tnode(value)
             return self.walk_from_tnode(bf, value, last_ctx, value_root)
         elif isinstance(value, Iterable):
             return iter(
@@ -771,7 +787,7 @@ class ProcessorService(BaseProcessorService):
         if isinstance(value, str):
             bf.append(self.escape_html_text(value))
         elif isinstance(value, Template):
-            value_root = self.to_tnode(value)
+            value_root = self.parser_api.to_tnode(value)
             return self.walk_from_tnode(bf, value, last_ctx, value_root)
         elif isinstance(value, Iterable):
             return iter(
@@ -785,16 +801,6 @@ class ProcessorService(BaseProcessorService):
             # @DESIGN: Everything that isn't an object we recognize is
             # coerced to a str() and emitted.
             bf.append(self.escape_html_text(value))
-
-
-@dataclass(frozen=True)
-class CachedProcessorService(ProcessorService):
-    @lru_cache(512)
-    def _to_tnode(self, ct: CachableTemplate):
-        return super().to_tnode(ct.template)
-
-    def to_tnode(self, template: Template):
-        return self._to_tnode(CachableTemplate(template))
 
 
 def resolve_text_without_recursion(
@@ -899,11 +905,11 @@ def extract_embedded_template(
 
 
 def processor_service_factory(**config_kwargs):
-    return ProcessorService(**config_kwargs)
+    return ProcessorService(parser_api=ParserService(), **config_kwargs)
 
 
 def cached_processor_service_factory(**config_kwargs):
-    return CachedProcessorService(**config_kwargs)
+    return ProcessorService(parser_api=CachedParserService(), **config_kwargs)
 
 
 _default_processor_api = cached_processor_service_factory(

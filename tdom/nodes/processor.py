@@ -20,6 +20,7 @@ from ..processor import (
     format_interpolation,
     WalkerProto,
     NormalTextInterpolationValue,
+    CachedParserService,
 )
 from ..callables import get_callable_info
 from ..htmlspec import (
@@ -51,7 +52,7 @@ class NodeProcessorService(BaseProcessorService):
     def process_template(
         self, root_template: Template, assume_ctx: ProcessContext | None = None
     ) -> Node:
-        root_tnode = self.to_tnode(root_template)
+        root_tnode = self.parser_api.to_tnode(root_template)
         if assume_ctx is None:
             assume_ctx = make_ctx(parent_tag=DEFAULT_NORMAL_TEXT_ELEMENT, ns="html")
         root_node = Fragment()
@@ -214,7 +215,7 @@ class NodeProcessorService(BaseProcessorService):
             if result_t.strings == ("",):
                 # DO NOTHING
                 return
-            result_root = self.to_tnode(result_t)
+            result_root = self.parser_api.to_tnode(result_t)
             return self.walk_from_tnode(parent_node, result_t, last_ctx, result_root)
         elif result_t is None:
             # DO NOTHING
@@ -289,7 +290,7 @@ class NodeProcessorService(BaseProcessorService):
         if isinstance(value, str):
             parent_node.children.append(Text(value))
         elif isinstance(value, Template):
-            value_root = self.to_tnode(value)
+            value_root = self.parser_api.to_tnode(value)
             return self.walk_from_tnode(parent_node, value, last_ctx, value_root)
         elif isinstance(value, Iterable):
             return iter(
@@ -318,7 +319,7 @@ class NodeProcessorService(BaseProcessorService):
         if isinstance(value, str):
             parent_node.children.append(Text(value))
         elif isinstance(value, Template):
-            value_root = self.to_tnode(value)
+            value_root = self.parser_api.to_tnode(value)
             return self.walk_from_tnode(parent_node, value, last_ctx, value_root)
         elif isinstance(value, Iterable):
             return iter(
@@ -338,17 +339,7 @@ class NodeProcessorService(BaseProcessorService):
             parent_node.children.append(text)
 
 
-@dataclass(frozen=True)
-class CachedNodeProcessorService(NodeProcessorService):
-    @lru_cache(512)
-    def _to_tnode(self, ct: CachableTemplate) -> TNode:
-        return super().to_tnode(ct.template)
-
-    def to_tnode(self, template: Template) -> TNode:
-        return self._to_tnode(CachableTemplate(template))
-
-
-_default_cached_node_processor_api = CachedNodeProcessorService()
+_default_cached_node_processor_api = NodeProcessorService(parser_api=CachedParserService())
 
 
 def to_node(template: Template, assume_ctx: ProcessContext | None = None) -> Node:
