@@ -551,17 +551,13 @@ class ProcessorService(BaseProcessorService):
                             for part in iter(ref)
                         ]
                     )
-                    bf.append("<!--")
-                    res = self._stream_comment(
+                    self._process_comment(
                         bf, template, last_ctx.copy(parent_tag="<!--"), text_t
                     )
-                    if res is not None:
-                        yield res
-                    bf.append("-->")
                 case TFragment(children):
                     q.extend([(last_ctx, child) for child in reversed(children)])
                 case TComponent(start_i_index, end_i_index, attrs, children):
-                    res = self._stream_component(
+                    res = self._process_component(
                         bf, template, last_ctx, attrs, start_i_index, end_i_index
                     )
                     if res is not None:
@@ -570,9 +566,7 @@ class ProcessorService(BaseProcessorService):
                     bf.append(f"<{tag}")
                     our_ctx = last_ctx.copy(parent_tag=tag)
                     if attrs:
-                        res = self._stream_attrs(bf, template, our_ctx, attrs)
-                        if res is not None:
-                            yield res
+                        self._process_attrs(bf, template, our_ctx, attrs)
                     # @TODO: How can we tell if we write out children or not in
                     # order to self-close in non-html contexts, ie. SVG?
                     if self.slash_void and tag in VOID_ELEMENTS:
@@ -608,24 +602,18 @@ class ProcessorService(BaseProcessorService):
                             bf.append(self.escape_html_text(ref.strings[0]))
                     elif last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
                         # Must be handled all at once.
-                        res = self._stream_raw_texts(bf, template, last_ctx, text_t)
-                        if res is not None:
-                            yield res
+                        self._process_raw_texts(bf, template, last_ctx, text_t)
                     elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
                         # We can handle all at once because there are no non-text children and everything must be string-ified.
-                        res = self._stream_escapable_raw_texts(
+                        self._process_escapable_raw_texts(
                             bf, template, last_ctx, text_t
                         )
-                        if res is not None:
-                            yield res
                     else:
-                        # Flatten the template back out into the stream because each interpolation can
-                        # be escaped as is and structured content can be injected between text anyways.
                         for part in text_t:
                             if isinstance(part, str):
                                 bf.append(part)
                             else:
-                                res = self._stream_normal_text(
+                                res = self._process_normal_text(
                                     bf, template, last_ctx, part.value
                                 )
                                 if res is not None:
@@ -633,17 +621,17 @@ class ProcessorService(BaseProcessorService):
                 case _:
                     raise ValueError(f"Unrecognized tnode: {tnode}")
 
-    def _stream_comment(
+    def _process_comment(
         self,
         bf: list[str],
         template: Template,
         last_ctx: ProcessContext,
         text_t: Template,
     ) -> None:
-        assert last_ctx.parent_tag == "<!--"
-        content = resolve_text_without_recursion(template, last_ctx.parent_tag, text_t)
+        content = resolve_text_without_recursion(template, "<!--", text_t)
+        bf.append("<!--")
         if content is None or content == "":
-            return
+            pass
         else:
             bf.append(
                 self.escape_html_comment(
@@ -651,19 +639,21 @@ class ProcessorService(BaseProcessorService):
                     allow_markup=True,
                 )
             )
+        bf.append("-->")
 
-    def _stream_attrs(
+    def _process_attrs(
         self,
         bf: list[str],
         template: Template,
         last_ctx: ProcessContext,
         attrs: tuple[TAttribute, ...],
-    ):
+    ) -> None:
         resolved_attrs = _resolve_t_attrs(attrs, template.interpolations)
         attrs_str = serialize_html_attrs(_resolve_html_attrs(resolved_attrs))
-        bf.append(attrs_str)
+        if attrs_str:
+            bf.append(attrs_str)
 
-    def _stream_component(
+    def _process_component(
         self,
         bf: list[str],
         template: Template,
@@ -671,7 +661,7 @@ class ProcessorService(BaseProcessorService):
         attrs: tuple[TAttribute, ...],
         start_i_index: int,
         end_i_index: int | None,
-    ):
+    ) -> None | WalkerProto:
         body_start_s_index = (
             start_i_index
             + 1
@@ -723,7 +713,7 @@ class ProcessorService(BaseProcessorService):
         else:
             raise ValueError(f"Unknown component return value: {type(result_t)}")
 
-    def _stream_raw_texts(
+    def _process_raw_texts(
         self,
         bf: list[str],
         template: Template,
@@ -753,7 +743,7 @@ class ProcessorService(BaseProcessorService):
                 f"Parent tag {last_ctx.parent_tag} is not supported."
             )
 
-    def _stream_escapable_raw_texts(
+    def _process_escapable_raw_texts(
         self,
         bf: list[str],
         template: Template,
@@ -771,7 +761,7 @@ class ProcessorService(BaseProcessorService):
                 )
             )
 
-    def _stream_normal_text(
+    def _process_normal_text(
         self,
         bf: list[str],
         template: Template,
@@ -786,7 +776,7 @@ class ProcessorService(BaseProcessorService):
             return self.walk_from_tnode(bf, value, last_ctx, value_root)
         elif isinstance(value, Iterable):
             return iter(
-                self._stream_normal_text_from_value(bf, template, last_ctx, v)
+                self._process_normal_text_from_value(bf, template, last_ctx, v)
                 for v in value
             )
         elif value is None:
@@ -797,7 +787,7 @@ class ProcessorService(BaseProcessorService):
             # coerced to a str() and emitted.
             bf.append(self.escape_html_text(value))
 
-    def _stream_normal_text_from_value(
+    def _process_normal_text_from_value(
         self,
         bf: list[str],
         template: Template,
@@ -811,7 +801,7 @@ class ProcessorService(BaseProcessorService):
             return self.walk_from_tnode(bf, value, last_ctx, value_root)
         elif isinstance(value, Iterable):
             return iter(
-                self._stream_normal_text_from_value(bf, template, last_ctx, v)
+                self._process_normal_text_from_value(bf, template, last_ctx, v)
                 for v in value
             )
         elif value is None:
