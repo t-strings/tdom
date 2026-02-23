@@ -1,6 +1,6 @@
 import typing as t
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
 
@@ -436,8 +436,12 @@ def _fix_svg_attrs(html_attrs: Iterable[HTMLAttribute]) -> Iterable[HTMLAttribut
         yield SVG_ATTR_FIX.get(k, k), v
 
 
-def make_ctx(parent_tag: str | None = None, ns: str | None = "html"):
-    return ProcessContext(parent_tag=parent_tag, ns=ns)
+def make_ctx(
+    parent_tag: str | None = None, ns: str | None = "html", system: dict | None = None
+):
+    if system is None:
+        system = {}
+    return ProcessContext(parent_tag=parent_tag, ns=ns, system=system)
 
 
 @dataclass(frozen=True, slots=True)
@@ -447,10 +451,13 @@ class ProcessContext:
     # None means unknown not just a missing value.
     ns: str | None = None
 
+    system: dict = field(default_factory=dict)
+
     def copy(
         self,
         ns: NotSet | str | None = NOT_SET,
         parent_tag: NotSet | str | None = NOT_SET,
+        system: NotSet | dict = NOT_SET,
     ):
         if isinstance(ns, NotSet):
             resolved_ns = self.ns
@@ -460,9 +467,14 @@ class ProcessContext:
             resolved_parent_tag = self.parent_tag
         else:
             resolved_parent_tag = parent_tag
+        if isinstance(system, NotSet):
+            resolved_system = self.system
+        else:
+            resolved_system = system
         return make_ctx(
             parent_tag=resolved_parent_tag,
             ns=resolved_ns,
+            system=resolved_system,
         )
 
 
@@ -700,7 +712,7 @@ class ProcessorService(BaseProcessorService):
         kwargs = _prep_component_kwargs(
             get_callable_info(component_callable),
             _resolve_t_attrs(attrs, template.interpolations),
-            system_kwargs={"children": children_template},
+            system_kwargs={**last_ctx.system, "children": children_template},
         )
 
         result_t = component_callable(**kwargs)
