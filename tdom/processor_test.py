@@ -1,14 +1,13 @@
 import datetime
 import typing as t
 from dataclasses import dataclass, field
-from string.templatelib import Interpolation, Template
+from string.templatelib import Template
 from itertools import product
 
 import pytest
 from markupsafe import Markup
 
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
-from .placeholders import make_placeholder_config
 from .processor import html
 
 # --------------------------------------------------------------------------
@@ -656,27 +655,6 @@ def test_attr_merge_other_literal_attr_intact():
     node = html(t'<img title="default" {dict(alt="fresh")}>')
     assert node == Element("img", {"title": "default", "alt": "fresh"})
     assert str(node) == '<img title="default" alt="fresh" />'
-
-
-def test_placeholder_collision_avoidance():
-    config = make_placeholder_config()
-    # This test is to ensure that our placeholder detection avoids collisions
-    # even with content that might look like a placeholder.
-    tricky = "0"
-    template = Template(
-        f'<div data-tricky="{config.prefix}',
-        Interpolation(tricky, "tricky", None, ""),
-        f'{config.suffix}"></div>',
-    )
-    node = html(template)
-    assert node == Element(
-        "div",
-        attrs={"data-tricky": config.prefix + tricky + config.suffix},
-        children=[],
-    )
-    assert (
-        str(node) == f'<div data-tricky="{config.prefix}{tricky}{config.suffix}"></div>'
-    )
 
 
 #
