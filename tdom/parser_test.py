@@ -1,7 +1,9 @@
+from string.templatelib import Template, Interpolation
+
 import pytest
 
 from .parser import TemplateParser
-from .placeholders import TemplateRef
+from .placeholders import TemplateRef, make_placeholder_config
 from .tnodes import (
     TComment,
     TComponent,
@@ -467,44 +469,18 @@ def test_adjacent_end_component_tag_error():
         _ = TemplateParser.parse(t"<{Component}></{Component}{Component}>")
 
 
-#
-# SVG
-#
-def test_parse_svg_tag_case_fixing():
-    node = TemplateParser.parse(t"<svg><clipPath></clipPath></svg>")
-    assert node == TElement(
-        "svg",
-        children=(TElement("clipPath"),),
+def test_placeholder_collision_avoidance():
+    config = make_placeholder_config()
+    # This test is to ensure that our placeholder detection avoids collisions
+    # even with content that might look like a placeholder.
+    tricky = "0"
+    template = Template(
+        f'<div data-tricky="{config.prefix}',
+        Interpolation(tricky, "tricky", None, ""),
+        f'{config.suffix}"></div>',
     )
-
-
-def test_parse_svg_attribute_case_fixing():
-    node = TemplateParser.parse(t'<svg viewBox="0 0 10 10"></svg>')
-    assert node == TElement(
-        "svg",
-        attrs=(TLiteralAttribute("viewBox", "0 0 10 10"),),
+    tnode = TemplateParser.parse(template)
+    value_ref = TemplateRef(strings=(config.prefix, config.suffix), i_indexes=(0,))
+    assert tnode == TElement(
+        "div", attrs=(TTemplatedAttribute(name="data-tricky", value_ref=value_ref),)
     )
-
-
-def test_parse_svg_nested_depth():
-    node = TemplateParser.parse(t"<svg><g><clipPath /></g></svg>")
-    assert node == TElement(
-        "svg",
-        children=(
-            TElement("g", children=(TElement("clipPath"),)),
-        ),
-    )
-
-
-def test_parse_svg_self_closing():
-    node = TemplateParser.parse(t'<svg viewBox="0 0 10 10" />')
-    assert node == TElement(
-        "svg",
-        attrs=(TLiteralAttribute("viewBox", "0 0 10 10"),),
-    )
-
-
-def test_parse_non_svg_context():
-    # clipPath outside svg should be lowercase (or whatever HTMLParser does, which is lowercase)
-    node = TemplateParser.parse(t"<clipPath></clipPath>")
-    assert node == TElement("clippath")

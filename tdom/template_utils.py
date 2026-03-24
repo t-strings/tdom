@@ -74,3 +74,19 @@ class TemplateRef:
             raise ValueError(
                 "TemplateRef must have one more string than interpolation indexes."
             )
+
+    def __iter__(self):
+        index = 0
+        last_s_index = len(self.strings) - 1
+        while index <= last_s_index:
+            s = self.strings[index]
+            if s:
+                yield s
+            if index < last_s_index:
+                yield self.i_indexes[index]
+            index += 1
+
+    def resolve(self, interpolations: tuple[Interpolation, ...]) -> Template:
+        """Use the given interpolations to resolve this reference template into a Template."""
+        resolved = [interpolations[i_index] for i_index in self.i_indexes]
+        return template_from_parts(self.strings, resolved)
