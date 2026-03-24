@@ -1,13 +1,13 @@
 import sys
 import typing as t
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Sequence, Callable
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
 from dataclasses import dataclass
 
 from markupsafe import Markup
 
-from .callables import get_callable_info
+from .callables import get_callable_info, CallableInfo
 from .format import format_interpolation as base_format_interpolation
 from .format import format_template
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
@@ -31,11 +31,7 @@ from .parser import (
 from .placeholders import TemplateRef
 from .template_utils import template_from_parts
 from .utils import CachableTemplate, LastUpdatedOrderedDict
-
-
-@t.runtime_checkable
-class HasHTMLDunder(t.Protocol):
-    def __html__(self) -> str: ...  # pragma: no cover
+from .protocols import HasHTMLDunder
 
 
 # TODO: in Ian's original PR, this caching was tethered to the
@@ -69,7 +65,17 @@ def _format_unsafe(value: object, format_spec: str) -> str:
     return str(value)
 
 
-CUSTOM_FORMATTERS = (("safe", _format_safe), ("unsafe", _format_unsafe))
+def _format_callback(value: Callable[..., object], format_spec: str) -> object:
+    """Execute a callback and return the value."""
+    assert format_spec == "callback"
+    return value()
+
+
+CUSTOM_FORMATTERS = (
+    ("safe", _format_safe),
+    ("unsafe", _format_unsafe),
+    ("callback", _format_callback),
+)
 
 
 def format_interpolation(interpolation: Interpolation) -> object:
@@ -437,6 +443,38 @@ def _kebab_to_snake(name: str) -> str:
     return name.replace("-", "_").lower()
 
 
+def _prep_component_kwargs(
+    callable_info: CallableInfo,
+    attrs: AttributesDict,
+    system_kwargs: dict[str, object],
+):
+    if callable_info.requires_positional:
+        raise TypeError(
+            "Component callables cannot have required positional arguments."
+        )
+
+    kwargs: AttributesDict = {}
+
+    # Add all supported attributes
+    for attr_name, attr_value in attrs.items():
+        snake_name = _kebab_to_snake(attr_name)
+        if snake_name in callable_info.named_params or callable_info.kwargs:
+            kwargs[snake_name] = attr_value
+
+    for attr_name, attr_value in system_kwargs.items():
+        if attr_name in callable_info.named_params or callable_info.kwargs:
+            kwargs[attr_name] = attr_value
+
+    # Check to make sure we've fully satisfied the callable's requirements
+    missing = callable_info.required_named_params - kwargs.keys()
+    if missing:
+        raise TypeError(
+            f"Missing required parameters for component: {', '.join(missing)}"
+        )
+
+    return kwargs
+
+
 def _invoke_component(
     attrs: AttributesDict,
     children: list[Node],  # TODO: why not TNode, though?
@@ -478,39 +516,11 @@ def _invoke_component(
         )
     callable_info = get_callable_info(value)
 
-    if callable_info.requires_positional:
-        err = TypeError(
-            "Component callables cannot have required positional arguments."
-        )
-        err.add_note(f"While invoking component: {component_name}")
-        raise err
+    kwargs = _prep_component_kwargs(
+        callable_info, attrs, system_kwargs={"children": tuple(children)}
+    )
 
-    kwargs: AttributesDict = {}
-
-    # Add all supported attributes
-    for attr_name, attr_value in attrs.items():
-        snake_name = _kebab_to_snake(attr_name)
-        if snake_name in callable_info.named_params or callable_info.kwargs:
-            kwargs[snake_name] = attr_value
-
-    # Add children if appropriate
-    if "children" in callable_info.named_params or callable_info.kwargs:
-        kwargs["children"] = tuple(children)
-
-    # Check to make sure we've fully satisfied the callable's requirements
-    missing = callable_info.required_named_params - kwargs.keys()
-    if missing:
-        err = TypeError(
-            f"Missing required parameters for component: {', '.join(missing)}"
-        )
-        err.add_note(f"While invoking component: {component_name}")
-        raise err
-
-    try:
-        result = value(**kwargs)
-    except TypeError as e:
-        e.add_note(f"While invoking component: {component_name}")
-        raise
+    result = value(**kwargs)
     return _node_from_value(result)
 
 

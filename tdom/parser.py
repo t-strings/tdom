@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from string.templatelib import Interpolation, Template
 
-from .nodes import VOID_ELEMENTS
+from .htmlspec import VOID_ELEMENTS
 from .placeholders import PlaceholderState
 from .tnodes import (
     TAttribute,

@@ -1,7 +1,9 @@
+from string.templatelib import Template, Interpolation
+
 import pytest
 
 from .parser import TemplateParser
-from .placeholders import TemplateRef
+from .placeholders import TemplateRef, make_placeholder_config
 from .tnodes import (
     TComment,
     TComponent,
@@ -465,3 +467,20 @@ def test_adjacent_end_component_tag_error():
 
     with pytest.raises(ValueError):
         _ = TemplateParser.parse(t"<{Component}></{Component}{Component}>")
+
+
+def test_placeholder_collision_avoidance():
+    config = make_placeholder_config()
+    # This test is to ensure that our placeholder detection avoids collisions
+    # even with content that might look like a placeholder.
+    tricky = "0"
+    template = Template(
+        f'<div data-tricky="{config.prefix}',
+        Interpolation(tricky, "tricky", None, ""),
+        f'{config.suffix}"></div>',
+    )
+    tnode = TemplateParser.parse(template)
+    value_ref = TemplateRef(strings=(config.prefix, config.suffix), i_indexes=(0,))
+    assert tnode == TElement(
+        "div", attrs=(TTemplatedAttribute(name="data-tricky", value_ref=value_ref),)
+    )
