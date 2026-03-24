@@ -1,15 +1,16 @@
 import datetime
 import typing as t
 from dataclasses import dataclass, field
-from string.templatelib import Interpolation, Template
+from string.templatelib import Template
 from itertools import product
 
 import pytest
 from markupsafe import Markup
 
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
-from .placeholders import make_placeholder_config
-from .processor import html
+from .processor import html, _prep_component_kwargs
+from .callables import get_callable_info
+
 
 # --------------------------------------------------------------------------
 # Basic HTML parsing tests
@@ -246,7 +247,7 @@ def test_interpolated_zero_arg_function():
     def get_value():
         return "dynamic"
 
-    node = html(t"<p>The value is {get_value}.</p>")
+    node = html(t"<p>The value is {get_value:callback}.</p>")
     assert node == Element(
         "p", children=[Text("The value is "), Text("dynamic"), Text(".")]
     )
@@ -257,7 +258,7 @@ def test_interpolated_multi_arg_function_fails():
         return a + b
 
     with pytest.raises(TypeError):
-        _ = html(t"<p>The sum is {add}.</p>")
+        _ = html(t"<p>The sum is {add:callback}.</p>")
 
 
 # --------------------------------------------------------------------------
@@ -656,27 +657,6 @@ def test_attr_merge_other_literal_attr_intact():
     node = html(t'<img title="default" {dict(alt="fresh")}>')
     assert node == Element("img", {"title": "default", "alt": "fresh"})
     assert str(node) == '<img title="default" alt="fresh" />'
-
-
-def test_placeholder_collision_avoidance():
-    config = make_placeholder_config()
-    # This test is to ensure that our placeholder detection avoids collisions
-    # even with content that might look like a placeholder.
-    tricky = "0"
-    template = Template(
-        f'<div data-tricky="{config.prefix}',
-        Interpolation(tricky, "tricky", None, ""),
-        f'{config.suffix}"></div>',
-    )
-    node = html(template)
-    assert node == Element(
-        "div",
-        attrs={"data-tricky": config.prefix + tricky + config.suffix},
-        children=[],
-    )
-    assert (
-        str(node) == f'<div data-tricky="{config.prefix}{tricky}{config.suffix}"></div>'
-    )
 
 
 #
@@ -1101,6 +1081,20 @@ def test_interpolated_template_component_no_children_provided():
 def test_invalid_component_invocation():
     with pytest.raises(TypeError):
         _ = html(t"<{FunctionComponent}>Missing props</{FunctionComponent}>")
+
+
+def test_prep_component_kwargs_named():
+    def InputElement(size=10, type="text"):
+        pass
+
+    callable_info = get_callable_info(InputElement)
+    assert _prep_component_kwargs(callable_info, {"size": 20}, system_kwargs={}) == {
+        "size": 20
+    }
+    assert _prep_component_kwargs(
+        callable_info, {"type": "email"}, system_kwargs={}
+    ) == {"type": "email"}
+    assert _prep_component_kwargs(callable_info, {}, system_kwargs={}) == {}
 
 
 def FunctionComponentNoChildren(first: str, second: int, third_arg: str) -> Template:
