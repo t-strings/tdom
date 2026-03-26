@@ -4,23 +4,23 @@ from tdom import html, svg
 
 
 def test_svg_clippath_case_fixed():
-    node = svg(t"<clipPath id='mask'></clipPath>")
-    assert str(node) == '<clipPath id="mask"></clipPath>'
+    result = svg(t"<clipPath id='mask'></clipPath>")
+    assert result == '<clipPath id="mask"></clipPath>'
 
 
 def test_svg_lineargradient_case_fixed():
-    node = svg(t"<linearGradient id='grad'></linearGradient>")
-    assert str(node) == '<linearGradient id="grad"></linearGradient>'
+    result = svg(t"<linearGradient id='grad'></linearGradient>")
+    assert result == '<linearGradient id="grad"></linearGradient>'
 
 
 def test_svg_femergenode_self_closing_case_fixed():
-    node = svg(t"<feMergeNode />")
-    assert str(node) == "<feMergeNode></feMergeNode>"
+    result = svg(t"<feMergeNode />")
+    assert result == "<feMergeNode></feMergeNode>"
 
 
 def test_svg_nested_tags_case_fixed():
-    node = svg(t"<g><clipPath id='c'><rect /></clipPath></g>")
-    assert str(node) == '<g><clipPath id="c"><rect></rect></clipPath></g>'
+    result = svg(t"<g><clipPath id='c'><rect /></clipPath></g>")
+    assert result == '<g><clipPath id="c"><rect></rect></clipPath></g>'
 
 
 # ------------------------------
@@ -29,8 +29,8 @@ def test_svg_nested_tags_case_fixed():
 
 
 def test_svg_viewbox_attr_case_fixed():
-    node = svg(t'<rect viewBox="0 0 10 10" />')
-    assert str(node) == '<rect viewBox="0 0 10 10"></rect>'
+    result = svg(t'<rect viewBox="0 0 10 10" />')
+    assert result == '<rect viewBox="0 0 10 10"></rect>'
 
 
 def test_svg_case_sensitivity():
@@ -101,7 +101,7 @@ def test_html_full_svg_document_still_works():
 
 def test_svg_fragment_embedded_in_html():
     def icon():
-        return svg(t'<circle cx="50" cy="50" r="40" />')
+        return t'<circle cx="50" cy="50" r="40" />'
 
     node = html(t'<div class="icon"><svg>{icon()}</svg></div>')
     assert (

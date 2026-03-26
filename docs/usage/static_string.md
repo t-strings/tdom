@@ -13,14 +13,13 @@ from tdom import html, Element, Text
 
 ```python
 result = html(t"Hello World")
-assert str(result) == 'Hello World'
+assert result == 'Hello World'
 ```
 
 We start by importing the `html` function from `tdom`.
 
 It takes a [Python 3.14 t-string](https://t-strings.help/introduction.html) and
-returns a `Element` with an `__str__` that converts to HTML. In this case, the
-node is an instance of `tdom.nodes.Text`, a subclass of `Element`.
+returns a Python `str`.
 
 ## Simple Render
 
@@ -29,31 +28,8 @@ but done in one step:
 
 ```python
 result = html(t"<div>Hello World</div>")
-assert str(result) == '<div>Hello World</div>'
+assert result == '<div>Hello World</div>'
 ```
-
-## Show the `Element` Itself
-
-Let's take a look at that `Element` structure.
-
-This time, we'll inspect the returned value rather than rendering it to a
-string:
-
-```python
-result = html(t'<div class="container">Hello World</div>')
-assert result == Element(
-    "div",
-    attrs={"class": "container"},
-    children=[Text("Hello World")]
-)
-```
-
-In our test we see that we got back an `Element`. What does it look like?
-
-- The `result` is of type `tdom.nodes.Element` (a subclass of `Node`)
-- The name of the node (`<div>`)
-- The properties passed to that tag (in this case, `{"class": "container"}`)
-- The children of this tag (in this case, a `Text` node of `Hello World`)
 
 ## Interpolations as Attribute Values
 
@@ -71,29 +47,6 @@ TODO: describe all the many many ways to express attribute values, including
 `tdom`'s special handling of boolean attributes, whole-tag spreads, `class`,
 `style`, `data` and `aria` attributes, etc.
 
-## Child Nodes in an `Element`
-
-Let's look at what more nesting would look like:
-
-```python
-result = html(t"<div>Hello <span>World<em>!</em></span></div>")
-assert result == Element(
-    "div",
-    children=[
-        Text("Hello "),
-        Element(
-            "span",
-            children=[
-                Text("World"),
-                Element("em", children=[Text("!")])
-            ]
-        )
-    ]
-)
-```
-
-It's a nested Python datastructure -- pretty simple to look at.
-
 ## Expressing the Document Type
 
 One last point: the HTML doctype can be a tricky one to get into the template.
@@ -101,7 +54,7 @@ In `tdom` this is straightforward:
 
 ```python
 result = html(t"<!DOCTYPE html><div>Hello World</div>")
-assert str(result) == '<!DOCTYPE html><div>Hello World</div>'
+assert result == '<!DOCTYPE html><div>Hello World</div>'
 ```
 
 ## Reducing Boolean Attribute Values
@@ -112,5 +65,5 @@ without a _value_:
 
 ```python
 result = html(t"<div editable={True}>Hello World</div>")
-assert str(result) == '<div editable>Hello World</div>'
+assert result == '<div editable>Hello World</div>'
 ```

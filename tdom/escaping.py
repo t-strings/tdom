@@ -2,6 +2,8 @@ import re
 
 from markupsafe import escape as markup_escape
 
+from .protocols import HasHTMLDunder
+
 escape_html_text = markup_escape  # unify api for test of project
 
 
@@ -9,10 +11,16 @@ GT = "&gt;"
 LT = "&lt;"
 
 
-def escape_html_comment(text: str) -> str:
+def escape_html_comment(text: str, allow_markup: bool = False) -> str:
     """Escape text injected into an HTML comment."""
     if not text:
         return text
+    elif allow_markup and isinstance(text, HasHTMLDunder):
+        return text.__html__()
+    elif not allow_markup and type(text) is not str:
+        # text manipulation triggers regular html escapes on Markup
+        text = str(text)
+
     # - text must not start with the string ">"
     if text[0] == ">":
         text = GT + text[1:]
@@ -44,8 +52,10 @@ STYLE_RES = (
 )
 
 
-def escape_html_style(text: str) -> str:
+def escape_html_style(text: str, allow_markup: bool = False) -> str:
     """Escape text injected into an HTML style element."""
+    if allow_markup and isinstance(text, HasHTMLDunder):
+        return text.__html__()
     for matche_re, replace_text in STYLE_RES:
         text = re.sub(matche_re, replace_text, text)
     return text
@@ -70,7 +80,7 @@ SCRIPT_RES = (
 )
 
 
-def escape_html_script(text: str) -> str:
+def escape_html_script(text: str, allow_markup: bool = False) -> str:
     """
     Escape text injected into an HTML script element.
 
@@ -83,6 +93,8 @@ def escape_html_script(text: str) -> str:
     - "<script" as "\x3cscript"
     - "</script" as "\x3c/script"`
     """
+    if allow_markup and isinstance(text, HasHTMLDunder):
+        return text.__html__()
     for match_re, replace_text in SCRIPT_RES:
         text = re.sub(match_re, replace_text, text)
     return text

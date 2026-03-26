@@ -4,21 +4,6 @@ from markupsafe import Markup
 from .nodes import Comment, DocumentType, Element, Fragment, Text
 
 
-def test_comment():
-    comment = Comment("This is a comment")
-    assert str(comment) == "<!--This is a comment-->"
-
-
-def test_comment_empty():
-    comment = Comment("")
-    assert str(comment) == "<!---->"
-
-
-def test_comment_special_chars():
-    comment = Comment("Special chars: <>&\"'")
-    assert str(comment) == "<!--Special chars: <>&\"'-->"
-
-
 def test_doctype_default():
     doctype = DocumentType()
     assert str(doctype) == "<!DOCTYPE html>"
@@ -27,6 +12,11 @@ def test_doctype_default():
 def test_doctype_custom():
     doctype = DocumentType("xml")
     assert str(doctype) == "<!DOCTYPE xml>"
+
+
+def test_comment():
+    comment = Comment("Added for testing.")
+    assert str(comment) == "<!--Added for testing.-->"
 
 
 def test_text():

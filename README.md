@@ -42,9 +42,7 @@ T-strings work just like f-strings but use a `t` prefix and
 instead of strings.
 
 Once you have a `Template`, you can call this package's `html()` function to
-convert it into a tree of `Node` objects that represent your HTML structure.
-From there, you can render it to a string, manipulate it programmatically, or
-compose it with other templates for maximum flexibility.
+convert it into a str.
 
 ### Getting Started
 
@@ -53,7 +51,6 @@ Import the `html` function and start creating templates:
 ```python
 from tdom import html
 greeting = html(t"<h1>Hello, World!</h1>")
-print(type(greeting))  # <class 'tdom.nodes.Element'>
 print(greeting)  # <h1>Hello, World!</h1>
 ```
 
@@ -145,7 +142,7 @@ classes:
 ```python
 classes = {"btn-primary": True, "btn-secondary": False}
 button = html(t'<button class="btn btn-secondary" class={classes}>Click me</button>')
-assert str(button) == '<button class="btn btn-primary">Click me</button>'
+assert button == '<button class="btn btn-primary">Click me</button>'
 ```
 
 #### The `style` Attribute
@@ -166,7 +163,7 @@ Style attributes can also be merged to extend a base style:
 ```python
 add_styles = {"font-weight": "bold"}
 para = html(t'<p style="color: red" style={add_styles}>Important text</p>')
-assert str(para) == '<p style="color: red; font-weight: bold">Important text</p>'
+assert para == '<p style="color: red; font-weight: bold">Important text</p>'
 ```
 
 #### The `data` and `aria` Attributes
@@ -312,18 +309,6 @@ page = html(t"<div>{content}</div>")
 # <div><h1>My Site</h1></div>
 ```
 
-In the example above, `content` is a `Template` object that gets correctly
-parsed and embedded within the outer template. You can also explicitly call
-`html()` on nested templates if you prefer:
-
-```python
-content = html(t"<h1>My Site</h1>")
-page = html(t"<div>{content}</div>")
-# <div><h1>My Site</h1></div>
-```
-
-The result is the same either way.
-
 #### Component Functions
 
 You can create reusable component functions that generate templates with dynamic
@@ -333,10 +318,11 @@ The basic form of all component functions is:
 
 ```python
 from typing import Any, Iterable
-from tdom import Node, html
+from tdom import html
+from string.templatelib import Template
 
-def MyComponent(children: Iterable[Node], **attrs: Any) -> Node:
-    return html(t"<div {attrs}>Cool: {children}</div>")
+def MyComponent(children: Template, **attrs: Any) -> Template:
+    return t"<div {attrs}>Cool: {children}</div>"
 ```
 
 To _invoke_ your component within an HTML template, use the special
@@ -352,10 +338,11 @@ type hints for better editor support:
 
 ```python
 from typing import Any
-from tdom import Node, html
+from tdom import html
+from string.templatelib import Template
 
-def Link(*, href: str, text: str, data_value: int, **attrs: Any) -> Node:
-    return html(t'<a href="{href}" {attrs}>{text}: {data_value}</a>')
+def Link(*, href: str, text: str, data_value: int, **attrs: Any) -> Template:
+    return t'<a href="{href}" {attrs}>{text}: {data_value}</a>'
 
 result = html(t'<{Link} href="https://example.com" text="Example" data-value={42} target="_blank" />')
 # <a href="https://example.com" target="_blank">Example: 42</a>
@@ -364,12 +351,7 @@ result = html(t'<{Link} href="https://example.com" text="Example" data-value={42
 Note that attributes with hyphens (like `data-value`) are converted to
 underscores (`data_value`) in the function signature.
 
-Component functions build children and can return _any_ type of value; the
-returned value will be treated exactly as if it were placed directly in a child
-position in the template.
-
-Among other things, this means you can return a `Template` directly from a
-component function:
+Component functions build Templates that conceptually will replace the component tags with the new template.
 
 <!-- invisible-code-block: python
 from string.templatelib import Template
@@ -380,23 +362,7 @@ def Greeting(name: str) -> Template:
     return t"<h1>Hello, {name}!</h1>"
 
 result = html(t"<{Greeting} name='Alice' />")
-assert str(result) == "<h1>Hello, Alice!</h1>"
-```
-
-You may also return an iterable:
-
-<!-- invisible-code-block: python
-from string.templatelib import Template
--->
-
-```python
-from typing import Iterable
-
-def Items() -> Iterable[Template]:
-    return [t"<li>first</li>", t"<li>second</li>"]
-
-result = html(t"<ul><{Items} /></ul>")
-assert str(result) == "<ul><li>first</li><li>second</li></ul>"
+assert result == "<h1>Hello, Alice!</h1>"
 ```
 
 #### Class-based components
@@ -416,18 +382,18 @@ from tdom import Node, html
 
 @dataclass
 class Card:
-    children: Iterable[Node]
+    children: Template
     title: str
     subtitle: str | None = None
 
-    def __call__(self) -> Node:
-        return html(t"""
+    def __call__(self) -> Template:
+        return t"""
             <div class='card'>
                 <h2>{self.title}</h2>
                 {self.subtitle and t'<h3>{self.subtitle}</h3>'}
                 <div class="content">{self.children}</div>
             </div>
-        """)
+        """
 
 result = html(t"<{Card} title='My Card' subtitle='A subtitle'><p>Card content</p></{Card}>")
 # <div class='card'>
@@ -442,7 +408,7 @@ class, making it easier to manage complex components.
 
 As a note, `children` are optional in component signatures. If a component
 requests children, it will receive them if provided. If no children are
-provided, the value of children is an empty tuple. If the component does _not_
+provided, the value of children is an empty Template, ie. `t""`. If the component does _not_
 ask for children, but they are provided, then they are silently ignored.
 
 #### SVG Support
@@ -470,12 +436,12 @@ All the same interpolation, attribute handling, and component features work with
 SVG elements:
 
 ```python
-def Icon(*, size: int = 24, color: str = "currentColor") -> Node:
-    return html(t"""
+def Icon(*, size: int = 24, color: str = "currentColor") -> Template:
+    return t"""
         <svg width="{size}" height="{size}" viewBox="0 0 24 24" fill="none">
             <circle cx="12" cy="12" r="10" stroke="{color}" stroke-width="2"/>
         </svg>
-    """)
+    """
 
 result = html(t'<{Icon} size={48} color="blue" />')
 assert 'width="48"' in str(result)
@@ -497,9 +463,9 @@ options:
 ```python
 theme = {"primary": "blue", "spacing": "10px"}
 
-def Button(text: str) -> Node:
+def Button(text: str) -> Template:
     # Button has access to theme from enclosing scope
-    return html(t'<button style="color: {theme["primary"]}; margin: {theme["spacing"]}">{text}</button>')
+    return t'<button style="color: {theme["primary"]}; margin: {theme["spacing"]}">{text}</button>'
 
 result = html(t'<{Button} text="Click me" />')
 assert 'color: blue' in str(result)
@@ -517,41 +483,6 @@ This explicit approach makes it clear where data comes from and avoids the
 "magic" of implicit context passing.
 
 ### The `tdom` Module
-
-#### Working with `Node` Objects
-
-While `html()` is the primary way to create nodes, you can also construct them
-directly for programmatic HTML generation:
-
-```python
-from tdom import Element, Text, Fragment, Comment, DocumentType
-
-# Create elements directly
-div = Element("div", attrs={"class": "container"}, children=[
-    Text("Hello, "),
-    Element("strong", children=[Text("World")]),
-])
-assert str(div) == '<div class="container">Hello, <strong>World</strong></div>'
-
-# Create fragments to group multiple nodes
-fragment = Fragment(children=[
-    Element("h1", children=[Text("Title")]),
-    Element("p", children=[Text("Paragraph")]),
-])
-assert str(fragment) == "<h1>Title</h1><p>Paragraph</p>"
-
-# Add comments
-page = Element("body", children=[
-    Comment("Navigation section"),
-    Element("nav", children=[Text("Nav content")]),
-])
-assert str(page) == "<body><!--Navigation section--><nav>Nav content</nav></body>"
-```
-
-All nodes implement the `__html__()` protocol, which means they can be used
-anywhere that expects an object with HTML representation. Converting a node to a
-string (via `str()` or `print()`) automatically renders it as HTML with proper
-escaping.
 
 #### Utilities
 

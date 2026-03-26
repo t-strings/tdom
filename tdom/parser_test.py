@@ -356,6 +356,26 @@ def test_adjacent_spread_attrs_error():
         _ = TemplateParser.parse(t"<div {attrs1}{attrs2} />")
 
 
+class TestPlaceholders:
+    """Test placeholder parsing."""
+
+    def test_placeholder_collision_avoidance(self):
+        config = make_placeholder_config()
+        # This test is to ensure that our placeholder detection avoids collisions
+        # even with content that might look like a placeholder.
+        tricky = "0"
+        template = Template(
+            f'<div data-tricky="{config.prefix}',
+            Interpolation(tricky, "tricky", None, ""),
+            f'{config.suffix}"></div>',
+        )
+        node = TemplateParser.parse(template)
+        value_ref = TemplateRef(strings=(config.prefix, config.suffix), i_indexes=(0,))
+        assert node == TElement(
+            "div", attrs=(TTemplatedAttribute("data-tricky", value_ref),)
+        )
+
+
 #
 # Comments
 #

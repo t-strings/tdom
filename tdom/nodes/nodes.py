@@ -1,12 +1,12 @@
 from dataclasses import dataclass, field
 
-from .escaping import (
+from ..escaping import (
     escape_html_comment,
     escape_html_script,
     escape_html_style,
     escape_html_text,
 )
-from .htmlspec import CONTENT_ELEMENTS, VOID_ELEMENTS
+from ..htmlspec import CONTENT_ELEMENTS, VOID_ELEMENTS
 
 SVG_TAG_FIX = {
     "altglyph": "altGlyph",
@@ -110,10 +110,6 @@ SVG_CASE_FIX = {
 }
 
 
-# FUTURE: add a pretty-printer to nodes for debugging
-# FUTURE: make nodes frozen (and have the parser work with mutable builders)
-
-
 @dataclass(slots=True)
 class Node:
     def __html__(self) -> str:
@@ -149,7 +145,7 @@ class Comment(Node):
     text: str
 
     def __str__(self) -> str:
-        return f"<!--{escape_html_comment(self.text)}-->"
+        return f"<!--{escape_html_comment(self.text, allow_markup=True)}-->"
 
 
 @dataclass(slots=True)
@@ -195,11 +191,16 @@ class Element(Node):
                     raise TypeError(
                         "Cannot serialize non-text content inside a script tag."
                     )
-            raw_children_str = "".join(chunks)
+            if len(chunks) == 1:
+                raw_children_str = chunks[0]
+            else:
+                for chunk in chunks:
+                    assert type(chunk) is str, "Do not allow markup in mixed text."
+                raw_children_str = "".join(chunks)
             if self.tag == "script":
-                return escape_html_script(raw_children_str)
+                return escape_html_script(raw_children_str, allow_markup=True)
             elif self.tag == "style":
-                return escape_html_style(raw_children_str)
+                return escape_html_style(raw_children_str, allow_markup=True)
             else:
                 raise ValueError("Unsupported tag for single-level bulk escaping.")
         else:
@@ -218,3 +219,6 @@ class Element(Node):
             return f"<{self.tag}{attrs_str}></{self.tag}>"
         children_str = self._children_to_str()
         return f"<{self.tag}{attrs_str}>{children_str}</{self.tag}>"
+
+
+type NodeContainer = Element | Fragment
