@@ -227,3 +227,18 @@ def test_escaping_of_text_content():
 def test_escaping_of_attribute_values():
     div = Element("div", attrs={"class": '">XSS<'})
     assert str(div) == '<div class="&#34;&gt;XSS&lt;"></div>'
+
+
+def test_svg_rendering():
+    svg = Element(
+        "svg",
+        attrs={"viewBox": "0 0 10 10"},
+        children=[
+            Element("clipPath", attrs={"id": "clip"}),
+            Element("rect", attrs={"x": "0", "y": "0", "width": "10", "height": "10"}),
+        ],
+    )
+    assert (
+        str(svg)
+        == '<svg viewBox="0 0 10 10"><clipPath id="clip"></clipPath><rect x="0" y="0" width="10" height="10"></rect></svg>'
+    )

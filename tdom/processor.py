@@ -1,13 +1,13 @@
 import sys
 import typing as t
-from collections.abc import Iterable, Sequence, Callable
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
-from dataclasses import dataclass
 
 from markupsafe import Markup
 
-from .callables import get_callable_info, CallableInfo
+from .callables import CallableInfo, get_callable_info
 from .format import format_interpolation as base_format_interpolation
 from .format import format_template
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
@@ -29,10 +29,9 @@ from .parser import (
     TText,
 )
 from .placeholders import TemplateRef
+from .protocols import HasHTMLDunder
 from .template_utils import template_from_parts
 from .utils import CachableTemplate, LastUpdatedOrderedDict
-from .protocols import HasHTMLDunder
-
 
 # TODO: in Ian's original PR, this caching was tethered to the
 # TemplateParser. Here, it's tethered to the processor. I suspect we'll
@@ -41,7 +40,7 @@ from .protocols import HasHTMLDunder
 
 @lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
 def _parse_and_cache(cachable: CachableTemplate) -> TNode:
-    return TemplateParser.parse(cachable.template)
+    return TemplateParser.parse(cachable.template, svg_context=cachable.svg_context)
 
 
 type Attribute = tuple[str, object]
@@ -508,6 +507,7 @@ def _invoke_component(
     and passed as keyword arguments if the callable accepts them (or has
     **kwargs). Attributes that don't match parameters are silently ignored.
     """
+
     value = format_interpolation(interpolation)
     if not callable(value):
         raise TypeError(
@@ -609,7 +609,22 @@ def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) ->
 
 
 def html(template: Template) -> Node:
-    """Parse an HTML t-string, substitue values, and return a tree of Nodes."""
+    """Parse an HTML t-string, substitute values, and return a tree of Nodes."""
     cachable = CachableTemplate(template)
+    t_node = _parse_and_cache(cachable)
+    return _resolve_t_node(t_node, template.interpolations)
+
+
+def svg(template: Template) -> Node:
+    """Parse a standalone SVG fragment and return a tree of Nodes.
+
+    Use when the template does not contain an ``<svg>`` wrapper element.
+    Tag and attribute case-fixing (e.g. ``clipPath``, ``viewBox``) are applied
+    from the root, exactly as they would be inside ``html(t"<svg>...</svg>")``.
+
+    When the template does contain ``<svg>``, use ``html()`` — the SVG context
+    is detected automatically.
+    """
+    cachable = CachableTemplate(template, svg_context=True)
     t_node = _parse_and_cache(cachable)
     return _resolve_t_node(t_node, template.interpolations)
