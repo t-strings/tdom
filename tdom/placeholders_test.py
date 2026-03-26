@@ -1,8 +1,8 @@
 import pytest
 
 from .placeholders import (
-    make_placeholder_config,
     PlaceholderState,
+    make_placeholder_config,
 )
 
 

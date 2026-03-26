@@ -5,7 +5,6 @@ from .callables import get_callable_info
 
 def callable_zero_args() -> None:  # pragma: no cover
     """Test callable that takes zero arguments."""
-    pass
 
 
 def test_zero_args() -> None:
@@ -21,7 +20,6 @@ def test_zero_args() -> None:
 
 def callable_positional(a: int, b: str) -> None:  # pragma: no cover
     """Test callable that takes positional arguments."""
-    pass
 
 
 def test_positional() -> None:
@@ -37,7 +35,6 @@ def test_positional() -> None:
 
 def callable_positional_only(a: int, /, b: str) -> None:  # pragma: no cover
     """Test callable that takes positional-only arguments."""
-    pass
 
 
 def test_positional_only() -> None:
@@ -55,7 +52,6 @@ def callable_positional_only_default(
     a: int = 1, /, b: str = "b"
 ) -> None:  # pragma: no cover
     """Test callable that takes positional-only arguments with defaults."""
-    pass
 
 
 def test_positional_only_default() -> None:
@@ -71,7 +67,6 @@ def test_positional_only_default() -> None:
 
 def callable_kwargs(**kwargs: t.Any) -> None:  # pragma: no cover
     """Test callable that takes **kwargs."""
-    pass
 
 
 def test_kwargs() -> None:
@@ -89,7 +84,6 @@ def callable_mixed(
     a: int, /, b: str, *, c: float = 1.0, **kwargs: t.Any
 ) -> None:  # pragma: no cover
     """Test callable that takes a mix of argument types."""
-    pass
 
 
 def test_mixed() -> None:
@@ -107,7 +101,6 @@ def callable_positional_with_defaults(
     a: int = 1, b: str = "b", /
 ) -> None:  # pragma: no cover
     """Test callable that takes positional arguments with defaults."""
-    pass
 
 
 def test_positional_with_defaults() -> None:
@@ -123,7 +116,6 @@ def test_positional_with_defaults() -> None:
 
 def callable_keyword_only(*, a: int, b: str = "b") -> None:  # pragma: no cover
     """Test callable that takes keyword-only arguments."""
-    pass
 
 
 def test_keyword_only() -> None:
@@ -139,7 +131,6 @@ def test_keyword_only() -> None:
 
 def callable_var_positional(*args: t.Any) -> None:  # pragma: no cover
     """Test callable that takes *args."""
-    pass
 
 
 def test_var_positional() -> None:
@@ -157,7 +148,6 @@ def callable_all_types(
     a: int, /, b: str, *, c: float = 1.0, **kwargs: t.Any
 ) -> None:  # pragma: no cover
     """Test callable that takes all types of arguments."""
-    pass
 
 
 def test_all_types() -> None:

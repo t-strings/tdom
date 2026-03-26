@@ -519,7 +519,9 @@ def _invoke_component(
         callable_info, attrs, system_kwargs={"children": tuple(children)}
     )
 
-    result = value(**kwargs)
+    # The cast avoids `call-top-callable` from ty; there *must* be a smarter
+    # way, though... -Dave
+    result = t.cast(Callable[..., t.Any], value)(**kwargs)
     return _node_from_value(result)
 
 

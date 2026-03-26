@@ -1,6 +1,5 @@
 from markupsafe import Markup, escape
 
-
 from .protocols import HasHTMLDunder
 
 

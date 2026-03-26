@@ -6,8 +6,7 @@ from .escaping import (
     escape_html_style,
     escape_html_text,
 )
-
-from .htmlspec import VOID_ELEMENTS, CONTENT_ELEMENTS
+from .htmlspec import CONTENT_ELEMENTS, VOID_ELEMENTS
 
 SVG_TAG_FIX = {
     "altglyph": "altGlyph",
@@ -193,7 +192,7 @@ class Element(Node):
                 if isinstance(child, Text):
                     chunks.append(child.text)
                 else:
-                    raise ValueError(
+                    raise TypeError(
                         "Cannot serialize non-text content inside a script tag."
                     )
             raw_children_str = "".join(chunks)

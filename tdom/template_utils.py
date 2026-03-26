@@ -66,7 +66,7 @@ class TemplateRef:
     def from_naive_template(cls, t: Template) -> TemplateRef:
         return cls(
             strings=t.strings,
-            i_indexes=tuple([int(ip.value) for ip in t.interpolations]),
+            i_indexes=tuple(int(ip.value) for ip in t.interpolations),
         )
 
     def __post_init__(self):

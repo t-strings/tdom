@@ -1,16 +1,15 @@
 import datetime
 import typing as t
 from dataclasses import dataclass, field
-from string.templatelib import Template
 from itertools import product
+from string.templatelib import Template
 
 import pytest
 from markupsafe import Markup
 
-from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
-from .processor import html, _prep_component_kwargs
 from .callables import get_callable_info
-
+from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
+from .processor import _prep_component_kwargs, html
 
 # --------------------------------------------------------------------------
 # Basic HTML parsing tests
@@ -221,7 +220,7 @@ def test_interpolated_trusted_in_content_node():
 def test_script_elements_error():
     nested_template = t"<div></div>"
     # Putting non-text content inside a script is not allowed.
-    with pytest.raises(ValueError):
+    with pytest.raises(TypeError):
         node = html(t"<script>{nested_template}</script>")
         _ = str(node)
 
@@ -458,14 +457,12 @@ def test_nested_list_items():
 
 def test_literal_attrs():
     node = html(
-        (
-            t"<a "
-            t" id=example_link"  # no quotes allowed without spaces
-            t" autofocus"  # bare / boolean
-            t' title=""'  # empty attribute
-            t' href="https://example.com" target="_blank"'
-            t"></a>"
-        )
+        t"<a "
+        t" id=example_link"  # no quotes allowed without spaces
+        t" autofocus"  # bare / boolean
+        t' title=""'  # empty attribute
+        t' href="https://example.com" target="_blank"'
+        t"></a>"
     )
     assert node == Element(
         "a",
@@ -624,37 +621,43 @@ def test_attr_merge_overlapping_spread_attrs():
 
 
 def test_attr_merge_replace_literal_attr_str_str():
-    node = html(t'<div title="default" {dict(title="fresh")}></div>')
+    attrs = {"title": "fresh"}
+    node = html(t'<div title="default" {attrs}></div>')
     assert node == Element("div", {"title": "fresh"})
     assert str(node) == '<div title="fresh"></div>'
 
 
 def test_attr_merge_replace_literal_attr_str_true():
-    node = html(t'<div title="default" {dict(title=True)}></div>')
+    attrs = {"title": True}
+    node = html(t'<div title="default" {attrs}></div>')
     assert node == Element("div", {"title": None})
     assert str(node) == "<div title></div>"
 
 
 def test_attr_merge_replace_literal_attr_true_str():
-    node = html(t"<div title {dict(title='fresh')}></div>")
+    attrs = {"title": "fresh"}
+    node = html(t"<div title {attrs}></div>")
     assert node == Element("div", {"title": "fresh"})
     assert str(node) == '<div title="fresh"></div>'
 
 
 def test_attr_merge_remove_literal_attr_str_none():
-    node = html(t'<div title="default" {dict(title=None)}></div>')
+    attrs = {"title": None}
+    node = html(t'<div title="default" {attrs}></div>')
     assert node == Element("div")
     assert str(node) == "<div></div>"
 
 
 def test_attr_merge_remove_literal_attr_true_none():
-    node = html(t"<div title {dict(title=None)}></div>")
+    attrs = {"title": None}
+    node = html(t"<div title {attrs}></div>")
     assert node == Element("div")
     assert str(node) == "<div></div>"
 
 
 def test_attr_merge_other_literal_attr_intact():
-    node = html(t'<img title="default" {dict(alt="fresh")}>')
+    attrs = {"alt": "fresh"}
+    node = html(t'<img title="default" {attrs}>')
     assert node == Element("img", {"title": "default", "alt": "fresh"})
     assert str(node) == '<img title="default" alt="fresh" />'
 
@@ -677,22 +680,25 @@ def test_interpolated_data_attributes():
 
 
 def test_data_attr_toggle_to_str():
+    data_dict = {"selected": "yes"}
     for node in [
-        html(t"<div data-selected data={dict(selected='yes')}></div>"),
-        html(t'<div data-selected="no" data={dict(selected="yes")}></div>'),
+        html(t"<div data-selected data={data_dict}></div>"),
+        html(t'<div data-selected="no" data={data_dict}></div>'),
     ]:
         assert node == Element("div", {"data-selected": "yes"})
         assert str(node) == '<div data-selected="yes"></div>'
 
 
 def test_data_attr_toggle_to_true():
-    node = html(t'<div data-selected="yes" data={dict(selected=True)}></div>')
+    data_dict = {"selected": True}
+    node = html(t'<div data-selected="yes" data={data_dict}></div>')
     assert node == Element("div", {"data-selected": None})
     assert str(node) == "<div data-selected></div>"
 
 
 def test_data_attr_unrelated_unaffected():
-    node = html(t"<div data-selected data={dict(active=True)}></div>")
+    data_dict = {"active": True}
+    node = html(t"<div data-selected data={data_dict}></div>")
     assert node == Element("div", {"data-selected": None, "data-active": None})
     assert str(node) == "<div data-selected data-active></div>"
 
@@ -807,7 +813,7 @@ def test_interpolated_class_attribute():
 
 def test_interpolated_class_attribute_with_multiple_placeholders():
     classes1 = ["btn", "btn-primary"]
-    classes2 = [False and "disabled", None, {"active": True}]
+    classes2 = [False, None, {"active": True}]
     node = html(t'<button class="{classes1} {classes2}">Click me</button>')
     # CONSIDER: Is this what we want? Currently, when we have multiple
     # placeholders in a single attribute, we treat it as a string attribute.
@@ -917,7 +923,7 @@ def test_style_in_spread_attr():
 
 
 def test_style_merged_from_all_attrs():
-    attrs = dict(style="font-size: 15px")
+    attrs = {"style": {"font-size": "15px"}}
     style = {"font-weight": "bold"}
     color = "red"
     node = html(
@@ -935,15 +941,17 @@ def test_style_merged_from_all_attrs():
 
 def test_style_override_left_to_right():
     suffix = t"></p>"
+    cb_dict = {"color": "blue"}
+    scy_dict = {"style": {"color": "yellow"}}
     parts = [
         (t'<p style="color: red"', "color: red"),
-        (t" style={dict(color='blue')}", "color: blue"),
+        (t" style={cb_dict}", "color: blue"),
         (t''' style="color: {"green"}"''', "color: green"),
-        (t""" {dict(style=dict(color="yellow"))}""", "color: yellow"),
+        (t""" {scy_dict}""", "color: yellow"),
     ]
     for index in range(len(parts)):
         expected_style = parts[index][1]
-        t = sum([part[0] for part in parts[: index + 1]], t"") + suffix
+        t = sum((part[0] for part in parts[: index + 1]), t"") + suffix
         node = html(t)
         assert node == Element("p", {"style": expected_style})
         assert str(node) == f'<p style="{expected_style}"></p>'
@@ -1440,15 +1448,17 @@ def test_attribute_type_component():
     a_false: bool = False
     a_none: None = None
     a_float: float = 3.14
-    a_dt: datetime.datetime = datetime.datetime(2024, 1, 1, 12, 0, 0)
+    a_dt: datetime.datetime = datetime.datetime(
+        2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC
+    )
     spread_attrs: dict[str, object | None] = {
         "spread_true": True,
         "spread_false": False,
         "spread_none": None,
         "spread_int": 0,
         "spread_float": 0.0,
-        "spread_dt": datetime.datetime(2024, 1, 1, 12, 0, 1),
-        "spread_dict": dict(),
+        "spread_dt": datetime.datetime(2024, 1, 1, 12, 0, 1, tzinfo=datetime.UTC),
+        "spread_dict": {},
         "spread_list": ["eggs", "milk"],
     }
     node = html(

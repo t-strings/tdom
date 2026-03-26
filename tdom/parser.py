@@ -5,6 +5,7 @@ from string.templatelib import Interpolation, Template
 
 from .htmlspec import VOID_ELEMENTS
 from .placeholders import PlaceholderState
+from .template_utils import combine_template_refs
 from .tnodes import (
     TAttribute,
     TComment,
@@ -19,8 +20,6 @@ from .tnodes import (
     TTemplatedAttribute,
     TText,
 )
-from .template_utils import combine_template_refs
-
 
 type HTMLAttribute = tuple[str, str | None]
 type HTMLAttributesDict = dict[str, str | None]

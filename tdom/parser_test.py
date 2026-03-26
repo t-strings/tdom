@@ -1,4 +1,4 @@
-from string.templatelib import Template, Interpolation
+from string.templatelib import Interpolation, Template
 
 import pytest
 
@@ -255,14 +255,12 @@ def test_self_closing_void_tags_unexpected_closing_tag():
 #
 def test_literal_attrs():
     node = TemplateParser.parse(
-        (
-            t"<a"
-            t" id=example_link"  # no quotes allowed without spaces
-            t" autofocus"  # bare / boolean
-            t' title=""'  # empty attribute
-            t' href="https://example.com" target="_blank"'
-            t">Link</a>"
-        )
+        t"<a"
+        t" id=example_link"  # no quotes allowed without spaces
+        t" autofocus"  # bare / boolean
+        t' title=""'  # empty attribute
+        t' href="https://example.com" target="_blank"'
+        t">Link</a>"
     )
     assert node == TElement(
         "a",

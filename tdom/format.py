@@ -71,7 +71,7 @@ def _format_interpolation(
 def format_interpolation(
     interpolation: Interpolation,
     *,
-    formatters: t.Sequence[MatcherAndFormatter] = tuple(),
+    formatters: t.Sequence[MatcherAndFormatter] = (),
 ) -> object:
     """
     Format an Interpolation's value according to its format spec and conversion.

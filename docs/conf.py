@@ -1,10 +1,10 @@
 """Sphinx configuration."""
 
-from datetime import datetime
+import datetime
 
 project = "tdom"
 author = "Dave Peck, Andrea Giammarchi, and Paul Everitt"
-copyright = f"{datetime.now().year}, {author}"
+copyright = f"{datetime.datetime.now(tz=datetime.UTC).year}, {author}"
 extensions = [
     "myst_parser",
     "sphinx.ext.autodoc",
