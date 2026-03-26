@@ -1,7 +1,7 @@
-from dataclasses import dataclass, field
 import random
 import re
 import string
+from dataclasses import dataclass, field
 
 from .template_utils import TemplateRef
 

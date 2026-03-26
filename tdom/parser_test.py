@@ -1,3 +1,5 @@
+from string.templatelib import Interpolation, Template
+
 import pytest
 
 from .parser import TemplateParser
@@ -14,7 +16,6 @@ from .tnodes import (
     TTemplatedAttribute,
     TText,
 )
-from string.templatelib import Template, Interpolation
 
 
 def test_parse_mixed_literal_content():
@@ -254,14 +255,12 @@ def test_self_closing_void_tags_unexpected_closing_tag():
 #
 def test_literal_attrs():
     node = TemplateParser.parse(
-        (
-            t"<a"
-            t" id=example_link"  # no quotes allowed without spaces
-            t" autofocus"  # bare / boolean
-            t' title=""'  # empty attribute
-            t' href="https://example.com" target="_blank"'
-            t">Link</a>"
-        )
+        t"<a"
+        t" id=example_link"  # no quotes allowed without spaces
+        t" autofocus"  # bare / boolean
+        t' title=""'  # empty attribute
+        t' href="https://example.com" target="_blank"'
+        t">Link</a>"
     )
     assert node == TElement(
         "a",
@@ -486,3 +485,20 @@ def test_adjacent_end_component_tag_error():
 
     with pytest.raises(ValueError):
         _ = TemplateParser.parse(t"<{Component}></{Component}{Component}>")
+
+
+def test_placeholder_collision_avoidance():
+    config = make_placeholder_config()
+    # This test is to ensure that our placeholder detection avoids collisions
+    # even with content that might look like a placeholder.
+    tricky = "0"
+    template = Template(
+        f'<div data-tricky="{config.prefix}',
+        Interpolation(tricky, "tricky", None, ""),
+        f'{config.suffix}"></div>',
+    )
+    tnode = TemplateParser.parse(template)
+    value_ref = TemplateRef(strings=(config.prefix, config.suffix), i_indexes=(0,))
+    assert tnode == TElement(
+        "div", attrs=(TTemplatedAttribute(name="data-tricky", value_ref=value_ref),)
+    )

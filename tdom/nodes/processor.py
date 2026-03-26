@@ -1,35 +1,17 @@
+from collections.abc import Iterable
 from dataclasses import dataclass
 from string.templatelib import Template
 from typing import cast
-from collections.abc import Iterable
 
 from markupsafe import Markup
 
-from ..protocols import HasHTMLDunder
-from ..processor import (
-    ProcessContext,
-    BaseProcessorService,
-    _resolve_t_attrs,
-    _resolve_html_attrs,
-    prep_component_kwargs,
-    resolve_text_without_recursion,
-    make_ctx,
-    extract_embedded_template,
-    ComponentObjectProto,
-    ComponentCallableProto,
-    format_interpolation,
-    WalkerProto,
-    NormalTextInterpolationValue,
-    CachedParserService,
-)
 from ..callables import get_callable_info
 from ..htmlspec import (
-    VOID_ELEMENTS,
-    RCDATA_CONTENT_ELEMENTS,
     CDATA_CONTENT_ELEMENTS,
     DEFAULT_NORMAL_TEXT_ELEMENT,
+    RCDATA_CONTENT_ELEMENTS,
+    VOID_ELEMENTS,
 )
-from .nodes import Fragment, Comment, DocumentType, Element, Text, Node, NodeContainer
 from ..parser import (
     TAttribute,
     TComment,
@@ -41,7 +23,24 @@ from ..parser import (
     TNode,
     TText,
 )
+from ..processor import (
+    BaseProcessorService,
+    CachedParserService,
+    ComponentCallableProto,
+    NormalTextInterpolationValue,
+    ProcessContext,
+    WalkerProto,
+    _resolve_html_attrs,
+    _resolve_t_attrs,
+    extract_embedded_template,
+    format_interpolation,
+    make_ctx,
+    prep_component_kwargs,
+    resolve_text_without_recursion,
+)
+from ..protocols import HasHTMLDunder
 from ..template_utils import TemplateRef
+from .nodes import Comment, DocumentType, Element, Fragment, Node, NodeContainer, Text
 
 
 @dataclass(frozen=True)
@@ -205,7 +204,7 @@ class NodeProcessorService(BaseProcessorService):
             and not isinstance(result_t, Template)
             and callable(result_t)
         ):
-            component_obj = cast(ComponentObjectProto, result_t)
+            component_obj = result_t
             result_t = component_obj()
         else:
             component_obj = None
@@ -217,7 +216,7 @@ class NodeProcessorService(BaseProcessorService):
             result_root = self.parser_api.to_tnode(result_t)
             return self.walk_from_tnode(parent_node, result_t, last_ctx, result_root)
         else:
-            raise ValueError(f"Unknown component return value: {type(result_t)}")
+            raise TypeError(f"Unknown component return value: {type(result_t)}")
 
     def _process_raw_texts(
         self,

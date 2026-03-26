@@ -1,19 +1,31 @@
-from typing import cast
-from collections.abc import Iterable, Sequence, Callable
-from functools import lru_cache
-from string.templatelib import Template, Interpolation
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
+from functools import lru_cache
+from string.templatelib import Interpolation, Template
+from typing import cast
 
 from markupsafe import Markup
 
-from .callables import get_callable_info, CallableInfo
+from .callables import CallableInfo, get_callable_info
+from .escaping import (
+    escape_html_comment as default_escape_html_comment,
+)
+from .escaping import (
+    escape_html_script as default_escape_html_script,
+)
+from .escaping import (
+    escape_html_style as default_escape_html_style,
+)
+from .escaping import (
+    escape_html_text as default_escape_html_text,
+)
 from .format import format_interpolation as base_format_interpolation
 from .format import format_template
 from .htmlspec import (
-    DEFAULT_NORMAL_TEXT_ELEMENT,
-    VOID_ELEMENTS,
     CDATA_CONTENT_ELEMENTS,
+    DEFAULT_NORMAL_TEXT_ELEMENT,
     RCDATA_CONTENT_ELEMENTS,
+    VOID_ELEMENTS,
 )
 from .parser import (
     HTMLAttribute,
@@ -32,17 +44,10 @@ from .parser import (
     TTemplatedAttribute,
     TText,
 )
-from .utils import CachableTemplate, LastUpdatedOrderedDict
-from .escaping import (
-    escape_html_script as default_escape_html_script,
-    escape_html_style as default_escape_html_style,
-    escape_html_text as default_escape_html_text,
-    escape_html_comment as default_escape_html_comment,
-)
 from .protocols import HasHTMLDunder
 from .sentinel import NOT_SET, NotSet
 from .template_utils import TemplateRef
-
+from .utils import CachableTemplate, LastUpdatedOrderedDict
 
 type Attribute = tuple[str, object]
 type AttributesDict = dict[str, object]
@@ -477,13 +482,15 @@ type RawTextInexactInterpolationValue = None | str | object
 
 @dataclass(frozen=True)
 class ParserService:
+    svg_context: bool = False
+
     def to_tnode(self, template: Template) -> TNode:
-        return TemplateParser.parse(template)
+        return TemplateParser.parse(template, svg_context=self.svg_context)
 
 
 @dataclass(frozen=True)
 class CachedParserService(ParserService):
-    @lru_cache(512)
+    @lru_cache(512)  # noqa: B019
     def _to_tnode(self, ct: CachableTemplate):
         return super().to_tnode(ct.template)
 
@@ -688,7 +695,7 @@ class ProcessorService(BaseProcessorService):
             and not isinstance(result_t, Template)
             and callable(result_t)
         ):
-            component_obj = cast(ComponentObjectProto, result_t)
+            component_obj = result_t
             result_t = component_obj()
         else:
             component_obj = None
@@ -700,7 +707,7 @@ class ProcessorService(BaseProcessorService):
             result_root = self.parser_api.to_tnode(result_t)
             return self.walk_from_tnode(bf, result_t, last_ctx, result_root)
         else:
-            raise ValueError(f"Unknown component return value: {type(result_t)}")
+            raise TypeError(f"Unknown component return value: {type(result_t)}")
 
     def _process_raw_texts(
         self,
@@ -819,7 +826,6 @@ def resolve_text_without_recursion(
     """
     if content_ref.is_singleton:
         value = format_interpolation(template.interpolations[content_ref.i_indexes[0]])
-        value = cast(RawTextExactInterpolationValue, value)
         if value is None:
             return None
         elif isinstance(value, str):
@@ -842,7 +848,6 @@ def resolve_text_without_recursion(
                     text.append(part)
                 continue
             value = format_interpolation(template.interpolations[part])
-            value = cast(RawTextInexactInterpolationValue, value)
             if value is None:
                 continue
             elif (
@@ -917,7 +922,21 @@ def cached_processor_service_factory(**config_kwargs):
     return ProcessorService(parser_api=CachedParserService(), **config_kwargs)
 
 
+def svg_processor_service_factory(**config_kwargs):
+    return ProcessorService(parser_api=ParserService(svg_context=True), **config_kwargs)
+
+
+def cached_svg_processor_service_factory(**config_kwargs):
+    return ProcessorService(
+        parser_api=CachedParserService(svg_context=True), **config_kwargs
+    )
+
+
 _default_processor_api = cached_processor_service_factory(
+    slash_void=True, uppercase_doctype=True
+)
+
+_default_svg_processor_api = cached_svg_processor_service_factory(
     slash_void=True, uppercase_doctype=True
 )
 
@@ -930,3 +949,16 @@ _default_processor_api = cached_processor_service_factory(
 def to_html(template: Template, assume_ctx: ProcessContext | None = None) -> str:
     """Parse an HTML t-string, substitute values, and return a string of HTML."""
     return _default_processor_api.process_template(template, assume_ctx)
+
+
+def to_svg(template: Template) -> str:
+    """Parse a standalone SVG fragment and return a tree of Nodes.
+
+    Use when the template does not contain an ``<svg>`` wrapper element.
+    Tag and attribute case-fixing (e.g. ``clipPath``, ``viewBox``) are applied
+    from the root, exactly as they would be inside ``html(t"<svg>...</svg>")``.
+
+    When the template does contain ``<svg>``, use ``html()`` — the SVG context
+    is detected automatically.
+    """
+    return _default_svg_processor_api.process_template(template, make_ctx(ns="svg"))

@@ -1,7 +1,7 @@
 from string.templatelib import Template
 
+from .nodes import Comment, DocumentType, Element, Fragment, Text
 from .processor import to_node
-from .nodes import Element, Text, Fragment, DocumentType, Comment
 
 #
 # @NOTE: Most of the processor tests are in the main process_test.py file.
@@ -19,15 +19,13 @@ def test_to_node_integration():
         return t"<section>{label}: {children}</section><span>Tail</span>"
 
     node = to_node(
-        (
-            t"<!doctype html>"
-            t"<!-- comment -->"
-            t"<script>var x = 1;</script>"
-            t"<div><br>&gt;</div>"
-            t"<div>{[0, 1]}</div>"
-            t'<a class="red" title={title} href="/{url_path}" {extra_kwargs}>{content}</a>'
-            t'<{simple_comp} label="The Children"><span>Child0</span><span>Child1</span></{simple_comp}>'
-        )
+        t"<!doctype html>"
+        t"<!-- comment -->"
+        t"<script>var x = 1;</script>"
+        t"<div><br>&gt;</div>"
+        t"<div>{[0, 1]}</div>"
+        t'<a class="red" title={title} href="/{url_path}" {extra_kwargs}>{content}</a>'
+        t'<{simple_comp} label="The Children"><span>Child0</span><span>Child1</span></{simple_comp}>'
     )
     assert node == Fragment(
         children=[

@@ -4,7 +4,6 @@ from markupsafe import escape as markup_escape
 
 from .protocols import HasHTMLDunder
 
-
 escape_html_text = markup_escape  # unify api for test of project
 
 
@@ -45,7 +44,12 @@ def escape_html_comment(text: str, allow_markup: bool = False) -> str:
 # @NOTE: We use a group to preserve the case of the tagname, ie. StylE -> StylE
 # @NOTE: Rawstrings are needed for the groupname to resolve correctly
 # otherwise the slash must be escaped twice again.
-STYLE_RES = ((re.compile("</(?P<tagname>style)>", re.I | re.A), LT + r"/\g<tagname>>"),)
+STYLE_RES = (
+    (
+        re.compile("</(?P<tagname>style)>", re.IGNORECASE | re.ASCII),
+        LT + r"/\g<tagname>>",
+    ),
+)
 
 
 def escape_html_style(text: str, allow_markup: bool = False) -> str:
@@ -67,9 +71,12 @@ SCRIPT_RES = (
     # ie. ScripT->ScripT.
     # @NOTE: Rawstrings are also needed for the groupname to resolve correctly
     # otherwise the slash must be escaped twice again.
-    (re.compile("<!--", re.I | re.A), r"\\x3c!--"),
-    (re.compile("<(?P<tagname>script)", re.I | re.A), r"\\x3c\g<tagname>"),
-    (re.compile("</(?P<tagname>script)", re.I | re.A), r"\\x3c/\g<tagname>"),
+    (re.compile("<!--", re.IGNORECASE | re.ASCII), r"\\x3c!--"),
+    (re.compile("<(?P<tagname>script)", re.IGNORECASE | re.ASCII), r"\\x3c\g<tagname>"),
+    (
+        re.compile("</(?P<tagname>script)", re.IGNORECASE | re.ASCII),
+        r"\\x3c/\g<tagname>",
+    ),
 )
 
 

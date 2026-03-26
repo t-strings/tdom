@@ -1,26 +1,26 @@
 import datetime
 import typing as t
 from dataclasses import dataclass
+from itertools import chain, product
 from string.templatelib import Template
-from itertools import product, chain
-from collections.abc import Callable
 
 import pytest
-from markupsafe import Markup, escape as markupsafe_escape
+from markupsafe import Markup
+from markupsafe import escape as markupsafe_escape
 
-from .processor import (
-    to_html as to_html_str,
-    prep_component_kwargs,
-    processor_service_factory,
-    cached_processor_service_factory,
-    make_ctx,
-    CachedParserService,
-)
 from .callables import get_callable_info
 from .escaping import escape_html_text
-
-
 from .nodes.processor import to_node
+from .processor import (
+    CachedParserService,
+    cached_processor_service_factory,
+    make_ctx,
+    prep_component_kwargs,
+    processor_service_factory,
+)
+from .processor import (
+    to_html as to_html_str,
+)
 
 
 def to_node_str(*args, **kwargs):
@@ -41,6 +41,7 @@ PROCESSORS = [
     to_html_str_no_cache,  # we only test one without a cache for test run speed
 ]
 " List of processor functions to test against. "
+
 
 # --------------------------------------------------------------------------
 # Basic HTML parsing tests
@@ -898,14 +899,12 @@ class TestLiteralAttribute:
     def test_literal_attrs(self, to_html):
         assert (
             to_html(
-                (
-                    t"<a "
-                    t" id=example_link"  # no quotes required if value has no surrounding whitespace
-                    t" autofocus"  # bare / boolean
-                    t' title=""'  # empty attribute
-                    t' href="https://example.com" target="_blank"'
-                    t"></a>"
-                )
+                t"<a "
+                t" id=example_link"  # no quotes required if value has no surrounding whitespace
+                t" autofocus"  # bare / boolean
+                t' title=""'  # empty attribute
+                t' href="https://example.com" target="_blank"'
+                t"></a>"
             )
             == '<a id="example_link" autofocus title="" href="https://example.com" target="_blank"></a>'
         )
@@ -1021,34 +1020,32 @@ class TestAttributeMerging:
         )
 
     def test_attr_merge_replace_literal_attr_str_str(self, to_html):
+        d_title = {"title": "fresh"}
         assert (
-            to_html(t'<div title="default" {dict(title="fresh")}></div>')
+            to_html(t'<div title="default" {d_title}></div>')
             == '<div title="fresh"></div>'
         )
 
     def test_attr_merge_replace_literal_attr_str_true(self, to_html):
-        assert (
-            to_html(t'<div title="default" {dict(title=True)}></div>')
-            == "<div title></div>"
-        )
+        d_title = {"title": True}
+        assert to_html(t'<div title="default" {d_title}></div>') == "<div title></div>"
 
     def test_attr_merge_replace_literal_attr_true_str(self, to_html):
-        assert (
-            to_html(t"<div title {dict(title='fresh')}></div>")
-            == '<div title="fresh"></div>'
-        )
+        d_title = {"title": "fresh"}
+        assert to_html(t"<div title {d_title}></div>") == '<div title="fresh"></div>'
 
     def test_attr_merge_remove_literal_attr_str_none(self, to_html):
-        assert (
-            to_html(t'<div title="default" {dict(title=None)}></div>') == "<div></div>"
-        )
+        d_title = {"title": None}
+        assert to_html(t'<div title="default" {d_title}></div>') == "<div></div>"
 
     def test_attr_merge_remove_literal_attr_true_none(self, to_html):
-        assert to_html(t"<div title {dict(title=None)}></div>") == "<div></div>"
+        d_title = {"title": None}
+        assert to_html(t"<div title {d_title}></div>") == "<div></div>"
 
     def test_attr_merge_other_literal_attr_intact(self, to_html):
+        d_alt = {"alt": "fresh"}
         assert (
-            to_html(t'<img title="default" {dict(alt="fresh")}>')
+            to_html(t'<img title="default" {d_alt}>')
             == '<img title="default" alt="fresh" />'
         )
 
@@ -1071,18 +1068,21 @@ class TestSpecialDataAttribute:
         )
 
     def test_data_attr_toggle_to_str(self, to_html):
+        d_selected = {"selected": "yes"}
         for res in [
-            to_html(t"<div data-selected data={dict(selected='yes')}></div>"),
-            to_html(t'<div data-selected="no" data={dict(selected="yes")}></div>'),
+            to_html(t"<div data-selected data={d_selected}></div>"),
+            to_html(t'<div data-selected="no" data={d_selected}></div>'),
         ]:
             assert res == '<div data-selected="yes"></div>'
 
     def test_data_attr_toggle_to_true(self, to_html):
-        res = to_html(t'<div data-selected="yes" data={dict(selected=True)}></div>')
+        d_selected = {"selected": True}
+        res = to_html(t'<div data-selected="yes" data={d_selected}></div>')
         assert res == "<div data-selected></div>"
 
     def test_data_attr_unrelated_unaffected(self, to_html):
-        res = to_html(t"<div data-selected data={dict(active=True)}></div>")
+        d_active = {"active": True}
+        res = to_html(t"<div data-selected data={d_active}></div>")
         assert res == "<div data-selected data-active></div>"
 
     def test_data_attr_templated_error(self, to_html):
@@ -1173,7 +1173,7 @@ class TestSpecialClassAttribute:
 
     def test_interpolated_class_attribute_with_multiple_placeholders(self, to_html):
         classes1 = ["btn", "btn-primary"]
-        classes2 = [False and "disabled", None, {"active": True}]
+        classes2 = [False, None, {"active": True}]
         res = to_html(t'<button class="{classes1} {classes2}">Click me</button>')
         # CONSIDER: Is this what we want? Currently, when we have multiple
         # placeholders in a single attribute, we treat it as a string attribute.
@@ -1249,7 +1249,7 @@ class TestSpecialStyleAttribute:
         assert res == '<p style="color: red">Warning!</p>'
 
     def test_style_merged_from_all_attrs(self, to_html):
-        attrs = dict(style="font-size: 15px")
+        attrs = {"style": {"font-size": "15px"}}
         style = {"font-weight": "bold"}
         color = "red"
         res = to_html(
@@ -1262,15 +1262,17 @@ class TestSpecialStyleAttribute:
 
     def test_style_override_left_to_right(self, to_html):
         suffix = t"></p>"
+        d_blue = {"color": "blue"}
+        d_yellow = {"style": {"color": "yellow"}}
         parts = [
             (t'<p style="color: red"', "color: red"),
-            (t" style={dict(color='blue')}", "color: blue"),
+            (t" style={d_blue}", "color: blue"),
             (t' style="color: {"green"}"', "color: green"),
-            (t""" {dict(style=dict(color="yellow"))}""", "color: yellow"),
+            (t""" {d_yellow}""", "color: yellow"),
         ]
         for index in range(len(parts)):
             expected_style = parts[index][1]
-            t = sum([part[0] for part in parts[: index + 1]], t"") + suffix
+            t = sum((part[0] for part in parts[: index + 1]), t"") + suffix
             res = to_html(t)
             assert res == f'<p style="{expected_style}"></p>'
 
@@ -1595,15 +1597,17 @@ def test_attribute_type_component(to_html):
     a_false: bool = False
     a_none: None = None
     a_float: float = 3.14
-    a_dt: datetime.datetime = datetime.datetime(2024, 1, 1, 12, 0, 0)
+    a_dt: datetime.datetime = datetime.datetime(
+        2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC
+    )
     spread_attrs: dict[str, object | None] = {
         "spread_true": True,
         "spread_false": False,
         "spread_none": None,
         "spread_int": 0,
         "spread_float": 0.0,
-        "spread_dt": datetime.datetime(2024, 1, 1, 12, 0, 1),
-        "spread_dict": dict(),
+        "spread_dt": datetime.datetime(2024, 1, 1, 12, 0, 1, tzinfo=datetime.UTC),
+        "spread_dict": {},
         "spread_list": ["eggs", "milk"],
     }
     res = to_html(
@@ -1680,10 +1684,7 @@ def test_integration_basic(to_html):
 def struct_repr(st):
     """Breakdown Templates into comparable parts for test verification."""
     return st.strings, tuple(
-        [
-            (i.value, i.expression, i.conversion, i.format_spec)
-            for i in st.interpolations
-        ]
+        (i.value, i.expression, i.conversion, i.format_spec) for i in st.interpolations
     )
 
 
@@ -1797,7 +1798,7 @@ def get_select_t_with_concat(options, selected_values):
 def test_process_template_iterables(to_html, provider):
     def get_color_select_t(selected_values: set, provider: t.Callable) -> Template:
         PRIMARY_COLORS = [("R", "Red"), ("Y", "Yellow"), ("B", "Blue")]
-        assert set(selected_values).issubset(set([opt[0] for opt in PRIMARY_COLORS]))
+        assert set(selected_values).issubset({opt[0] for opt in PRIMARY_COLORS})
         return provider(PRIMARY_COLORS, selected_values)
 
     no_selection_t = get_color_select_t(set(), provider)
@@ -1911,7 +1912,7 @@ class TestPagerComponentExample:
     @dataclass
     class PagerDisplay:
         pager: TestPagerComponentExample.Pager
-        paginate_url: Callable[[int], str]
+        paginate_url: t.Callable[[int], str]
         root_classes: tuple[str, ...] = ("cb", "tc", "w-100")
         part_classes: tuple[str, ...] = ("dib", "pa1")
 
