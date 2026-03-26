@@ -238,4 +238,7 @@ def test_svg_rendering():
             Element("rect", attrs={"x": "0", "y": "0", "width": "10", "height": "10"}),
         ],
     )
-    assert str(svg) == '<svg viewBox="0 0 10 10"><clipPath id="clip"></clipPath><rect x="0" y="0" width="10" height="10"></rect></svg>'
+    assert (
+        str(svg)
+        == '<svg viewBox="0 0 10 10"><clipPath id="clip"></clipPath><rect x="0" y="0" width="10" height="10"></rect></svg>'
+    )

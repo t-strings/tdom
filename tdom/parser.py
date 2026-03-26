@@ -126,6 +126,7 @@ SVG_CASE_FIX = {
     "zoomandpan": "zoomAndPan",
 }
 
+
 @dataclass
 class OpenTElement:
     tag: str
@@ -210,9 +211,7 @@ class TemplateParser(HTMLParser):
     # Attribute Helpers
     # ------------------------------------------
 
-    def make_tattr(
-        self, attr: HTMLAttribute, svg_context: bool = False
-    ) -> TAttribute:
+    def make_tattr(self, attr: HTMLAttribute, svg_context: bool = False) -> TAttribute:
         """Build a TAttribute from a raw attribute tuple."""
 
         name, value = attr
@@ -260,9 +259,7 @@ class TemplateParser(HTMLParser):
         tag_ref = self.placeholders.remove_placeholders(tag)
 
         if tag_ref.is_literal:
-            return OpenTElement(
-                tag=tag, attrs=self.make_tattrs(attrs, svg_context)
-            )
+            return OpenTElement(tag=tag, attrs=self.make_tattrs(attrs, svg_context))
 
         if not tag_ref.is_singleton:
             raise ValueError(

@@ -1,9 +1,7 @@
-import pytest
-
 from tdom import html, svg
 
-
 # svg() — tag case-fixing
+
 
 def test_svg_clippath_case_fixed():
     node = svg(t"<clipPath id='mask'></clipPath>")
@@ -34,26 +32,31 @@ def test_svg_viewbox_attr_case_fixed():
     node = svg(t'<rect viewBox="0 0 10 10" />')
     assert str(node) == '<rect viewBox="0 0 10 10"></rect>'
 
+
 def test_svg_case_sensitivity():
     # SVG attributes like viewBox are case-sensitive
     node = html(t'<svg viewBox="0 0 100 100"></svg>')
     # We expect viewBox, not viewbox
-    assert 'viewBox' in str(node)
+    assert "viewBox" in str(node)
+
 
 def test_svg_tag_case_sensitivity():
     # SVG tags like linearGradient are case-sensitive
-    node = html(t'<svg><linearGradient></linearGradient></svg>')
-    assert 'linearGradient' in str(node)
+    node = html(t"<svg><linearGradient></linearGradient></svg>")
+    assert "linearGradient" in str(node)
+
 
 def test_svg_tag_case_sensitivity_outside_svg():
     # Outside SVG, tags should be lowercased
-    node = html(t'<linearGradient></linearGradient>')
-    assert 'lineargradient' in str(node)
+    node = html(t"<linearGradient></linearGradient>")
+    assert "lineargradient" in str(node)
+
 
 def test_svg_attr_case_sensitivity_outside_svg():
     # Outside SVG, attributes should be lowercased
     node = html(t'<div viewBox="0 0 100 100"></div>')
-    assert 'viewbox' in str(node)
+    assert "viewbox" in str(node)
+
 
 def test_svg_interpolated_attr():
     cx, cy, r = 50, 50, 40
@@ -101,4 +104,7 @@ def test_svg_fragment_embedded_in_html():
         return svg(t'<circle cx="50" cy="50" r="40" />')
 
     node = html(t'<div class="icon"><svg>{icon()}</svg></div>')
-    assert str(node) == '<div class="icon"><svg><circle cx="50" cy="50" r="40"></circle></svg></div>'
+    assert (
+        str(node)
+        == '<div class="icon"><svg><circle cx="50" cy="50" r="40"></circle></svg></div>'
+    )

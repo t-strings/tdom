@@ -1,13 +1,13 @@
 import sys
 import typing as t
-from collections.abc import Iterable, Sequence, Callable
+from collections.abc import Callable, Iterable, Sequence
+from dataclasses import dataclass
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
-from dataclasses import dataclass
 
 from markupsafe import Markup
 
-from .callables import get_callable_info, CallableInfo
+from .callables import CallableInfo, get_callable_info
 from .format import format_interpolation as base_format_interpolation
 from .format import format_template
 from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
@@ -29,10 +29,9 @@ from .parser import (
     TText,
 )
 from .placeholders import TemplateRef
+from .protocols import HasHTMLDunder
 from .template_utils import template_from_parts
 from .utils import CachableTemplate, LastUpdatedOrderedDict
-from .protocols import HasHTMLDunder
-
 
 # TODO: in Ian's original PR, this caching was tethered to the
 # TemplateParser. Here, it's tethered to the processor. I suspect we'll
@@ -508,7 +507,7 @@ def _invoke_component(
     and passed as keyword arguments if the callable accepts them (or has
     **kwargs). Attributes that don't match parameters are silently ignored.
     """
-    component_name = interpolation.expression or "unknown component"
+
     value = format_interpolation(interpolation)
     if not callable(value):
         raise TypeError(

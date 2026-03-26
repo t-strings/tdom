@@ -22,7 +22,10 @@ class CachableTemplate:
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, CachableTemplate):
             return NotImplemented
-        return self.template.strings == other.template.strings and self.svg_context == other.svg_context
+        return (
+            self.template.strings == other.template.strings
+            and self.svg_context == other.svg_context
+        )
 
     def __hash__(self) -> int:
         return hash((self.template.strings, self.svg_context))
