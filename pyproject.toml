@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "tdom"
-version = "0.1.14"
+version = "0.1.15"
 description = "A 🤘 rockin' t-string HTML templating system for Python 3.14."
 readme = "README.md"
 requires-python = ">=3.14"
