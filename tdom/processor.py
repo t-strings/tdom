@@ -89,7 +89,7 @@ def format_interpolation(interpolation: Interpolation) -> object:
 # --------------------------------------------------------------------------
 
 
-def _expand_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
+def _expand_aria_attr(value: object) -> Iterable[HTMLAttribute]:
     """Produce aria-* attributes based on the interpolated value for "aria"."""
     if value is None:
         return
@@ -109,7 +109,7 @@ def _expand_aria_attr(value: object) -> t.Iterable[HTMLAttribute]:
         )
 
 
-def _expand_data_attr(value: object) -> t.Iterable[Attribute]:
+def _expand_data_attr(value: object) -> Iterable[Attribute]:
     """Produce data-* attributes based on the interpolated value for "data"."""
     if value is None:
         return
@@ -125,7 +125,7 @@ def _expand_data_attr(value: object) -> t.Iterable[Attribute]:
         )
 
 
-def _substitute_spread_attrs(value: object) -> t.Iterable[Attribute]:
+def _substitute_spread_attrs(value: object) -> Iterable[Attribute]:
     """
     Substitute a spread attribute based on the interpolated value.
 
@@ -290,7 +290,7 @@ type AttributeValueAccumulator = StyleAccumulator | ClassAccumulator
 
 
 def _resolve_t_attrs(
-    attrs: t.Sequence[TAttribute], interpolations: tuple[Interpolation, ...]
+    attrs: Sequence[TAttribute], interpolations: tuple[Interpolation, ...]
 ) -> AttributesDict:
     """
     Replace placeholder values in attributes with their interpolated values.
@@ -374,7 +374,7 @@ def _resolve_html_attrs(attrs: AttributesDict) -> HTMLAttributesDict:
 
 
 def _resolve_attrs(
-    attrs: t.Sequence[TAttribute], interpolations: tuple[Interpolation, ...]
+    attrs: Sequence[TAttribute], interpolations: tuple[Interpolation, ...]
 ) -> HTMLAttributesDict:
     """
     Substitute placeholders in attributes for HTML elements.
@@ -385,7 +385,7 @@ def _resolve_attrs(
     return _resolve_html_attrs(interpolated_attrs)
 
 
-def _flatten_nodes(nodes: t.Iterable[Node]) -> list[Node]:
+def _flatten_nodes(nodes: Iterable[Node]) -> list[Node]:
     """Flatten a list of Nodes, expanding any Fragments."""
     flat: list[Node] = []
     for node in nodes:
@@ -397,7 +397,7 @@ def _flatten_nodes(nodes: t.Iterable[Node]) -> list[Node]:
 
 
 def _substitute_and_flatten_children(
-    children: t.Iterable[TNode], interpolations: tuple[Interpolation, ...]
+    children: Iterable[TNode], interpolations: tuple[Interpolation, ...]
 ) -> list[Node]:
     """Substitute placeholders in a list of children and flatten any fragments."""
     resolved = [_resolve_t_node(child, interpolations) for child in children]

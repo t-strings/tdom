@@ -1,5 +1,6 @@
 import sys
 import typing as t
+from collections.abc import Callable
 from dataclasses import dataclass
 from functools import lru_cache
 
@@ -24,7 +25,7 @@ class CallableInfo:
     """Whether the callable accepts **kwargs."""
 
     @classmethod
-    def from_callable(cls, c: t.Callable) -> t.Self:
+    def from_callable(cls, c: Callable) -> t.Self:
         """Create a CallableInfo from a callable."""
         import inspect
 
@@ -71,6 +72,6 @@ class CallableInfo:
 
 
 @lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
-def get_callable_info(c: t.Callable) -> CallableInfo:
+def get_callable_info(c: Callable) -> CallableInfo:
     """Get the CallableInfo for a callable, caching the result."""
     return CallableInfo.from_callable(c)

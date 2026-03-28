@@ -1,4 +1,5 @@
 import typing as t
+from collections.abc import Callable, Sequence
 from string.templatelib import Interpolation, Template
 
 
@@ -26,14 +27,14 @@ def convert[T](value: T, conversion: t.Literal["a", "r", "s"] | None) -> T | str
         return value
 
 
-type FormatMatcher = t.Callable[[str], bool]
+type FormatMatcher = Callable[[str], bool]
 """A predicate function that returns True if a given format specifier matches its criteria."""
 
 
 V = t.TypeVar("V", bound=object)
 
 
-type CustomFormatter[V] = t.Callable[[V, str], object]
+type CustomFormatter[V] = Callable[[V, str], object]
 """A function that takes a value and a format specifier and returns a formatted string."""
 
 type MatcherAndFormatter = tuple[str | FormatMatcher, CustomFormatter]
@@ -57,7 +58,7 @@ def _format_interpolation(
     format_spec: str,
     conversion: t.Literal["a", "r", "s"] | None,
     *,
-    formatters: t.Sequence[MatcherAndFormatter],
+    formatters: Sequence[MatcherAndFormatter],
 ) -> object:
     converted = convert(value, conversion)
     if format_spec:
@@ -71,7 +72,7 @@ def _format_interpolation(
 def format_interpolation(
     interpolation: Interpolation,
     *,
-    formatters: t.Sequence[MatcherAndFormatter] = (),
+    formatters: Sequence[MatcherAndFormatter] = (),
 ) -> object:
     """
     Format an Interpolation's value according to its format spec and conversion.

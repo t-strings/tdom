@@ -1,10 +1,11 @@
 import typing as t
+from collections.abc import Sequence
 from dataclasses import dataclass
 from string.templatelib import Interpolation, Template
 
 
 def template_from_parts(
-    strings: t.Sequence[str], interpolations: t.Sequence[Interpolation]
+    strings: Sequence[str], interpolations: Sequence[Interpolation]
 ) -> Template:
     """Construct a template string from the given strings and parts."""
     assert len(strings) == len(interpolations) + 1, (
