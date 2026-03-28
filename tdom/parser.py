@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from string.templatelib import Interpolation, Template
 
-from .htmlspec import VOID_ELEMENTS, SVG_TAG_FIX, SVG_ATTR_FIX
+from .htmlspec import SVG_ATTR_FIX, SVG_TAG_FIX, VOID_ELEMENTS
 from .placeholders import PlaceholderState
 from .template_utils import combine_template_refs
 from .tnodes import (
