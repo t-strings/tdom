@@ -25,7 +25,6 @@ type HTMLAttribute = tuple[str, str | None]
 type HTMLAttributesDict = dict[str, str | None]
 
 
-
 @dataclass
 class OpenTElement:
     tag: str

@@ -8,7 +8,6 @@ from .escaping import (
 )
 from .htmlspec import CONTENT_ELEMENTS, VOID_ELEMENTS
 
-
 # FUTURE: add a pretty-printer to nodes for debugging
 # FUTURE: make nodes frozen (and have the parser work with mutable builders)
 
