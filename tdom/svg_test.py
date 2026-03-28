@@ -1,3 +1,5 @@
+from string.templatelib import Template
+
 from tdom import html, svg
 
 # svg() — tag case-fixing
@@ -100,11 +102,11 @@ def test_html_full_svg_document_still_works():
 
 
 def test_svg_fragment_embedded_in_html():
-    def icon():
-        return svg(t'<circle cx="50" cy="50" r="40" />')
+    def icon() -> Template:
+        return t'<rect viewBox="0 0 10 10" />'
 
     node = html(t'<div class="icon"><svg>{icon()}</svg></div>')
     assert (
         str(node)
-        == '<div class="icon"><svg><circle cx="50" cy="50" r="40"></circle></svg></div>'
+        == '<div class="icon"><svg><rect viewBox="0 0 10 10"></rect></svg></div>'
     )

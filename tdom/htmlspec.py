@@ -125,3 +125,8 @@ SVG_ATTR_FIX = {
     "ychannelselector": "yChannelSelector",
     "zoomandpan": "zoomAndPan",
 }
+
+
+# Used for fragments that do not have a tag
+# to assume that text is inside this element.
+DEFAULT_NORMAL_TEXT_ELEMENT = "div"
