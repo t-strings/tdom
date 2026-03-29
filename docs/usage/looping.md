@@ -25,7 +25,7 @@ result = html(
         </ul>
     """
 )
-assert str(result) == """
+assert result == """
         <ul title="Hello">
             <li>World</li><li>Universe</li>
         </ul>
@@ -35,12 +35,12 @@ assert str(result) == """
 ## Rendered Looping
 
 You could also move the generation of the items out of the "parent" template,
-then use that `Node` result in the next template:
+then use that result in the next template:
 
 ```python
 message = "Hello"
 names = ["World", "Universe"]
-items = [html(t"<li>{label}</li>") for label in names]
+items = [t"<li>{label}</li>" for label in names]
 result = html(t"<ul title={message}>{items}</ul>")
-assert str(result) == '<ul title="Hello"><li>World</li><li>Universe</li></ul>'
+assert result == '<ul title="Hello"><li>World</li><li>Universe</li></ul>'
 ```
