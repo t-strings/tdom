@@ -1,5 +1,6 @@
 import datetime
 import typing as t
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from itertools import product
 from string.templatelib import Template
@@ -1029,7 +1030,7 @@ def test_style_none():
 
 
 def FunctionComponent(
-    children: t.Iterable[Node], first: str, second: int, third_arg: str, **attrs: t.Any
+    children: Iterable[Node], first: str, second: int, third_arg: str, **attrs: t.Any
 ) -> Template:
     # Ensure type correctness of props at runtime for testing purposes
     assert isinstance(first, str)
@@ -1202,7 +1203,7 @@ def test_fragment_from_component():
 
 def test_component_passed_as_attr_value():
     def Wrapper(
-        children: t.Iterable[Node], sub_component: t.Callable, **attrs: t.Any
+        children: Iterable[Node], sub_component: Callable, **attrs: t.Any
     ) -> Template:
         return t"<{sub_component} {attrs}>{children}</{sub_component}>"
 
@@ -1236,7 +1237,7 @@ def test_nested_component_gh23():
 
 
 def test_component_returning_iterable():
-    def Items() -> t.Iterable:
+    def Items() -> Iterable:
         for i in range(2):
             yield t"<li>Item {i + 1}</li>"
         yield html(t"<li>Item {3}</li>")
@@ -1276,7 +1277,7 @@ class ClassComponent:
     user_name: str
     image_url: str
     homepage: str = "#"
-    children: t.Iterable[Node] = field(default_factory=list)
+    children: Iterable[Node] = field(default_factory=list)
 
     def __call__(self) -> Node:
         return html(

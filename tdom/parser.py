@@ -1,4 +1,4 @@
-import typing as t
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from string.templatelib import Interpolation, Template
@@ -141,7 +141,7 @@ class TemplateParser(HTMLParser):
         return TSpreadAttribute(i_index=name_ref.i_indexes[0])
 
     def make_tattrs(
-        self, attrs: t.Sequence[HTMLAttribute], svg_context: bool = False
+        self, attrs: Sequence[HTMLAttribute], svg_context: bool = False
     ) -> tuple[TAttribute, ...]:
         """Build TAttributes from raw attribute tuples."""
         return tuple(self.make_tattr(attr, svg_context) for attr in attrs)
@@ -151,7 +151,7 @@ class TemplateParser(HTMLParser):
     # ------------------------------------------
 
     def make_open_tag(
-        self, tag: str, attrs: t.Sequence[HTMLAttribute], svg_context: bool = False
+        self, tag: str, attrs: Sequence[HTMLAttribute], svg_context: bool = False
     ) -> OpenTag:
         """Build an OpenTag from a raw tag and attribute tuples."""
         tag_ref = self.placeholders.remove_placeholders(tag)
@@ -232,7 +232,7 @@ class TemplateParser(HTMLParser):
     # HTMLParser tag callbacks
     # ------------------------------------------
 
-    def handle_starttag(self, tag: str, attrs: t.Sequence[HTMLAttribute]) -> None:
+    def handle_starttag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         if tag == "svg":
             self._svg_depth += 1
 
@@ -246,7 +246,7 @@ class TemplateParser(HTMLParser):
         else:
             self.stack.append(open_tag)
 
-    def handle_startendtag(self, tag: str, attrs: t.Sequence[HTMLAttribute]) -> None:
+    def handle_startendtag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         """Dispatch a self-closing tag, `<tag />` to specialized handlers."""
         is_svg_tag = tag == "svg"
         effective_svg_context = (self._svg_depth > 0) or is_svg_tag
