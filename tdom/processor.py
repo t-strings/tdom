@@ -599,6 +599,8 @@ class ProcessorService(BaseProcessorService):
                 case TElement(tag, attrs, children):
                     if tag == "svg":
                         our_ctx = last_ctx.copy(parent_tag=tag, ns="svg")
+                    elif tag == "math":
+                        our_ctx = last_ctx.copy(parent_tag=tag, ns="math")
                     else:
                         our_ctx = last_ctx.copy(parent_tag=tag)
                     if our_ctx.ns == "svg":
@@ -616,6 +618,9 @@ class ProcessorService(BaseProcessorService):
                         bf.append(">")
                     if tag not in VOID_ELEMENTS:
                         q.append((last_ctx, EndTag(f"</{endtag}>")))
+                        # We were still in SVG but now we default back into HTML
+                        if tag == "foreignobject":
+                            our_ctx = our_ctx.copy(ns="html")
                         q.extend([(our_ctx, child) for child in reversed(children)])
                 case TText(ref):
                     if last_ctx.parent_tag is None:

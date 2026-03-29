@@ -120,3 +120,35 @@ def test_svg_fragment_with_spread_attr():
     assert (
         result == '<div class="icon"><svg><rect viewBox="0 0 10 10"></rect></svg></div>'
     )
+
+
+def test_svg_nesting():
+    svg_doc = t"""<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf8">
+  </head>
+  <body>
+  <svg width=1000 height=1000>
+  <rect width="100%" height="100%" fill="red"></rect>
+    <foreignObject width=500 height=500>
+      text,fo,svg,html
+      <div>
+          <!-- This should be lowercased because it is actually in HTML. -->
+          <foreignObject></foreignObject>
+          text,div,fo,svg,html
+          <svg width=300 height=300>
+            <rect width="100%" height="100%" fill="blue"></rect>
+            <circle cx=50 cy=50 r="15" fill="green"></circle>
+            <foreignObject width=100 height=100>
+              <span style="font-size: 10px">text,span,fo,svg,div,fo,svg,html</span>
+            </foreignObject>
+          </svg>
+          <math><mi>&pi;</mi></math>
+        </div>
+      </foreignObject>
+    </svg>
+  </body>
+</html>"""
+    res = html(svg_doc)
+    assert res.count("<foreignObject") == 2
