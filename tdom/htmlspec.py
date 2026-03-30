@@ -23,7 +23,6 @@ CDATA_CONTENT_ELEMENTS = frozenset(["script", "style"])
 RCDATA_CONTENT_ELEMENTS = frozenset(["textarea", "title"])
 CONTENT_ELEMENTS = CDATA_CONTENT_ELEMENTS | RCDATA_CONTENT_ELEMENTS
 
-
 SVG_TAG_FIX = {
     "altglyph": "altGlyph",
     "altglyphdef": "altGlyphDef",

@@ -25,11 +25,11 @@ from .htmlspec import (
     CDATA_CONTENT_ELEMENTS,
     DEFAULT_NORMAL_TEXT_ELEMENT,
     RCDATA_CONTENT_ELEMENTS,
+    SVG_ATTR_FIX,
+    SVG_TAG_FIX,
     VOID_ELEMENTS,
 )
 from .parser import (
-    SVG_ATTR_FIX,
-    SVG_TAG_FIX,
     HTMLAttribute,
     TAttribute,
     TComment,
@@ -428,9 +428,7 @@ def serialize_html_attrs(
     )
 
 
-def fix_svg_attrs(
-    html_attrs: Iterable[HTMLAttribute], tag: str | None
-) -> Iterable[HTMLAttribute]:
+def _fix_svg_attrs(html_attrs: Iterable[HTMLAttribute]) -> Iterable[HTMLAttribute]:
     """
     Fix the attr name-case of any html attributes on a tag within an SVG namespace.
     """
@@ -587,14 +585,15 @@ class ProcessorService(BaseProcessorService):
                     if res is not None:
                         yield res
                 case TElement(tag, attrs, children):
-                    if last_ctx.ns == "svg" and tag in SVG_TAG_FIX:
-                        bf.append(f"<{SVG_TAG_FIX[tag]}")
-                    else:
-                        bf.append(f"<{tag}")
                     if tag == "svg":
                         our_ctx = last_ctx.copy(parent_tag=tag, ns="svg")
                     else:
                         our_ctx = last_ctx.copy(parent_tag=tag)
+                    if our_ctx.ns == "svg":
+                        starttag = endtag = SVG_TAG_FIX.get(tag, tag)
+                    else:
+                        starttag = endtag = tag
+                    bf.append(f"<{starttag}")
                     if attrs:
                         self._process_attrs(bf, template, our_ctx, attrs)
                     # @TODO: How can we tell if we write out children or not in
@@ -604,11 +603,7 @@ class ProcessorService(BaseProcessorService):
                     else:
                         bf.append(">")
                     if tag not in VOID_ELEMENTS:
-                        if last_ctx.ns == "svg" and tag in SVG_TAG_FIX:
-                            et = SVG_TAG_FIX[tag]
-                        else:
-                            et = tag
-                        q.append((last_ctx, EndTag(f"</{et}>")))
+                        q.append((last_ctx, EndTag(f"</{endtag}>")))
                         q.extend([(our_ctx, child) for child in reversed(children)])
                 case TText(ref):
                     if last_ctx.parent_tag is None:
@@ -664,7 +659,7 @@ class ProcessorService(BaseProcessorService):
         resolved_attrs = _resolve_t_attrs(attrs, template.interpolations)
         if last_ctx.ns == "svg":
             attrs_str = serialize_html_attrs(
-                fix_svg_attrs(_resolve_html_attrs(resolved_attrs), last_ctx.parent_tag)
+                _fix_svg_attrs(_resolve_html_attrs(resolved_attrs))
             )
         else:
             attrs_str = serialize_html_attrs(_resolve_html_attrs(resolved_attrs))
