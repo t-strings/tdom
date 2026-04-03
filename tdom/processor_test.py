@@ -1890,9 +1890,6 @@ class TestPagerComponentExample:
         )
 
 
-@pytest.mark.skip(
-    "SVG+MATHML: This needs ns context for case correcting tags and attributes."
-)
 def test_mathml():
     num = 1
     denom = 3
@@ -1919,46 +1916,6 @@ def test_mathml():
   </math>
   is not a decimal number.
 </p>"""
-    )
-
-
-@pytest.mark.skip(
-    "SVG+MATHML: This needs ns context for case correcting tags and attributes."
-)
-def test_svg():
-    cx, cy, r, fill = 150, 100, 80, "green"
-    svg_t = t"""<svg version="1.1" width="300" height="200" xmlns="http://www.w3.org/2000/svg">
-  <rect width="100%" height="100%" fill="red" />
-  <circle cx={cx} cy={cy} r={r} fill={fill} />
-  <text x="150" y="125" font-size="60" text-anchor="middle" fill="white">SVG</text>
-</svg>"""
-    res = html(svg_t)
-    assert (
-        res
-        == """<svg version="1.1" width="300" height="200" xmlns="http://www.w3.org/2000/svg">
-  <rect width="100%" height="100%" fill="red"></rect>
-  <circle cx="150" cy="100" r="80" fill="green"></circle>
-  <text x="150" y="125" font-size="60" text-anchor="middle" fill="white">SVG</text>
-</svg>"""
-    )
-
-
-@pytest.mark.skip("SVG+MATHML: This needs ns context for closing empty tags.")
-def test_svg_self_closing_empty_elements():
-    cx, cy, r, fill = 150, 100, 80, "green"
-    svg_t = t"""<svg width="300" height="200">
-  <rect width="100%" height="100%" fill="red" />
-  <circle cx={cx} cy={cy} r={r} fill={fill} />
-  <text x="150" y="125" font-size="60" text-anchor="middle" fill="white">SVG</text>
-</svg>"""
-    res = html(svg_t)
-    assert (
-        res
-        == """<svg width="300" height="200">
-  <rect width="100%" height="100%" fill="red" />
-  <circle cx="150" cy="100" r="80" fill="green" />
-  <text x="150" y="125" font-size="60" text-anchor="middle" fill="white">SVG</text>
-</svg>"""
     )
 
 
