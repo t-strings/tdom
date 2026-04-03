@@ -513,7 +513,7 @@ class CachedParserService(ParserService):
 
 
 @dataclass(frozen=True)
-class BaseProcessorService:
+class ProcessorService:
     parser_api: ParserService
 
     escape_html_text: Callable = default_escape_html_text
@@ -524,9 +524,6 @@ class BaseProcessorService:
 
     escape_html_style: Callable = default_escape_html_style
 
-
-@dataclass(frozen=True)
-class ProcessorService(BaseProcessorService):
     slash_void: bool = False  # Apply a xhtml-style slash to void html elements.
 
     uppercase_doctype: bool = False  # DOCTYPE vs doctype
