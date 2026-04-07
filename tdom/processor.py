@@ -512,6 +512,9 @@ class CachedParserService(ParserService):
         return self._to_tnode(CachableTemplate(template))
 
 
+type ProcessorWriter = Callable[[str], None]
+
+
 @dataclass(frozen=True)
 class ProcessorService:
     parser_api: ParserService
@@ -544,7 +547,7 @@ class ProcessorService:
 
         bf: list[str] = []
         q: list[WalkerProto] = [
-            self.walk_from_tnode(bf, root_template, assume_ctx, root)
+            self.walk_from_tnode(bf.append, root_template, assume_ctx, root)
         ]
         while q:
             it = q.pop()
@@ -556,7 +559,11 @@ class ProcessorService:
         yield "".join(bf)
 
     def walk_from_tnode(
-        self, bf: list[str], template: Template, assume_ctx: ProcessContext, root: TNode
+        self,
+        write: ProcessorWriter,
+        template: Template,
+        assume_ctx: ProcessContext,
+        root: TNode,
     ) -> Iterable[WalkerProto]:
         """
         Walk around tree and try not to get lost.
@@ -567,7 +574,7 @@ class ProcessorService:
             last_ctx, tnode = q.pop()
             match tnode:
                 case EndTag(end_tag):
-                    bf.append(end_tag)
+                    write(end_tag)
                 case TDocumentType(text):
                     if last_ctx.ns != "html":
                         # Nit
@@ -575,16 +582,16 @@ class ProcessorService:
                             "Cannot process document type in subtree of a foreign element."
                         )
                     if self.uppercase_doctype:
-                        bf.append(f"<!DOCTYPE {text}>")
+                        write(f"<!DOCTYPE {text}>")
                     else:
-                        bf.append(f"<!doctype {text}>")
+                        write(f"<!doctype {text}>")
                 case TComment(ref):
-                    self._process_comment(bf, template, last_ctx, ref)
+                    self._process_comment(write, template, last_ctx, ref)
                 case TFragment(children):
                     q.extend([(last_ctx, child) for child in reversed(children)])
                 case TComponent(start_i_index, end_i_index, attrs, children):
                     res = self._process_component(
-                        bf, template, last_ctx, attrs, start_i_index, end_i_index
+                        write, template, last_ctx, attrs, start_i_index, end_i_index
                     )
                     if res is not None:
                         yield res
@@ -599,15 +606,15 @@ class ProcessorService:
                         starttag = endtag = SVG_TAG_FIX.get(tag, tag)
                     else:
                         starttag = endtag = tag
-                    bf.append(f"<{starttag}")
+                    write(f"<{starttag}")
                     if attrs:
-                        self._process_attrs(bf, template, our_ctx, attrs)
+                        self._process_attrs(write, template, our_ctx, attrs)
                     # @TODO: How can we tell if we write out children or not in
                     # order to self-close in non-html contexts, ie. SVG?
                     if self.slash_void and tag in VOID_ELEMENTS:
-                        bf.append(" />")
+                        write(" />")
                     else:
-                        bf.append(">")
+                        write(">")
                     if tag not in VOID_ELEMENTS:
                         q.append((last_ctx, EndTag(f"</{endtag}>")))
                         # We were still in SVG but now we default back into HTML
@@ -621,17 +628,19 @@ class ProcessorService:
                         )
                     elif last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
                         # Must be handled all at once.
-                        self._process_raw_texts(bf, template, last_ctx, ref)
+                        self._process_raw_texts(write, template, last_ctx, ref)
                     elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
                         # We can handle all at once because there are no non-text children and everything must be string-ified.
-                        self._process_escapable_raw_texts(bf, template, last_ctx, ref)
+                        self._process_escapable_raw_texts(
+                            write, template, last_ctx, ref
+                        )
                     else:
                         for part in ref:
                             if isinstance(part, str):
-                                bf.append(self.escape_html_text(part))
+                                write(self.escape_html_text(part))
                             else:
                                 res = self._process_normal_text(
-                                    bf, template, last_ctx, part
+                                    write, template, last_ctx, part
                                 )
                                 if res is not None:
                                     yield res
@@ -640,27 +649,27 @@ class ProcessorService:
 
     def _process_comment(
         self,
-        bf: list[str],
+        write: ProcessorWriter,
         template: Template,
         last_ctx: ProcessContext,
         content_ref: TemplateRef,
     ) -> None:
         content = resolve_text_without_recursion(template, "<!--", content_ref)
-        bf.append("<!--")
+        write("<!--")
         if content is None or content == "":
             pass
         else:
-            bf.append(
+            write(
                 self.escape_html_comment(
                     content,
                     allow_markup=True,
                 )
             )
-        bf.append("-->")
+        write("-->")
 
     def _process_attrs(
         self,
-        bf: list[str],
+        write: ProcessorWriter,
         template: Template,
         last_ctx: ProcessContext,
         attrs: tuple[TAttribute, ...],
@@ -673,11 +682,11 @@ class ProcessorService:
         else:
             attrs_str = serialize_html_attrs(_resolve_html_attrs(resolved_attrs))
         if attrs_str:
-            bf.append(attrs_str)
+            write(attrs_str)
 
     def _process_component(
         self,
-        bf: list[str],
+        write: ProcessorWriter,
         template: Template,
         last_ctx: ProcessContext,
         attrs: tuple[TAttribute, ...],
@@ -728,13 +737,13 @@ class ProcessorService:
                 # DO NOTHING
                 return
             result_root = self.parser_api.to_tnode(result_t)
-            return self.walk_from_tnode(bf, result_t, last_ctx, result_root)
+            return self.walk_from_tnode(write, result_t, last_ctx, result_root)
         else:
             raise TypeError(f"Unknown component return value: {type(result_t)}")
 
     def _process_raw_texts(
         self,
-        bf: list[str],
+        write: ProcessorWriter,
         template: Template,
         last_ctx: ProcessContext,
         content_ref: TemplateRef,
@@ -746,14 +755,14 @@ class ProcessorService:
         if content is None or content == "":
             return
         elif last_ctx.parent_tag == "script":
-            bf.append(
+            write(
                 self.escape_html_script(
                     content,
                     allow_markup=True,
                 )
             )
         elif last_ctx.parent_tag == "style":
-            bf.append(
+            write(
                 self.escape_html_style(
                     content,
                     allow_markup=True,
@@ -766,7 +775,7 @@ class ProcessorService:
 
     def _process_escapable_raw_texts(
         self,
-        bf: list[str],
+        write: ProcessorWriter,
         template: Template,
         last_ctx: ProcessContext,
         content_ref: TemplateRef,
@@ -778,7 +787,7 @@ class ProcessorService:
         if content is None or content == "":
             return
         else:
-            bf.append(
+            write(
                 self.escape_html_text(
                     content,
                 )
@@ -786,20 +795,20 @@ class ProcessorService:
 
     def _process_normal_text(
         self,
-        bf: list[str],
+        write: ProcessorWriter,
         template: Template,
         last_ctx: ProcessContext,
         values_index: int,
     ) -> WalkerProto | None:
         value = format_interpolation(template.interpolations[values_index])
         if isinstance(value, str):
-            bf.append(self.escape_html_text(value))
+            write(self.escape_html_text(value))
         elif isinstance(value, Template):
             value_root = self.parser_api.to_tnode(value)
-            return self.walk_from_tnode(bf, value, last_ctx, value_root)
+            return self.walk_from_tnode(write, value, last_ctx, value_root)
         elif isinstance(value, Iterable):
             return iter(
-                self._process_normal_text_from_value(bf, template, last_ctx, v)
+                self._process_normal_text_from_value(write, template, last_ctx, v)
                 for v in value
             )
         elif value is None:
@@ -808,23 +817,23 @@ class ProcessorService:
         else:
             # @DESIGN: Everything that isn't an object we recognize is
             # coerced to a str() and emitted.
-            bf.append(self.escape_html_text(value))
+            write(self.escape_html_text(value))
 
     def _process_normal_text_from_value(
         self,
-        bf: list[str],
+        write: ProcessorWriter,
         template: Template,
         last_ctx: ProcessContext,
         value: NormalTextInterpolationValue,
     ) -> WalkerProto | None:
         if isinstance(value, str):
-            bf.append(self.escape_html_text(value))
+            write(self.escape_html_text(value))
         elif isinstance(value, Template):
             value_root = self.parser_api.to_tnode(value)
-            return self.walk_from_tnode(bf, value, last_ctx, value_root)
+            return self.walk_from_tnode(write, value, last_ctx, value_root)
         elif isinstance(value, Iterable):
             return iter(
-                self._process_normal_text_from_value(bf, template, last_ctx, v)
+                self._process_normal_text_from_value(write, template, last_ctx, v)
                 for v in value
             )
         elif value is None:
@@ -833,7 +842,7 @@ class ProcessorService:
         else:
             # @DESIGN: Everything that isn't an object we recognize is
             # coerced to a str() and emitted.
-            bf.append(self.escape_html_text(value))
+            write(self.escape_html_text(value))
 
 
 def resolve_text_without_recursion(
