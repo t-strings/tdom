@@ -548,17 +548,12 @@ class ProcessorService:
         ]
         while q:
             it = q.pop()
-            if bf:
-                yield "".join(bf)
-                bf.clear()
             for new_it in it:
                 if new_it is not None:
                     q.append(it)
                     q.append(new_it)
                     break
-        if bf:
-            yield "".join(bf)
-            bf.clear()  # Remove later maybe.
+        yield "".join(bf)
 
     def walk_from_tnode(
         self, bf: list[str], template: Template, assume_ctx: ProcessContext, root: TNode
