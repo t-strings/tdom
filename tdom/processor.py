@@ -531,6 +531,9 @@ class ProcessorService:
     def process_template(
         self, root_template: Template, assume_ctx: ProcessContext | None = None
     ) -> str:
+        """
+        Process a TDOM compatible template into a string.
+        """
         if assume_ctx is None:
             # @DESIGN: What do we want to do here?  Should we assume we are in
             # a tag with normal text?
@@ -542,7 +545,7 @@ class ProcessorService:
         self, template: Template, last_ctx: ProcessContext, tnode: TNode
     ) -> str:
         """
-        Walk tnode tree, write out strings until we are done or recurse into another level of processing.
+        Process a tnode from a template's "t-tree" into a string.
         """
         match tnode:
             case TDocumentType(text):
@@ -625,6 +628,9 @@ class ProcessorService:
         last_ctx: ProcessContext,
         content_ref: TemplateRef,
     ) -> str:
+        """
+        Process a comment into a string.
+        """
         content = resolve_text_without_recursion(template, "<!--", content_ref)
         if content is None or content == "":
             comment_str = ""
@@ -638,6 +644,9 @@ class ProcessorService:
         last_ctx: ProcessContext,
         attrs: tuple[TAttribute, ...],
     ) -> str:
+        """
+        Process an element's attributes into a string.
+        """
         resolved_attrs = _resolve_t_attrs(attrs, template.interpolations)
         if last_ctx.ns == "svg":
             attrs_str = serialize_html_attrs(
@@ -657,6 +666,9 @@ class ProcessorService:
         start_i_index: int,
         end_i_index: int | None,
     ) -> str:
+        """
+        Invoke a component and process the result into a string.
+        """
         body_start_s_index = (
             start_i_index
             + 1
@@ -712,6 +724,9 @@ class ProcessorService:
         last_ctx: ProcessContext,
         content_ref: TemplateRef,
     ) -> str:
+        """
+        Process the given content into a string as "raw text".
+        """
         assert last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS
         content = resolve_text_without_recursion(
             template, last_ctx.parent_tag, content_ref
@@ -739,6 +754,9 @@ class ProcessorService:
         last_ctx: ProcessContext,
         content_ref: TemplateRef,
     ) -> str:
+        """
+        Process the given content into a string as "escapable raw text".
+        """
         assert last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS
         content = resolve_text_without_recursion(
             template, last_ctx.parent_tag, content_ref
@@ -756,6 +774,11 @@ class ProcessorService:
         last_ctx: ProcessContext,
         values_index: int,
     ) -> str:
+        """
+        Process the value of the interpolation into a string as "normal text".
+
+        @NOTE: This is an interpolation that must be formatted to get the value.
+        """
         value = format_interpolation(template.interpolations[values_index])
         if isinstance(value, str):
             return self.escape_html_text(value)
@@ -781,6 +804,12 @@ class ProcessorService:
         last_ctx: ProcessContext,
         value: NormalTextInterpolationValue,
     ) -> str:
+        """
+        Process a single value into a string as "normal text".
+
+        @NOTE: This is an actual value and NOT an interpolation.  This is meant to be
+        used when processing an iterable of values as normal text.
+        """
         if isinstance(value, str):
             return self.escape_html_text(value)
         elif isinstance(value, Template):
