@@ -534,11 +534,6 @@ class ProcessorService:
     def process_template(
         self, root_template: Template, assume_ctx: ProcessContext | None = None
     ) -> str:
-        return "".join(self.process_template_chunks(root_template, assume_ctx))
-
-    def process_template_chunks(
-        self, root_template: Template, assume_ctx: ProcessContext | None = None
-    ) -> Iterable[str]:
         if assume_ctx is None:
             # @DESIGN: What do we want to do here?  Should we assume we are in
             # a tag with normal text?
@@ -546,106 +541,85 @@ class ProcessorService:
         root = self.parser_api.to_tnode(root_template)
 
         bf: list[str] = []
-        q: list[WalkerProto] = [
-            self.walk_from_tnode(bf.append, root_template, assume_ctx, root)
-        ]
-        while q:
-            it = q.pop()
-            for new_it in it:
-                if new_it is not None:
-                    q.append(it)
-                    q.append(new_it)
-                    break
-        yield "".join(bf)
+        self._process_tnode(bf.append, root_template, assume_ctx, root)
+        return "".join(bf)
 
-    def walk_from_tnode(
+    def _process_tnode(
         self,
         write: ProcessorWriter,
         template: Template,
-        assume_ctx: ProcessContext,
-        root: TNode,
-    ) -> Iterable[WalkerProto]:
+        last_ctx: ProcessContext,
+        tnode: TNode,
+    ) -> None:
         """
-        Walk around tree and try not to get lost.
+        Walk tnode tree, write out strings until we are done or recurse into another level of processing.
         """
-
-        q: list[tuple[ProcessContext, TNode | EndTag]] = [(assume_ctx, root)]
-        while q:
-            last_ctx, tnode = q.pop()
-            match tnode:
-                case EndTag(end_tag):
-                    write(end_tag)
-                case TDocumentType(text):
-                    if last_ctx.ns != "html":
-                        # Nit
-                        raise ValueError(
-                            "Cannot process document type in subtree of a foreign element."
-                        )
-                    if self.uppercase_doctype:
-                        write(f"<!DOCTYPE {text}>")
-                    else:
-                        write(f"<!doctype {text}>")
-                case TComment(ref):
-                    self._process_comment(write, template, last_ctx, ref)
-                case TFragment(children):
-                    q.extend([(last_ctx, child) for child in reversed(children)])
-                case TComponent(start_i_index, end_i_index, attrs, children):
-                    res = self._process_component(
-                        write, template, last_ctx, attrs, start_i_index, end_i_index
+        match tnode:
+            case TDocumentType(text):
+                if last_ctx.ns != "html":
+                    # Nit
+                    raise ValueError(
+                        "Cannot process document type in subtree of a foreign element."
                     )
-                    if res is not None:
-                        yield res
-                case TElement(tag, attrs, children):
-                    if tag == "svg":
-                        our_ctx = last_ctx.copy(parent_tag=tag, ns="svg")
-                    elif tag == "math":
-                        our_ctx = last_ctx.copy(parent_tag=tag, ns="math")
-                    else:
-                        our_ctx = last_ctx.copy(parent_tag=tag)
-                    if our_ctx.ns == "svg":
-                        starttag = endtag = SVG_TAG_FIX.get(tag, tag)
-                    else:
-                        starttag = endtag = tag
-                    write(f"<{starttag}")
-                    if attrs:
-                        self._process_attrs(write, template, our_ctx, attrs)
-                    # @TODO: How can we tell if we write out children or not in
-                    # order to self-close in non-html contexts, ie. SVG?
-                    if self.slash_void and tag in VOID_ELEMENTS:
-                        write(" />")
-                    else:
-                        write(">")
-                    if tag not in VOID_ELEMENTS:
-                        q.append((last_ctx, EndTag(f"</{endtag}>")))
-                        # We were still in SVG but now we default back into HTML
-                        if tag == "foreignobject":
-                            our_ctx = our_ctx.copy(ns="html")
-                        q.extend([(our_ctx, child) for child in reversed(children)])
-                case TText(ref):
-                    if last_ctx.parent_tag is None:
-                        raise NotImplementedError(
-                            "We cannot interpolate texts without knowing what tag they are contained in."
-                        )
-                    elif last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
-                        # Must be handled all at once.
-                        self._process_raw_texts(write, template, last_ctx, ref)
-                    elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
-                        # We can handle all at once because there are no non-text children and everything must be string-ified.
-                        self._process_escapable_raw_texts(
-                            write, template, last_ctx, ref
-                        )
-                    else:
-                        for part in ref:
-                            if isinstance(part, str):
-                                write(self.escape_html_text(part))
-                            else:
-                                res = self._process_normal_text(
-                                    write, template, last_ctx, part
-                                )
-                                if res is not None:
-                                    yield res
-                case _:
-                    raise ValueError(f"Unrecognized tnode: {tnode}")
+                if self.uppercase_doctype:
+                    write(f"<!DOCTYPE {text}>")
+                else:
+                    write(f"<!doctype {text}>")
+            case TComment(ref):
+                self._process_comment(write, template, last_ctx, ref)
+            case TFragment(children):
+                for child in children:
+                    self._process_tnode(write, template, last_ctx, child)
+            case TComponent(start_i_index, end_i_index, attrs, children):
+                self._process_component(
+                    write, template, last_ctx, attrs, start_i_index, end_i_index
+                )
+            case TElement(tag, attrs, children):
+                if tag == "svg":
+                    our_ctx = last_ctx.copy(parent_tag=tag, ns="svg")
+                elif tag == "math":
+                    our_ctx = last_ctx.copy(parent_tag=tag, ns="math")
+                else:
+                    our_ctx = last_ctx.copy(parent_tag=tag)
+                if our_ctx.ns == "svg":
+                    starttag = endtag = SVG_TAG_FIX.get(tag, tag)
+                else:
+                    starttag = endtag = tag
+                write(f"<{starttag}")
+                if attrs:
+                    self._process_attrs(write, template, our_ctx, attrs)
+                # @TODO: How can we tell if we write out children or not in
+                # order to self-close in non-html contexts, ie. SVG?
+                if self.slash_void and tag in VOID_ELEMENTS:
+                    write(" />")
+                else:
+                    write(">")
+                if tag not in VOID_ELEMENTS:
+                    # We were still in SVG but now we default back into HTML
+                    if tag == "foreignobject":
+                        our_ctx = our_ctx.copy(ns="html")
+                    for child in children:
+                        self._process_tnode(write, template, our_ctx, child)
+                    write(f"</{endtag}>")
+            case TText(ref):
+                if last_ctx.parent_tag is None:
+                    raise NotImplementedError(
+                        "We cannot interpolate texts without knowing what tag they are contained in."
+                    )
+                elif last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
+                    # Must be handled all at once.
+                    self._process_raw_texts(write, template, last_ctx, ref)
+                elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
+                    # We can handle all at once because there are no non-text children and everything must be string-ified.
+                    self._process_escapable_raw_texts(write, template, last_ctx, ref)
+                else:
+                    for part in ref:
+                        if isinstance(part, str):
+                            write(self.escape_html_text(part))
+                        else:
+                            self._process_normal_text(write, template, last_ctx, part)
+            case _:
+                raise ValueError(f"Unrecognized tnode: {tnode}")
 
     def _process_comment(
         self,
@@ -735,9 +709,10 @@ class ProcessorService:
         if isinstance(result_t, Template):
             if result_t.strings == ("",):
                 # DO NOTHING
-                return
-            result_root = self.parser_api.to_tnode(result_t)
-            return self.walk_from_tnode(write, result_t, last_ctx, result_root)
+                pass
+            else:
+                result_root = self.parser_api.to_tnode(result_t)
+                self._process_tnode(write, result_t, last_ctx, result_root)
         else:
             raise TypeError(f"Unknown component return value: {type(result_t)}")
 
@@ -799,21 +774,19 @@ class ProcessorService:
         template: Template,
         last_ctx: ProcessContext,
         values_index: int,
-    ) -> WalkerProto | None:
+    ) -> None:
         value = format_interpolation(template.interpolations[values_index])
         if isinstance(value, str):
             write(self.escape_html_text(value))
         elif isinstance(value, Template):
             value_root = self.parser_api.to_tnode(value)
-            return self.walk_from_tnode(write, value, last_ctx, value_root)
+            self._process_tnode(write, value, last_ctx, value_root)
         elif isinstance(value, Iterable):
-            return iter(
+            for v in value:
                 self._process_normal_text_from_value(write, template, last_ctx, v)
-                for v in value
-            )
         elif value is None:
             # @DESIGN: Ignore None.
-            return
+            pass
         else:
             # @DESIGN: Everything that isn't an object we recognize is
             # coerced to a str() and emitted.
@@ -825,20 +798,18 @@ class ProcessorService:
         template: Template,
         last_ctx: ProcessContext,
         value: NormalTextInterpolationValue,
-    ) -> WalkerProto | None:
+    ) -> None:
         if isinstance(value, str):
             write(self.escape_html_text(value))
         elif isinstance(value, Template):
             value_root = self.parser_api.to_tnode(value)
-            return self.walk_from_tnode(write, value, last_ctx, value_root)
+            self._process_tnode(write, value, last_ctx, value_root)
         elif isinstance(value, Iterable):
-            return iter(
+            for v in value:
                 self._process_normal_text_from_value(write, template, last_ctx, v)
-                for v in value
-            )
         elif value is None:
             # @DESIGN: Ignore None.
-            return
+            pass
         else:
             # @DESIGN: Everything that isn't an object we recognize is
             # coerced to a str() and emitted.
