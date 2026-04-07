@@ -640,9 +640,11 @@ class ProcessorService:
         if tag not in VOID_ELEMENTS:
             # We were still in SVG but now we default back into HTML
             if tag == "foreignobject":
-                our_ctx = our_ctx.copy(ns="html")
+                child_ctx = our_ctx.copy(ns="html")
+            else:
+                child_ctx = our_ctx
             out.extend(
-                self._process_tnode(template, our_ctx, child) for child in children
+                self._process_tnode(template, child_ctx, child) for child in children
             )
             out.append(f"</{endtag}>")
         return "".join(out)
