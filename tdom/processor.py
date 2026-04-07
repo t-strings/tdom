@@ -569,36 +569,7 @@ class ProcessorService:
                     template, last_ctx, attrs, start_i_index, end_i_index
                 )
             case TElement(tag, attrs, children):
-                out: list[str] = []
-                if tag == "svg":
-                    our_ctx = last_ctx.copy(parent_tag=tag, ns="svg")
-                elif tag == "math":
-                    our_ctx = last_ctx.copy(parent_tag=tag, ns="math")
-                else:
-                    our_ctx = last_ctx.copy(parent_tag=tag)
-                if our_ctx.ns == "svg":
-                    starttag = endtag = SVG_TAG_FIX.get(tag, tag)
-                else:
-                    starttag = endtag = tag
-                out.append(f"<{starttag}")
-                if attrs:
-                    out.append(self._process_attrs(template, our_ctx, attrs))
-                # @TODO: How can we tell if we write out children or not in
-                # order to self-close in non-html contexts, ie. SVG?
-                if self.slash_void and tag in VOID_ELEMENTS:
-                    out.append(" />")
-                else:
-                    out.append(">")
-                if tag not in VOID_ELEMENTS:
-                    # We were still in SVG but now we default back into HTML
-                    if tag == "foreignobject":
-                        our_ctx = our_ctx.copy(ns="html")
-                    out.extend(
-                        self._process_tnode(template, our_ctx, child)
-                        for child in children
-                    )
-                    out.append(f"</{endtag}>")
-                return "".join(out)
+                return self._process_element(template, last_ctx, tag, attrs, children)
             case TText(ref):
                 if last_ctx.parent_tag is None:
                     raise NotImplementedError(
@@ -637,6 +608,44 @@ class ProcessorService:
         else:
             comment_str = self.escape_html_comment(content, allow_markup=True)
         return f"<!--{comment_str}-->"
+
+    def _process_element(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        tag: str,
+        attrs: tuple[TAttribute, ...],
+        children: tuple[TNode, ...],
+    ) -> str:
+        out: list[str] = []
+        if tag == "svg":
+            our_ctx = last_ctx.copy(parent_tag=tag, ns="svg")
+        elif tag == "math":
+            our_ctx = last_ctx.copy(parent_tag=tag, ns="math")
+        else:
+            our_ctx = last_ctx.copy(parent_tag=tag)
+        if our_ctx.ns == "svg":
+            starttag = endtag = SVG_TAG_FIX.get(tag, tag)
+        else:
+            starttag = endtag = tag
+        out.append(f"<{starttag}")
+        if attrs:
+            out.append(self._process_attrs(template, our_ctx, attrs))
+        # @TODO: How can we tell if we write out children or not in
+        # order to self-close in non-html contexts, ie. SVG?
+        if self.slash_void and tag in VOID_ELEMENTS:
+            out.append(" />")
+        else:
+            out.append(">")
+        if tag not in VOID_ELEMENTS:
+            # We were still in SVG but now we default back into HTML
+            if tag == "foreignobject":
+                our_ctx = our_ctx.copy(ns="html")
+            out.extend(
+                self._process_tnode(template, our_ctx, child) for child in children
+            )
+            out.append(f"</{endtag}>")
+        return "".join(out)
 
     def _process_attrs(
         self,
