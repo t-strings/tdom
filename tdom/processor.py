@@ -484,9 +484,6 @@ type ComponentCallableProto = FunctionComponentProto | FactoryComponentProto
 type ComponentObjectProto = Callable[[], Template]
 
 
-type WalkerProto = Iterable[WalkerProto | None]
-
-
 type NormalTextInterpolationValue = (
     None | str | Template | Iterable[NormalTextInterpolationValue] | object
 )
