@@ -579,14 +579,7 @@ class ProcessorService:
                     # We can handle all at once because there are no non-text children and everything must be string-ified.
                     return self._process_escapable_raw_texts(template, last_ctx, ref)
                 else:
-                    return "".join(
-                        (
-                            self.escape_html_text(part)
-                            if isinstance(part, str)
-                            else self._process_normal_text(template, last_ctx, part)
-                        )
-                        for part in ref
-                    )
+                    return self._process_normal_texts(template, last_ctx, ref)
             case _:
                 raise ValueError(f"Unrecognized tnode: {tnode}")
 
@@ -776,6 +769,19 @@ class ProcessorService:
                 content,
             )
 
+    def _process_normal_texts(self, template: Template, last_ctx: ProcessContext, content_ref: TemplateRef):
+        """
+        Process the given context into a string as "normal text".
+        """
+        return "".join(
+            (
+                self.escape_html_text(part)
+                if isinstance(part, str)
+                else self._process_normal_text(template, last_ctx, t.cast(int, part))
+            )
+            for part in content_ref
+        )
+
     def _process_normal_text(
         self,
         template: Template,
@@ -788,23 +794,8 @@ class ProcessorService:
         @NOTE: This is an interpolation that must be formatted to get the value.
         """
         value = format_interpolation(template.interpolations[values_index])
-        if isinstance(value, str):
-            return self.escape_html_text(value)
-        elif isinstance(value, Template):
-            value_root = self.parser_api.to_tnode(value)
-            return self._process_tnode(value, last_ctx, value_root)
-        elif isinstance(value, Iterable):
-            return "".join(
-                self._process_normal_text_from_value(template, last_ctx, v)
-                for v in value
-            )
-        elif value is None:
-            # @DESIGN: Ignore None.
-            return ""
-        else:
-            # @DESIGN: Everything that isn't an object we recognize is
-            # coerced to a str() and emitted.
-            return self.escape_html_text(value)
+        value = t.cast(NormalTextInterpolationValue, value)  # ty: ignore[redundant-cast]
+        return self._process_normal_text_from_value(template, last_ctx, value)
 
     def _process_normal_text_from_value(
         self,
