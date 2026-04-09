@@ -769,7 +769,9 @@ class ProcessorService:
                 content,
             )
 
-    def _process_normal_texts(self, template: Template, last_ctx: ProcessContext, content_ref: TemplateRef):
+    def _process_normal_texts(
+        self, template: Template, last_ctx: ProcessContext, content_ref: TemplateRef
+    ):
         """
         Process the given context into a string as "normal text".
         """
