@@ -478,10 +478,10 @@ class ProcessContext:
         )
 
 
-type FunctionComponentProto = Callable[..., Template]
-type FactoryComponentProto = Callable[..., ComponentObjectProto]
-type ComponentCallableProto = FunctionComponentProto | FactoryComponentProto
-type ComponentObjectProto = Callable[[], Template]
+type FunctionComponent = Callable[..., Template]
+type FactoryComponent = Callable[..., ComponentObject]
+type ComponentCallable = FunctionComponent | FactoryComponent
+type ComponentObject = Callable[[], Template]
 
 
 type NormalTextInterpolationValue = (
@@ -676,7 +676,7 @@ class ProcessorService:
             + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
         )
         start_i = template.interpolations[start_i_index]
-        component_callable = t.cast(ComponentCallableProto, start_i.value)
+        component_callable = t.cast(ComponentCallable, start_i.value)
         if start_i_index != end_i_index and end_i_index is not None:
             # @TODO: We should do this during parsing.
             children_template = extract_embedded_template(
@@ -704,7 +704,7 @@ class ProcessorService:
             and not isinstance(result_t, Template)
             and callable(result_t)
         ):
-            component_obj = t.cast(ComponentObjectProto, result_t)  # ty: ignore[redundant-cast]
+            component_obj = t.cast(ComponentObject, result_t)  # ty: ignore[redundant-cast]
             result_t = component_obj()
         else:
             component_obj = None
