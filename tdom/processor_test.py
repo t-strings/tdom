@@ -20,6 +20,8 @@ from .processor import (
 from .processor import (
     _prep_component_kwargs as prep_component_kwargs,
 )
+from .protocols import HasHTMLDunder
+
 
 processor_api = processor_service_factory(slash_void=True, uppercase_doctype=True)
 
@@ -100,6 +102,14 @@ class LiteralHTML:
         return self.text
 
 
+def test_literal_html_has_html_dunder():
+    assert isinstance(LiteralHTML, HasHTMLDunder)
+
+
+def test_markup_has_html_dunder():
+    assert isinstance(Markup, HasHTMLDunder)
+
+
 class TestComment:
     def test_literal(self):
         assert html(t"<!--This is a comment-->") == "<!--This is a comment-->"
@@ -117,8 +127,15 @@ class TestComment:
     def test_singleton_none(self):
         assert html(t"<!--{None}-->") == "<!---->"
 
-    def test_singleton_has_dunder_html(self):
-        content = LiteralHTML("-->")
+    @pytest.mark.parametrize(
+        "html_dunder_cls",
+        (
+            LiteralHTML,
+            Markup,
+        ),
+    )
+    def test_singleton_has_html_dunder(self, html_dunder_cls):
+        content = html_dunder_cls("-->")
         assert html(t"<!--{content}-->") == "<!---->-->", (
             "DO NOT DO THIS! This is just an advanced escape hatch."
         )
@@ -140,9 +157,16 @@ class TestComment:
     def test_templated_none(self):
         assert html(t"<!--This is a {None}-->") == "<!--This is a -->"
 
-    def test_templated_has_dunder_html_error(self):
+    @pytest.mark.parametrize(
+        "html_dunder_cls",
+        (
+            LiteralHTML,
+            Markup,
+        ),
+    )
+    def test_templated_has_html_dunder_error(self, html_dunder_cls):
         """Objects with __html__ are not processed with literal text or other interpolations."""
-        text = LiteralHTML("in a comment")
+        text = html_dunder_cls("in a comment")
         with pytest.raises(ValueError, match="not supported"):
             _ = html(t"<!--This is a {text}-->")
         with pytest.raises(ValueError, match="not supported"):
@@ -229,8 +253,15 @@ class TestNormalTextElementDynamic:
     def test_singleton_object(self):
         assert html(t"<p>{0}</p>") == "<p>0</p>"
 
-    def test_singleton_has_dunder_html(self):
-        content = LiteralHTML("<em>Alright!</em>")
+    @pytest.mark.parametrize(
+        "html_dunder_cls",
+        (
+            LiteralHTML,
+            Markup,
+        ),
+    )
+    def test_singleton_has_html_dunder(self, html_dunder_cls):
+        content = html_dunder_cls("<em>Alright!</em>")
         assert html(t"<p>{content}</p>") == "<p><em>Alright!</em></p>"
 
     def test_singleton_simple_template(self):
@@ -256,8 +287,16 @@ class TestNormalTextElementDynamic:
     def test_templated_object(self):
         assert html(t"<p>Response: {0}.</p>") == "<p>Response: 0.</p>"
 
-    def test_templated_has_dunder_html(self):
-        text = LiteralHTML("<em>Alright!</em>")
+
+    @pytest.mark.parametrize(
+        "html_dunder_cls",
+        (
+            LiteralHTML,
+            Markup,
+        ),
+    )
+    def test_templated_has_html_dunder(self, html_dunder_cls):
+        text = html_dunder_cls("<em>Alright!</em>")
         assert (
             html(t"<p>Response: {text}.</p>") == "<p>Response: <em>Alright!</em>.</p>"
         )
@@ -388,11 +427,18 @@ class TestRawTextScriptDynamic:
         content = 0
         assert html(t"<script>{content}</script>") == "<script>0</script>"
 
-    def test_singleton_has_dunder_html_pitfall(self):
+    @pytest.mark.parametrize(
+        "html_dunder_cls",
+        (
+            LiteralHTML,
+            Markup,
+        ),
+    )
+    def test_singleton_has_html_dunder_pitfall(self, html_dunder_cls):
         # @TODO: We should probably put some double override to prevent this by accident.
         # Or just disable this and if people want to do this then put the
         # content in a SCRIPT and inject the whole thing with a __html__?
-        content = LiteralHTML("</script>")
+        content = html_dunder_cls("</script>")
         assert html(t"<script>{content}</script>") == "<script></script></script>", (
             "DO NOT DO THIS! This is just an advanced escape hatch! Use a data attribute and parseJSON!"
         )
@@ -424,8 +470,15 @@ class TestRawTextScriptDynamic:
             == "<script>var x = 0;</script>"
         )
 
-    def test_templated_has_dunder_html(self):
-        content = LiteralHTML("anything")
+    @pytest.mark.parametrize(
+        "html_dunder_cls",
+        (
+            LiteralHTML,
+            Markup,
+        ),
+    )
+    def test_templated_has_html_dunder(self, html_dunder_cls):
+        content = html_dunder_cls("anything")
         with pytest.raises(ValueError, match="not supported"):
             _ = html(t"<script>var x = 1;{content}</script>")
 
@@ -468,11 +521,18 @@ class TestRawTextStyleDynamic:
         content = 0
         assert html(t"<style>{content}</style>") == "<style>0</style>"
 
-    def test_singleton_has_dunder_html_pitfall(self):
+    @pytest.mark.parametrize(
+        "html_dunder_cls",
+        (
+            LiteralHTML,
+            Markup,
+        ),
+    )
+    def test_singleton_has_html_dunder_pitfall(self, html_dunder_cls):
         # @TODO: We should probably put some double override to prevent this by accident.
         # Or just disable this and if people want to do this then put the
         # content in a STYLE and inject the whole thing with a __html__?
-        content = LiteralHTML("</style>")
+        content = html_dunder_cls("</style>")
         assert html(t"<style>{content}</style>") == "<style></style></style>", (
             "DO NOT DO THIS! This is just an advanced escape hatch!"
         )
@@ -504,8 +564,15 @@ class TestRawTextStyleDynamic:
             == "<style>h1 { padding-right: 0px; }</style>"
         )
 
-    def test_templated_has_dunder_html(self):
-        content = LiteralHTML("anything")
+    @pytest.mark.parametrize(
+        "html_dunder_cls",
+        (
+            LiteralHTML,
+            Markup,
+        ),
+    )
+    def test_templated_has_html_dunder(self, html_dunder_cls):
+        content = html_dunder_cls("anything")
         with pytest.raises(ValueError, match="not supported"):
             _ = html(t"<style>h1 {{ color: red; }};{content}</style>")
 
@@ -549,9 +616,16 @@ class TestEscapableRawTextTitleDynamic:
         content = 0
         assert html(t"<title>{content}</title>") == "<title>0</title>"
 
-    def test_singleton_has_dunder_html_pitfall(self):
+    @pytest.mark.parametrize(
+        "html_dunder_cls",
+        (
+            LiteralHTML,
+            Markup,
+        ),
+    )
+    def test_singleton_has_html_dunder_pitfall(self, html_dunder_cls):
         # @TODO: We should probably put some double override to prevent this by accident.
-        content = LiteralHTML("</title>")
+        content = html_dunder_cls("</title>")
         assert html(t"<title>{content}</title>") == "<title></title></title>", (
             "DO NOT DO THIS! This is just an advanced escape hatch!"
         )
@@ -580,8 +654,15 @@ class TestEscapableRawTextTitleDynamic:
             == "<title>A great number: 0</title>"
         )
 
-    def test_templated_has_dunder_html(self):
-        content = LiteralHTML("No")
+    @pytest.mark.parametrize(
+        "html_dunder_cls",
+        (
+            LiteralHTML,
+            Markup,
+        ),
+    )
+    def test_templated_has_html_dunder(self, html_dunder_cls):
+        content = html_dunder_cls("No")
         with pytest.raises(ValueError, match="not supported"):
             _ = html(t"<title>Literal html?: {content}</title>")
 
@@ -624,9 +705,16 @@ class TestEscapableRawTextTextareaDynamic:
         content = 0
         assert html(t"<textarea>{content}</textarea>") == "<textarea>0</textarea>"
 
-    def test_singleton_has_dunder_html_pitfall(self):
+    @pytest.mark.parametrize(
+        "html_dunder_cls",
+        (
+            LiteralHTML,
+            Markup,
+        ),
+    )
+    def test_singleton_has_html_dunder_pitfall(self, html_dunder_cls):
         # @TODO: We should probably put some double override to prevent this by accident.
-        content = LiteralHTML("</textarea>")
+        content = html_dunder_cls("</textarea>")
         assert (
             html(t"<textarea>{content}</textarea>")
             == "<textarea></textarea></textarea>"
@@ -659,8 +747,15 @@ class TestEscapableRawTextTextareaDynamic:
             == "<textarea>A great number: 0</textarea>"
         )
 
-    def test_templated_has_dunder_html(self):
-        content = LiteralHTML("No")
+    @pytest.mark.parametrize(
+        "html_dunder_cls",
+        (
+            LiteralHTML,
+            Markup,
+        ),
+    )
+    def test_templated_has_html_dunder(self, html_dunder_cls):
+        content = html_dunder_cls("No")
         with pytest.raises(ValueError, match="not supported"):
             _ = html(t"<textarea>Literal html?: {content}</textarea>")
 
