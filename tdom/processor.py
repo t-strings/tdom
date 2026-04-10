@@ -485,7 +485,7 @@ type ComponentObject = Callable[[], Template]
 
 
 type NormalTextInterpolationValue = (
-    None | str | Template | Iterable[NormalTextInterpolationValue] | object
+    None | str | HasHTMLDunder | Template | Iterable[NormalTextInterpolationValue] | object
 )
 # Applies to both escapable raw text and raw text.
 type RawTextExactInterpolationValue = None | str | HasHTMLDunder | object
@@ -812,6 +812,8 @@ class ProcessorService:
         used when processing an iterable of values as normal text.
         """
         if isinstance(value, str):
+            # @NOTE: This would apply to Markup() but not to a custom object
+            # implementing HasHTMLDunder.
             return self.escape_html_text(value)
         elif isinstance(value, Template):
             value_root = self.parser_api.to_tnode(value)
@@ -824,6 +826,12 @@ class ProcessorService:
         elif value is None:
             # @DESIGN: Ignore None.
             return ""
+        elif isinstance(value, HasHTMLDunder):
+            # @NOTE: markupsafe's escape does this for us but we put this in
+            # here for completeness.
+            # @NOTE: An actual Markup() would actually pass as a str() but a
+            # custom object with __html__ might not.
+            return Markup(value.__html__())
         else:
             # @DESIGN: Everything that isn't an object we recognize is
             # coerced to a str() and emitted.
