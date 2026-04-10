@@ -1,6 +1,6 @@
 import typing as t
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
 
@@ -386,7 +386,7 @@ def _kebab_to_snake(name: str) -> str:
 def _prep_component_kwargs(
     callable_info: CallableInfo,
     attrs: AttributesDict,
-    system_kwargs: AttributesDict,
+    children: Template,
 ) -> AttributesDict:
     if callable_info.requires_positional:
         raise TypeError(
@@ -401,9 +401,8 @@ def _prep_component_kwargs(
         if snake_name in callable_info.named_params or callable_info.kwargs:
             kwargs[snake_name] = attr_value
 
-    for attr_name, attr_value in system_kwargs.items():
-        if attr_name in callable_info.named_params or callable_info.kwargs:
-            kwargs[attr_name] = attr_value
+    if "children" in callable_info.named_params or callable_info.kwargs:
+        kwargs["children"] = children
 
     # Check to make sure we've fully satisfied the callable's requirements
     missing = callable_info.required_named_params - kwargs.keys()
@@ -436,12 +435,8 @@ def _fix_svg_attrs(html_attrs: Iterable[HTMLAttribute]) -> Iterable[HTMLAttribut
         yield SVG_ATTR_FIX.get(k, k), v
 
 
-def make_ctx(
-    parent_tag: str | None = None, ns: str | None = "html", system: dict | None = None
-):
-    if system is None:
-        system = {}
-    return ProcessContext(parent_tag=parent_tag, ns=ns, system=system)
+def make_ctx(parent_tag: str | None = None, ns: str | None = "html"):
+    return ProcessContext(parent_tag=parent_tag, ns=ns)
 
 
 @dataclass(frozen=True, slots=True)
@@ -451,13 +446,10 @@ class ProcessContext:
     # None means unknown not just a missing value.
     ns: str | None = None
 
-    system: dict = field(default_factory=dict)
-
     def copy(
         self,
         ns: NotSet | str | None = NOT_SET,
         parent_tag: NotSet | str | None = NOT_SET,
-        system: NotSet | dict = NOT_SET,
     ):
         if isinstance(ns, NotSet):
             resolved_ns = self.ns
@@ -467,14 +459,9 @@ class ProcessContext:
             resolved_parent_tag = self.parent_tag
         else:
             resolved_parent_tag = parent_tag
-        if isinstance(system, NotSet):
-            resolved_system = self.system
-        else:
-            resolved_system = system
         return make_ctx(
             parent_tag=resolved_parent_tag,
             ns=resolved_ns,
-            system=resolved_system,
         )
 
 
@@ -732,7 +719,7 @@ class ProcessorService:
         kwargs = _prep_component_kwargs(
             get_callable_info(component_callable),
             _resolve_t_attrs(attrs, template.interpolations),
-            system_kwargs={**last_ctx.system, "children": children_template},
+            children=children_template,
         )
 
         result_t = component_callable(**kwargs)

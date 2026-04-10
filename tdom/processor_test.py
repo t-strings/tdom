@@ -1365,13 +1365,13 @@ class TestPrepComponentKwargs:
             pass
 
         callable_info = get_callable_info(InputElement)
-        assert prep_component_kwargs(callable_info, {"size": 20}, system_kwargs={}) == {
+        assert prep_component_kwargs(callable_info, {"size": 20}, children=t"") == {
             "size": 20
         }
         assert prep_component_kwargs(
-            callable_info, {"type": "email"}, system_kwargs={}
+            callable_info, {"type": "email"}, children=t""
         ) == {"type": "email"}
-        assert prep_component_kwargs(callable_info, {}, system_kwargs={}) == {}
+        assert prep_component_kwargs(callable_info, {}, children=t"") == {}
 
     @pytest.mark.skip("Should we just ignore unused user-specified kwargs?")
     def test_unused_kwargs(self):
@@ -1381,9 +1381,42 @@ class TestPrepComponentKwargs:
         callable_info = get_callable_info(InputElement)
         with pytest.raises(ValueError):
             assert (
-                prep_component_kwargs(callable_info, {"type2": 15}, system_kwargs={})
-                == {}
+                prep_component_kwargs(callable_info, {"type2": 15}, children=t"") == {}
             )
+
+    def test_accepts_children(self):
+        def DivWrapper(
+            children: Template, add_classes: list[str] | None = None
+        ) -> Template:
+            return t"<div class={add_classes}>{children}</div>"
+
+        callable_info = get_callable_info(DivWrapper)
+        kwargs = prep_component_kwargs(callable_info, {}, children=t"")
+        assert tuple(kwargs.keys()) == ("children",)
+        assert isinstance(kwargs["children"], Template) and kwargs[
+            "children"
+        ].strings == ("",)
+
+        add_classes = ["red"]
+        kwargs = prep_component_kwargs(
+            callable_info, {"add_classes": add_classes}, children=t"<span></span>"
+        )
+        assert set(kwargs.keys()) == {"children", "add_classes"}
+        assert isinstance(kwargs["children"], Template) and kwargs[
+            "children"
+        ].strings == ("<span></span>",)
+        assert kwargs["add_classes"] == add_classes
+
+    def test_no_children(self):
+        def SpanMaker(content_text: str) -> Template:
+            return t"<span>{content_text}</span>"
+
+        callable_info = get_callable_info(SpanMaker)
+        content_text = "inner"
+        kwargs = prep_component_kwargs(
+            callable_info, {"content_text": content_text}, children=t"<div></div>"
+        )
+        assert kwargs == {"content_text": content_text}  # no children
 
 
 class TestFunctionComponent:
@@ -2009,33 +2042,4 @@ def test_mathml():
   </math>
   is not a decimal number.
 </p>"""
-    )
-
-
-def test_framework_system_kwargs():
-    from .processor import ProcessContext
-
-    # Usually a framework would provide some "request context" mechanism,
-    # but for this test we just use a global dictionary.
-    g = {"theme": "default-theme"}
-
-    def BodyComp(children: Template) -> Template:
-        return t"<body><{ContentComp}>{children}</{ContentComp}></body>"
-
-    def ContentComp(system_barge: dict, children: Template) -> Template:
-        theme = system_barge["theme"]
-        return t"<div class={theme}>{children}</div>"
-
-    content = "Test Content"
-    page_t = (
-        t"<!doctype html><html><{BodyComp}><span>{content}</span></{BodyComp}></html>"
-    )
-    assert (
-        html(
-            page_t,
-            assume_ctx=ProcessContext(
-                parent_tag=None, ns="html", system={"system_barge": g}
-            ),
-        )
-        == '<!DOCTYPE html><html><body><div class="default-theme"><span>Test Content</span></div></body></html>'
     )
