@@ -287,7 +287,6 @@ class TestNormalTextElementDynamic:
     def test_templated_object(self):
         assert html(t"<p>Response: {0}.</p>") == "<p>Response: 0.</p>"
 
-
     @pytest.mark.parametrize(
         "html_dunder_cls",
         (
