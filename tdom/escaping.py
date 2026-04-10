@@ -15,10 +15,13 @@ def escape_html_comment(text: str, allow_markup: bool = False) -> str:
     """Escape text injected into an HTML comment."""
     if not text:
         return text
-    elif allow_markup and isinstance(text, HasHTMLDunder):
+    if allow_markup and isinstance(text, HasHTMLDunder):
         return text.__html__()
-    elif not allow_markup and type(text) is not str:
-        # text manipulation triggers regular html escapes on Markup
+
+    if not allow_markup and type(text) is not str:
+        # String manipulation triggers regular html escapes on Markup
+        # so we coerce the subclass of `str` into a true `str` before
+        # we start string manipulating.
         text = str(text)
 
     # - text must not start with the string ">"
