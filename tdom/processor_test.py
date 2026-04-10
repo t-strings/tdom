@@ -22,7 +22,6 @@ from .processor import (
 )
 from .protocols import HasHTMLDunder
 
-
 processor_api = processor_service_factory(slash_void=True, uppercase_doctype=True)
 
 

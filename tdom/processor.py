@@ -551,21 +551,11 @@ class ProcessorService:
         """
         match tnode:
             case TDocumentType(text):
-                if last_ctx.ns != "html":
-                    # Nit
-                    raise ValueError(
-                        "Cannot process document type in subtree of a foreign element."
-                    )
-                if self.uppercase_doctype:
-                    return f"<!DOCTYPE {text}>"
-                else:
-                    return f"<!doctype {text}>"
+                return self._process_document_type(last_ctx, text)
             case TComment(ref):
                 return self._process_comment(template, last_ctx, ref)
             case TFragment(children):
-                return "".join(
-                    self._process_tnode(template, last_ctx, child) for child in children
-                )
+                return self._process_fragment(template, last_ctx, children)
             case TComponent(start_i_index, end_i_index, attrs, children):
                 return self._process_component(
                     template, last_ctx, attrs, start_i_index, end_i_index
@@ -573,20 +563,53 @@ class ProcessorService:
             case TElement(tag, attrs, children):
                 return self._process_element(template, last_ctx, tag, attrs, children)
             case TText(ref):
-                if last_ctx.parent_tag is None:
-                    raise NotImplementedError(
-                        "We cannot interpolate texts without knowing what tag they are contained in."
-                    )
-                elif last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
-                    # Must be handled all at once.
-                    return self._process_raw_texts(template, last_ctx, ref)
-                elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
-                    # We can handle all at once because there are no non-text children and everything must be string-ified.
-                    return self._process_escapable_raw_texts(template, last_ctx, ref)
-                else:
-                    return self._process_normal_texts(template, last_ctx, ref)
+                return self._process_texts(template, last_ctx, ref)
             case _:
                 raise ValueError(f"Unrecognized tnode: {tnode}")
+
+    def _process_document_type(
+        self,
+        last_ctx: ProcessContext,
+        text: str,
+    ) -> str:
+        if last_ctx.ns != "html":
+            # Nit
+            raise ValueError(
+                "Cannot process document type in subtree of a foreign element."
+            )
+        if self.uppercase_doctype:
+            return f"<!DOCTYPE {text}>"
+        else:
+            return f"<!doctype {text}>"
+
+    def _process_fragment(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        children: Iterable[TNode],
+    ) -> str:
+        return "".join(
+            self._process_tnode(template, last_ctx, child) for child in children
+        )
+
+    def _process_texts(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        ref: TemplateRef,
+    ) -> str:
+        if last_ctx.parent_tag is None:
+            raise NotImplementedError(
+                "We cannot interpolate texts without knowing what tag they are contained in."
+            )
+        elif last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
+            # Must be handled all at once.
+            return self._process_raw_texts(template, last_ctx, ref)
+        elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
+            # We can handle all at once because there are no non-text children and everything must be string-ified.
+            return self._process_escapable_raw_texts(template, last_ctx, ref)
+        else:
+            return self._process_normal_texts(template, last_ctx, ref)
 
     def _process_comment(
         self,
