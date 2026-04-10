@@ -486,7 +486,7 @@ type ComponentObject = Callable[[], Template]
 
 type NormalTextInterpolationValue = (
     None
-    | bool # to support `showValue and value` idiom
+    | bool  # to support `showValue and value` idiom
     | str
     | HasHTMLDunder
     | Template
@@ -496,7 +496,7 @@ type NormalTextInterpolationValue = (
 # Applies to both escapable raw text and raw text.
 type RawTextExactInterpolationValue = (
     None
-    | bool # to support `showValue and value` idiom
+    | bool  # to support `showValue and value` idiom
     | str
     | HasHTMLDunder
     | object
@@ -504,7 +504,7 @@ type RawTextExactInterpolationValue = (
 # Applies to both escapable raw text and raw text.
 type RawTextInexactInterpolationValue = (
     None
-    | bool # to support `showValue and value` idiom
+    | bool  # to support `showValue and value` idiom
     | str
     | object
 )
