@@ -486,6 +486,7 @@ type ComponentObject = Callable[[], Template]
 
 type NormalTextInterpolationValue = (
     None
+    | bool # to support `showValue and value` idiom
     | str
     | HasHTMLDunder
     | Template
@@ -493,9 +494,20 @@ type NormalTextInterpolationValue = (
     | object
 )
 # Applies to both escapable raw text and raw text.
-type RawTextExactInterpolationValue = None | str | HasHTMLDunder | object
+type RawTextExactInterpolationValue = (
+    None
+    | bool # to support `showValue and value` idiom
+    | str
+    | HasHTMLDunder
+    | object
+)
 # Applies to both escapable raw text and raw text.
-type RawTextInexactInterpolationValue = None | str | object
+type RawTextInexactInterpolationValue = (
+    None
+    | bool # to support `showValue and value` idiom
+    | str
+    | object
+)
 
 
 @dataclass(frozen=True)
@@ -620,12 +632,9 @@ class ProcessorService:
         """
         Process a comment into a string.
         """
-        content = resolve_text_without_recursion(template, "<!--", content_ref)
-        if content is None or content == "":
-            comment_str = ""
-        else:
-            comment_str = self.escape_html_comment(content, allow_markup=True)
-        return f"<!--{comment_str}-->"
+        content_str = resolve_text_without_recursion(template, "<!--", content_ref)
+        escaped_comment_str = self.escape_html_comment(content_str, allow_markup=True)
+        return f"<!--{escaped_comment_str}-->"
 
     def _process_element(
         self,
@@ -760,9 +769,7 @@ class ProcessorService:
         content = resolve_text_without_recursion(
             template, last_ctx.parent_tag, content_ref
         )
-        if content is None or content == "":
-            return ""
-        elif last_ctx.parent_tag == "script":
+        if last_ctx.parent_tag == "script":
             return self.escape_html_script(
                 content,
                 allow_markup=True,
@@ -790,12 +797,7 @@ class ProcessorService:
         content = resolve_text_without_recursion(
             template, last_ctx.parent_tag, content_ref
         )
-        if content is None or content == "":
-            return ""
-        else:
-            return self.escape_html_text(
-                content,
-            )
+        return self.escape_html_text(content)
 
     def _process_normal_texts(
         self, template: Template, last_ctx: ProcessContext, content_ref: TemplateRef
@@ -839,7 +841,9 @@ class ProcessorService:
         @NOTE: This is an actual value and NOT an interpolation.  This is meant to be
         used when processing an iterable of values as normal text.
         """
-        if isinstance(value, str):
+        if value is None or isinstance(value, bool):
+            return ""
+        elif isinstance(value, str):
             # @NOTE: This would apply to Markup() but not to a custom object
             # implementing HasHTMLDunder.
             return self.escape_html_text(value)
@@ -851,9 +855,6 @@ class ProcessorService:
                 self._process_normal_text_from_value(template, last_ctx, v)
                 for v in value
             )
-        elif value is None:
-            # @DESIGN: Ignore None.
-            return ""
         elif isinstance(value, HasHTMLDunder):
             # @NOTE: markupsafe's escape does this for us but we put this in
             # here for completeness.
@@ -868,7 +869,7 @@ class ProcessorService:
 
 def resolve_text_without_recursion(
     template: Template, parent_tag: str, content_ref: TemplateRef
-) -> str | None:
+) -> str:
     """
     Resolve the text in the given template without recursing into more structured text.
 
@@ -880,8 +881,8 @@ def resolve_text_without_recursion(
     if content_ref.is_singleton:
         value = format_interpolation(template.interpolations[content_ref.i_indexes[0]])
         value = t.cast(RawTextExactInterpolationValue, value)  # ty: ignore[redundant-cast]
-        if value is None:
-            return None
+        if value is None or isinstance(value, bool):
+            return ""
         elif isinstance(value, str):
             return value
         elif isinstance(value, HasHTMLDunder):
@@ -903,7 +904,7 @@ def resolve_text_without_recursion(
                 continue
             value = format_interpolation(template.interpolations[part])
             value = t.cast(RawTextInexactInterpolationValue, value)  # ty: ignore[redundant-cast]
-            if value is None:
+            if value is None or isinstance(value, bool):
                 continue
             elif (
                 type(value) is str
@@ -922,10 +923,7 @@ def resolve_text_without_recursion(
                 value_str = str(value)
                 if value_str:
                     text.append(value_str)
-        if text:
-            return "".join(text)
-        else:
-            return None
+        return "".join(text)
 
 
 def extract_embedded_template(
