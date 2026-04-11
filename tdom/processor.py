@@ -414,11 +414,6 @@ def _prep_component_kwargs(
     return kwargs
 
 
-@dataclass
-class EndTag:
-    end_tag: str
-
-
 def serialize_html_attrs(
     html_attrs: Iterable[HTMLAttribute], escape: Callable = default_escape_html_text
 ) -> str:
