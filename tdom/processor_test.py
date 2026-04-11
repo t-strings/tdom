@@ -126,6 +126,10 @@ class TestComment:
     def test_singleton_none(self):
         assert html(t"<!--{None}-->") == "<!---->"
 
+    @pytest.mark.parametrize("bool_value", (True, False))
+    def test_singleton_bool(self, bool_value):
+        assert html(t"<!--{bool_value}-->") == "<!---->"
+
     @pytest.mark.parametrize(
         "html_dunder_cls",
         (
@@ -155,6 +159,10 @@ class TestComment:
 
     def test_templated_none(self):
         assert html(t"<!--This is a {None}-->") == "<!--This is a -->"
+
+    @pytest.mark.parametrize("bool_value", (True, False))
+    def test_templated_bool(self, bool_value):
+        assert html(t"<!--This is a {bool_value}-->") == "<!--This is a -->"
 
     @pytest.mark.parametrize(
         "html_dunder_cls",
@@ -249,6 +257,10 @@ class TestNormalTextElementDynamic:
         name = "Alice"
         assert html(t"<p>{name}</p>") == "<p>Alice</p>"
 
+    @pytest.mark.parametrize("bool_value", (True, False))
+    def test_singleton_bool(self, bool_value):
+        assert html(t"<p>{bool_value}</p>") == "<p></p>"
+
     def test_singleton_object(self):
         assert html(t"<p>{0}</p>") == "<p>0</p>"
 
@@ -282,6 +294,10 @@ class TestNormalTextElementDynamic:
     def test_templated_str(self):
         name = "Alice"
         assert html(t"<p>Response: {name}.</p>") == "<p>Response: Alice.</p>"
+
+    @pytest.mark.parametrize("bool_value", (True, False))
+    def test_templated_bool(self, bool_value):
+        assert html(t"<p>Response: {bool_value}</p>") == "<p>Response: </p>"
 
     def test_templated_object(self):
         assert html(t"<p>Response: {0}.</p>") == "<p>Response: 0.</p>"
@@ -421,6 +437,10 @@ class TestRawTextScriptDynamic:
         content = "var x = 1;"
         assert html(t"<script>{content}</script>") == "<script>var x = 1;</script>"
 
+    @pytest.mark.parametrize("bool_value", (True, False))
+    def test_singleton_bool(self, bool_value):
+        assert html(t"<script>{bool_value}</script>") == "<script></script>"
+
     def test_singleton_object(self):
         content = 0
         assert html(t"<script>{content}</script>") == "<script>0</script>"
@@ -459,6 +479,13 @@ class TestRawTextScriptDynamic:
         assert (
             html(t"<script>var x = 0;{content};</script>")
             == "<script>var x = 0;var x = 1;</script>"
+        )
+
+    @pytest.mark.parametrize("bool_value", (True, False))
+    def test_templated_bool(self, bool_value):
+        assert (
+            html(t"<script>var x = 15; {bool_value}</script>")
+            == "<script>var x = 15; </script>"
         )
 
     def test_templated_object(self):
@@ -515,6 +542,10 @@ class TestRawTextStyleDynamic:
             == "<style>div { background-color: red; }</style>"
         )
 
+    @pytest.mark.parametrize("bool_value", (True, False))
+    def test_singleton_bool(self, bool_value):
+        assert html(t"<style>{bool_value}</style>") == "<style></style>"
+
     def test_singleton_object(self):
         content = 0
         assert html(t"<style>{content}</style>") == "<style>0</style>"
@@ -553,6 +584,13 @@ class TestRawTextStyleDynamic:
         assert (
             html(t"<style>h1 {{ background-color: red; }}{content}</style>")
             == "<style>h1 { background-color: red; } h2 { background-color: blue; }</style>"
+        )
+
+    @pytest.mark.parametrize("bool_value", (True, False))
+    def test_templated_bool(self, bool_value):
+        assert (
+            html(t"<style>h1 {{ background-color: red; }};{bool_value}</style>")
+            == "<style>h1 { background-color: red; };</style>"
         )
 
     def test_templated_object(self):
@@ -610,6 +648,10 @@ class TestEscapableRawTextTitleDynamic:
         content = "Welcome To TDOM"
         assert html(t"<title>{content}</title>") == "<title>Welcome To TDOM</title>"
 
+    @pytest.mark.parametrize("bool_value", (True, False))
+    def test_singleton_bool(self, bool_value):
+        assert html(t"<title>{bool_value}</title>") == "<title></title>"
+
     def test_singleton_object(self):
         content = 0
         assert html(t"<title>{content}</title>") == "<title>0</title>"
@@ -643,6 +685,13 @@ class TestEscapableRawTextTitleDynamic:
         assert (
             html(t"<title>A great story about: {content}</title>")
             == "<title>A great story about: TDOM</title>"
+        )
+
+    @pytest.mark.parametrize("bool_value", (True, False))
+    def test_templated_bool(self, bool_value):
+        assert (
+            html(t"<title>A great story; {bool_value}</title>")
+            == "<title>A great story; </title>"
         )
 
     def test_templated_object(self):
@@ -699,6 +748,10 @@ class TestEscapableRawTextTextareaDynamic:
             == "<textarea>Welcome To TDOM</textarea>"
         )
 
+    @pytest.mark.parametrize("bool_value", (True, False))
+    def test_singleton_bool(self, bool_value):
+        assert html(t"<textarea>{bool_value}</textarea>") == "<textarea></textarea>"
+
     def test_singleton_object(self):
         content = 0
         assert html(t"<textarea>{content}</textarea>") == "<textarea>0</textarea>"
@@ -736,6 +789,13 @@ class TestEscapableRawTextTextareaDynamic:
         assert (
             html(t"<textarea>A great story about: {content}</textarea>")
             == "<textarea>A great story about: TDOM</textarea>"
+        )
+
+    @pytest.mark.parametrize("bool_value", (True, False))
+    def test_templated_bool(self, bool_value):
+        assert (
+            html(t"<textarea>This is great.{bool_value}</textarea>")
+            == "<textarea>This is great.</textarea>"
         )
 
     def test_templated_object(self):
