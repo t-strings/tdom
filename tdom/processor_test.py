@@ -12,21 +12,24 @@ from markupsafe import escape as markupsafe_escape
 from .callables import get_callable_info
 from .escaping import escape_html_text
 from .processor import (
-    CachedParserService,
-    cached_processor_service_factory,
+    CachedTemplateParserProxy,
+    TemplateParserProxy,
+    TemplateProcessor,
+    _make_default_template_processor,
     make_ctx,
-    processor_service_factory,
 )
 from .processor import (
     _prep_component_kwargs as prep_component_kwargs,
 )
 from .protocols import HasHTMLDunder
 
-processor_api = processor_service_factory(slash_void=True, uppercase_doctype=True)
+processor_api = _make_default_template_processor(
+    parser_api=TemplateParserProxy(),  # do not use cache
+)
 
 
 def html(*args, **kwargs):
-    return processor_api.process_template(*args, **kwargs)
+    return processor_api.process(*args, **kwargs)
 
 
 # --------------------------------------------------------------------------
@@ -1821,12 +1824,13 @@ def test_process_template_internal_cache():
     sample_t = t"<div>{'content'}<tdom-cache-test-element /></div>"
     sample_diff_t = t"<div>{'diffcontent'}<tdom-cache-test-element /></div>"
     alt_t = t"<span>{'content'}</span>"
-    process_api = processor_service_factory()
-    cached_process_api = cached_processor_service_factory()
+    process_api = TemplateProcessor(parser_api=TemplateParserProxy())
+    cached_process_api = TemplateProcessor(parser_api=CachedTemplateParserProxy())
     # Because the cache is stored on the class itself this can be affect by
     # other tests, so save this off and take the difference to determine the result,
     # this is not great and hopefully we can find a better solution.
-    assert isinstance(cached_process_api.parser_api, CachedParserService)
+    assert isinstance(cached_process_api, TemplateProcessor)
+    assert isinstance(cached_process_api.parser_api, CachedTemplateParserProxy)
     start_ci = cached_process_api.parser_api._to_tnode.cache_info()
     tnode1 = process_api.parser_api.to_tnode(sample_t)
     tnode2 = process_api.parser_api.to_tnode(sample_t)

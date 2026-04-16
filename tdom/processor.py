@@ -1,6 +1,6 @@
 import typing as t
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
 
@@ -492,14 +492,18 @@ type RawTextInexactInterpolationValue = (
 )
 
 
+class ITemplateParserProxy(t.Protocol):
+    def to_tnode(self, template: Template) -> TNode: ...
+
+
 @dataclass(frozen=True)
-class ParserService:
+class TemplateParserProxy:
     def to_tnode(self, template: Template) -> TNode:
         return TemplateParser.parse(template)
 
 
 @dataclass(frozen=True)
-class CachedParserService(ParserService):
+class CachedTemplateParserProxy(TemplateParserProxy):
     @lru_cache(512)  # noqa: B019
     def _to_tnode(self, ct: CachableTemplate):
         return super().to_tnode(ct.template)
@@ -508,9 +512,15 @@ class CachedParserService(ParserService):
         return self._to_tnode(CachableTemplate(template))
 
 
+class ITemplateProcessor(t.Protocol):
+    def process(
+        self, root_template: Template, assume_ctx: ProcessContext | None = None
+    ) -> str: ...
+
+
 @dataclass(frozen=True)
-class ProcessorService:
-    parser_api: ParserService
+class TemplateProcessor:
+    parser_api: ITemplateParserProxy = field(default_factory=CachedTemplateParserProxy)
 
     escape_html_text: Callable = default_escape_html_text
 
@@ -524,7 +534,7 @@ class ProcessorService:
 
     uppercase_doctype: bool = False  # DOCTYPE vs doctype
 
-    def process_template(
+    def process(
         self, root_template: Template, assume_ctx: ProcessContext | None = None
     ) -> str:
         """
@@ -949,17 +959,17 @@ def extract_embedded_template(
     return Template(*parts)
 
 
-def processor_service_factory(**config_kwargs):
-    return ProcessorService(parser_api=ParserService(), **config_kwargs)
+def _make_default_template_processor(**override_opts) -> ITemplateProcessor:
+    config_opts = {
+        "parser_api": CachedTemplateParserProxy(),
+        "slash_void": True,
+        "uppercase_doctype": True,
+    }
+    config_opts.update(override_opts)
+    return TemplateProcessor(**config_opts)
 
 
-def cached_processor_service_factory(**config_kwargs):
-    return ProcessorService(parser_api=CachedParserService(), **config_kwargs)
-
-
-_default_processor_api = cached_processor_service_factory(
-    slash_void=True, uppercase_doctype=True
-)
+_default_template_processor_api: ITemplateProcessor = _make_default_template_processor()
 
 
 # --------------------------------------------------------------------------
@@ -969,7 +979,7 @@ _default_processor_api = cached_processor_service_factory(
 
 def html(template: Template, assume_ctx: ProcessContext | None = None) -> str:
     """Parse an HTML t-string, substitute values, and return a string of HTML."""
-    return _default_processor_api.process_template(template, assume_ctx)
+    return _default_template_processor_api.process(template, assume_ctx)
 
 
 def svg(template: Template, assume_ctx: ProcessContext | None = None) -> str:
