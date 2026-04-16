@@ -959,14 +959,17 @@ def extract_embedded_template(
     return Template(*parts)
 
 
-def _make_default_template_processor(**override_opts) -> ITemplateProcessor:
-    config_opts = {
-        "parser_api": CachedTemplateParserProxy(),
-        "slash_void": True,
-        "uppercase_doctype": True,
-    }
-    config_opts.update(override_opts)
-    return TemplateProcessor(**config_opts)
+def _make_default_template_processor(
+    parser_api: ITemplateParserProxy | None = None,
+) -> ITemplateProcessor:
+    """
+    Wrap our default options but allow parser api to change for testing.
+    """
+    return TemplateProcessor(
+        parser_api=CachedTemplateParserProxy() if parser_api is None else parser_api,
+        slash_void=True,
+        uppercase_doctype=True,
+    )
 
 
 _default_template_processor_api: ITemplateProcessor = _make_default_template_processor()
