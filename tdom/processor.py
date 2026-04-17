@@ -505,10 +505,10 @@ class TemplateParserProxy(ITemplateParserProxy):
 @dataclass(frozen=True)
 class CachedTemplateParserProxy(TemplateParserProxy):
     @lru_cache(512)  # noqa: B019
-    def _to_tnode(self, ct: CachableTemplate):
+    def _to_tnode(self, ct: CachableTemplate) -> TNode:
         return super().to_tnode(ct.template)
 
-    def to_tnode(self, template: Template):
+    def to_tnode(self, template: Template) -> TNode:
         return self._to_tnode(CachableTemplate(template))
 
 
