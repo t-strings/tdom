@@ -497,7 +497,7 @@ class ITemplateParserProxy(t.Protocol):
 
 
 @dataclass(frozen=True)
-class TemplateParserProxy:
+class TemplateParserProxy(ITemplateParserProxy):
     def to_tnode(self, template: Template) -> TNode:
         return TemplateParser.parse(template)
 
@@ -519,7 +519,7 @@ class ITemplateProcessor(t.Protocol):
 
 
 @dataclass(frozen=True)
-class TemplateProcessor:
+class TemplateProcessor(ITemplateProcessor):
     parser_api: ITemplateParserProxy = field(default_factory=CachedTemplateParserProxy)
 
     escape_html_text: Callable = default_escape_html_text
