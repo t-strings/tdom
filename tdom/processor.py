@@ -497,7 +497,52 @@ class CachedTemplateParserProxy(TemplateParserProxy):
         return self._to_tnode(CachableTemplate(template))
 
 
-type DefaultAppState = dict[str, object]
+class IComponentProcessor[T = DefaultAppState](t.Protocol):
+    """Isolate component processing to allow for replacement."""
+
+    def process(
+        self,
+        # TODO: ? processor_api: IProcessor,
+        template: Template,
+        last_ctx: ProcessContext,
+        app_state: T,
+        component_callable: ComponentCallable,
+        attrs: tuple[TAttribute, ...],
+        component_template: Template,
+    ) -> ComponentObject | Template:
+        """
+        Process available component details into a queryable object or template.
+        """
+        ...
+
+
+class ComponentProcessor[T = DefaultAppState](IComponentProcessor[T]):
+    """
+    Default component processor.
+    """
+
+    def process(
+        self,
+        # @TODO: ? processor_api: IProcessor,
+        template: Template,
+        last_ctx: ProcessContext,
+        app_state: T,
+        component_callable: ComponentCallable,
+        attrs: tuple[TAttribute, ...],
+        component_template: Template,
+    ) -> ComponentObject | Template:
+        """
+        Process available component details into a queryable object or template.
+
+        Default strategy just uses `_prep_component_kwargs` for `kwargs`
+        injecting `children` if asked.
+        """
+        kwargs = _prep_component_kwargs(
+            get_callable_info(component_callable),
+            _resolve_t_attrs(attrs, template.interpolations),
+            children=component_template,
+        )
+        return component_callable(**kwargs)
 
 
 class ITemplateProcessor[T = DefaultAppState](t.Protocol):
@@ -509,9 +554,16 @@ class ITemplateProcessor[T = DefaultAppState](t.Protocol):
     ) -> str: ...
 
 
+type DefaultAppState = dict[str, object]
+
+
 @dataclass(frozen=True)
 class TemplateProcessor[T = DefaultAppState](ITemplateProcessor[T]):
     parser_api: ITemplateParserProxy = field(default_factory=CachedTemplateParserProxy)
+
+    component_processor_api: IComponentProcessor[T] = field(
+        default_factory=ComponentProcessor[T]
+    )
 
     escape_html_text: Callable = default_escape_html_text
 
@@ -722,16 +774,10 @@ class TemplateProcessor[T = DefaultAppState](ITemplateProcessor[T]):
         else:
             children_template = t""
 
-        if not callable(component_callable):
-            raise TypeError("Component callable must be callable.")
-
-        kwargs = _prep_component_kwargs(
-            get_callable_info(component_callable),
-            _resolve_t_attrs(attrs, template.interpolations),
-            children=children_template,
+        result_t = self.component_processor_api.process(
+            template, last_ctx, app_state, component_callable, attrs, children_template
         )
 
-        result_t = component_callable(**kwargs)
         if (
             result_t is not None
             and not isinstance(result_t, Template)
