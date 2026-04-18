@@ -544,8 +544,11 @@ class TemplateProcessor(ITemplateProcessor):
             # @DESIGN: What do we want to do here?  Should we assume we are in
             # a tag with normal text?
             assume_ctx = make_ctx(parent_tag=DEFAULT_NORMAL_TEXT_ELEMENT, ns="html")
-        root = self.parser_api.to_tnode(root_template)
-        return self._process_tnode(root_template, assume_ctx, root)
+        return self._process_template(root_template, assume_ctx)
+
+    def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
+        root = self.parser_api.to_tnode(template)
+        return self._process_tnode(template, last_ctx, root)
 
     def _process_tnode(
         self, template: Template, last_ctx: ProcessContext, tnode: TNode
@@ -743,8 +746,7 @@ class TemplateProcessor(ITemplateProcessor):
                 # DO NOTHING
                 return ""
             else:
-                result_root = self.parser_api.to_tnode(result_t)
-                return self._process_tnode(result_t, last_ctx, result_root)
+                return self._process_template(result_t, last_ctx)
         else:
             raise TypeError(f"Unknown component return value: {type(result_t)}")
 
@@ -840,8 +842,7 @@ class TemplateProcessor(ITemplateProcessor):
             # implementing HasHTMLDunder.
             return self.escape_html_text(value)
         elif isinstance(value, Template):
-            value_root = self.parser_api.to_tnode(value)
-            return self._process_tnode(value, last_ctx, value_root)
+            return self._process_template(value, last_ctx)
         elif isinstance(value, Iterable):
             return "".join(
                 self._process_normal_text_from_value(template, last_ctx, v)
