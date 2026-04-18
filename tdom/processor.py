@@ -742,11 +742,7 @@ class TemplateProcessor(ITemplateProcessor):
             component_obj = None
 
         if isinstance(result_t, Template):
-            if result_t.strings == ("",):
-                # DO NOTHING
-                return ""
-            else:
-                return self._process_template(result_t, last_ctx)
+            return self._process_template(result_t, last_ctx)
         else:
             raise TypeError(f"Unknown component return value: {type(result_t)}")
 
