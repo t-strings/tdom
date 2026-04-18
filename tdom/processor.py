@@ -48,6 +48,13 @@ from .parser import (
 from .protocols import HasHTMLDunder
 from .sentinel import NOT_SET, NotSet
 from .template_utils import TemplateRef
+from .types import (
+    ComponentInterpolationValue,
+    ComponentObject,
+    NormalTextInterpolationValue,
+    RawTextExactInterpolationValue,
+    RawTextInexactInterpolationValue,
+)
 from .utils import CachableTemplate, LastUpdatedOrderedDict
 
 type Attribute = tuple[str, object]
@@ -460,38 +467,6 @@ class ProcessContext:
         )
 
 
-type FunctionComponent = Callable[..., Template]
-type FactoryComponent = Callable[..., ComponentObject]
-type ComponentCallable = FunctionComponent | FactoryComponent
-type ComponentObject = Callable[[], Template]
-
-
-type NormalTextInterpolationValue = (
-    None
-    | bool  # to support `showValue and value` idiom
-    | str
-    | HasHTMLDunder
-    | Template
-    | Iterable[NormalTextInterpolationValue]
-    | object
-)
-# Applies to both escapable raw text and raw text.
-type RawTextExactInterpolationValue = (
-    None
-    | bool  # to support `showValue and value` idiom
-    | str
-    | HasHTMLDunder
-    | object
-)
-# Applies to both escapable raw text and raw text.
-type RawTextInexactInterpolationValue = (
-    None
-    | bool  # to support `showValue and value` idiom
-    | str
-    | object
-)
-
-
 class ITemplateParserProxy(t.Protocol):
     def to_tnode(self, template: Template) -> TNode: ...
 
@@ -708,7 +683,7 @@ class TemplateProcessor(ITemplateProcessor):
             + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
         )
         start_i = template.interpolations[start_i_index]
-        component_callable = t.cast(ComponentCallable, start_i.value)
+        component_callable = t.cast(ComponentInterpolationValue, start_i.value)
         if start_i_index != end_i_index and end_i_index is not None:
             # @TODO: We should do this during parsing.
             children_template = extract_embedded_template(
