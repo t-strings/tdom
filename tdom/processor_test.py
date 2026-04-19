@@ -632,15 +632,25 @@ class TestRawTextStyleDynamic:
             == "<style>h1 { background-color: red; } h2 { background-color: blue; }</style>"
         )
 
-    def test_not_supported_recursive_template_error(self):
+    def test_exact_not_supported_recursive_template_error(self):
         text_t = t"style"
         with pytest.raises(ValueError, match="not supported"):
             _ = html(t"<style>{text_t}</style>")
 
-    def test_not_supported_recursive_iterable_error(self):
+    def test_inexact_not_supported_recursive_template_error(self):
+        text_t = t"style"
+        with pytest.raises(ValueError, match="not supported"):
+            _ = html(t"<style>{text_t} and more</style>")
+
+    def test_exact_not_supported_recursive_iterable_error(self):
         texts = ["This", "is", "a", "style"]
         with pytest.raises(ValueError, match="not supported"):
             _ = html(t"<style>{texts}</style>")
+
+    def test_inexact_not_supported_recursive_iterable_error(self):
+        texts = ["This", "is", "a", "style"]
+        with pytest.raises(ValueError, match="not supported"):
+            _ = html(t"<style>{texts} and more</style>")
 
 
 class TestEscapableRawTextTitleDynamic:
@@ -729,15 +739,25 @@ class TestEscapableRawTextTitleDynamic:
             == "<title>The number 0 is less than 1.</title>"
         )
 
-    def test_not_supported_recursive_template_error(self):
+    def test_exact_not_supported_recursive_template_error(self):
         text_t = t"title"
         with pytest.raises(ValueError, match="not supported"):
             _ = html(t"<title>{text_t}</title>")
 
-    def test_not_supported_recursive_iterable_error(self):
+    def test_exact_not_supported_recursive_iterable_error(self):
         texts = ["This", "is", "a", "title"]
         with pytest.raises(ValueError, match="not supported"):
             _ = html(t"<title>{texts}</title>")
+
+    def test_inexact_not_supported_recursive_template_error(self):
+        text_t = t"title"
+        with pytest.raises(ValueError, match="not supported"):
+            _ = html(t"<title>{text_t} and more</title>")
+
+    def test_inexact_not_supported_recursive_iterable_error(self):
+        texts = ["This", "is", "a", "title"]
+        with pytest.raises(ValueError, match="not supported"):
+            _ = html(t"<title>{texts} and more</title>")
 
 
 class TestEscapableRawTextTextareaDynamic:
