@@ -214,6 +214,10 @@ class TestDocumentType:
     def test_literal(self):
         assert html(t"<!doctype html>") == "<!DOCTYPE html>"
 
+    def test_literal_lowercase(self):
+        tp = TemplateProcessor(uppercase_doctype=False)
+        assert tp.process(t"<!doctype html>") == "<!doctype html>"
+
 
 class TestVoidElementLiteral:
     def test_void(self):
