@@ -1,19 +1,36 @@
-import sys
 import typing as t
 from collections.abc import Callable, Iterable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
 
 from markupsafe import Markup
 
 from .callables import CallableInfo, get_callable_info
+from .escaping import (
+    escape_html_comment as default_escape_html_comment,
+)
+from .escaping import (
+    escape_html_script as default_escape_html_script,
+)
+from .escaping import (
+    escape_html_style as default_escape_html_style,
+)
+from .escaping import (
+    escape_html_text as default_escape_html_text,
+)
 from .format import format_interpolation as base_format_interpolation
 from .format import format_template
-from .nodes import Comment, DocumentType, Element, Fragment, Node, Text
+from .htmlspec import (
+    CDATA_CONTENT_ELEMENTS,
+    DEFAULT_NORMAL_TEXT_ELEMENT,
+    RCDATA_CONTENT_ELEMENTS,
+    SVG_ATTR_FIX,
+    SVG_TAG_FIX,
+    VOID_ELEMENTS,
+)
 from .parser import (
     HTMLAttribute,
-    HTMLAttributesDict,
     TAttribute,
     TComment,
     TComponent,
@@ -28,20 +45,10 @@ from .parser import (
     TTemplatedAttribute,
     TText,
 )
-from .placeholders import TemplateRef
 from .protocols import HasHTMLDunder
-from .template_utils import template_from_parts
+from .sentinel import NOT_SET, NotSet
+from .template_utils import TemplateRef
 from .utils import CachableTemplate, LastUpdatedOrderedDict
-
-# TODO: in Ian's original PR, this caching was tethered to the
-# TemplateParser. Here, it's tethered to the processor. I suspect we'll
-# revisit this soon enough.
-
-
-@lru_cache(maxsize=0 if "pytest" in sys.modules else 512)
-def _parse_and_cache(cachable: CachableTemplate) -> TNode:
-    return TemplateParser.parse(cachable.template, svg_context=cachable.svg_context)
-
 
 type Attribute = tuple[str, object]
 type AttributesDict = dict[str, object]
@@ -325,7 +332,7 @@ def _resolve_t_attrs(
                 else:
                     new_attrs[name] = attr_value
             case TTemplatedAttribute(name=name, value_ref=ref):
-                attr_t = _resolve_ref(ref, interpolations)
+                attr_t = ref.resolve(interpolations)
                 attr_value = format_template(attr_t)
                 if name in ATTR_ACCUMULATOR_MAKERS:
                     if name not in attr_accs:
@@ -359,82 +366,16 @@ def _resolve_t_attrs(
     return new_attrs
 
 
-def _resolve_html_attrs(attrs: AttributesDict) -> HTMLAttributesDict:
+def _resolve_html_attrs(attrs: AttributesDict) -> Iterable[HTMLAttribute]:
     """Resolve attribute values for HTML output."""
-    html_attrs: HTMLAttributesDict = {}
     for key, value in attrs.items():
         match value:
             case True:
-                html_attrs[key] = None
+                yield key, None
             case False | None:
                 pass
             case _:
-                html_attrs[key] = str(value)
-    return html_attrs
-
-
-def _resolve_attrs(
-    attrs: Sequence[TAttribute], interpolations: tuple[Interpolation, ...]
-) -> HTMLAttributesDict:
-    """
-    Substitute placeholders in attributes for HTML elements.
-
-    This is the full pipeline: interpolation + HTML processing.
-    """
-    interpolated_attrs = _resolve_t_attrs(attrs, interpolations)
-    return _resolve_html_attrs(interpolated_attrs)
-
-
-def _flatten_nodes(nodes: Iterable[Node]) -> list[Node]:
-    """Flatten a list of Nodes, expanding any Fragments."""
-    flat: list[Node] = []
-    for node in nodes:
-        if isinstance(node, Fragment):
-            flat.extend(node.children)
-        else:
-            flat.append(node)
-    return flat
-
-
-def _substitute_and_flatten_children(
-    children: Iterable[TNode], interpolations: tuple[Interpolation, ...]
-) -> list[Node]:
-    """Substitute placeholders in a list of children and flatten any fragments."""
-    resolved = [_resolve_t_node(child, interpolations) for child in children]
-    flat = _flatten_nodes(resolved)
-    return flat
-
-
-def _node_from_value(value: object) -> Node:
-    """
-    Convert an arbitrary value to a Node.
-
-    This is the primary action performed when replacing interpolations in child
-    content positions.
-    """
-    match value:
-        case str():
-            return Text(value)
-        case Node():
-            return value
-        case Template():
-            return html(value)
-        # Consider: falsey values, not just False and None?
-        case False | None:
-            return Fragment(children=[])
-        case Iterable():
-            children = [_node_from_value(v) for v in value]
-            return Fragment(children=children)
-        case HasHTMLDunder():
-            # CONSIDER: should we do this lazily?
-            return Text(Markup(value.__html__()))
-        case c if callable(c):
-            # Treat all callable values in child content positions as if
-            # they are zero-arg functions that return a value to be rendered.
-            return _node_from_value(c())
-        case _:
-            # CONSIDER: should we do this lazily?
-            return Text(str(value))
+                yield key, str(value)
 
 
 def _kebab_to_snake(name: str) -> str:
@@ -445,8 +386,8 @@ def _kebab_to_snake(name: str) -> str:
 def _prep_component_kwargs(
     callable_info: CallableInfo,
     attrs: AttributesDict,
-    system_kwargs: dict[str, object],
-):
+    children: Template,
+) -> AttributesDict:
     if callable_info.requires_positional:
         raise TypeError(
             "Component callables cannot have required positional arguments."
@@ -460,9 +401,8 @@ def _prep_component_kwargs(
         if snake_name in callable_info.named_params or callable_info.kwargs:
             kwargs[snake_name] = attr_value
 
-    for attr_name, attr_value in system_kwargs.items():
-        if attr_name in callable_info.named_params or callable_info.kwargs:
-            kwargs[attr_name] = attr_value
+    if "children" in callable_info.named_params or callable_info.kwargs:
+        kwargs["children"] = children
 
     # Check to make sure we've fully satisfied the callable's requirements
     missing = callable_info.required_named_params - kwargs.keys()
@@ -474,135 +414,562 @@ def _prep_component_kwargs(
     return kwargs
 
 
-def _invoke_component(
-    attrs: AttributesDict,
-    children: list[Node],  # TODO: why not TNode, though?
-    interpolation: Interpolation,
-) -> Node:
-    """
-    Invoke a component callable with the provided attributes and children.
-
-    Components are any callable that meets the required calling signature.
-    Typically, that's a function, but it could also be the constructor or
-    __call__() method for a class; dataclass constructors match our expected
-    invocation style.
-
-    We validate the callable's signature and invoke it with keyword-only
-    arguments, then convert the result to a Node.
-
-    Component invocation rules:
-
-    1. All arguments are passed as keywords only. Components cannot require
-    positional arguments.
-
-    2. Children are passed via a "children" parameter when:
-
-    - Child content exists in the template AND
-    - The callable accepts "children" OR has **kwargs
-
-    If no children exist but the callable accepts "children", we pass an
-    empty tuple.
-
-    3. All other attributes are converted from kebab-case to snake_case
-    and passed as keyword arguments if the callable accepts them (or has
-    **kwargs). Attributes that don't match parameters are silently ignored.
-    """
-
-    value = format_interpolation(interpolation)
-    if not callable(value):
-        raise TypeError(
-            f"Expected a callable for component invocation, got {type(value).__name__}"
-        )
-    callable_info = get_callable_info(value)
-
-    kwargs = _prep_component_kwargs(
-        callable_info, attrs, system_kwargs={"children": tuple(children)}
+def serialize_html_attrs(
+    html_attrs: Iterable[HTMLAttribute], escape: Callable = default_escape_html_text
+) -> str:
+    return "".join(
+        (f' {k}="{escape(v)}"' if v is not None else f" {k}" for k, v in html_attrs)
     )
 
-    # The cast avoids `call-top-callable` from ty; there *must* be a smarter
-    # way, though... -Dave
-    result = t.cast(Callable[..., t.Any], value)(**kwargs)
-    return _node_from_value(result)
+
+def _fix_svg_attrs(html_attrs: Iterable[HTMLAttribute]) -> Iterable[HTMLAttribute]:
+    """
+    Fix the attr name-case of any html attributes on a tag within an SVG namespace.
+    """
+    for k, v in html_attrs:
+        yield SVG_ATTR_FIX.get(k, k), v
 
 
-def _resolve_ref(
-    ref: TemplateRef, interpolations: tuple[Interpolation, ...]
-) -> Template:
-    resolved = [interpolations[i_index] for i_index in ref.i_indexes]
-    return template_from_parts(ref.strings, resolved)
+def make_ctx(parent_tag: str | None = None, ns: str | None = "html"):
+    return ProcessContext(parent_tag=parent_tag, ns=ns)
 
 
-def _resolve_t_text_ref(
-    ref: TemplateRef, interpolations: tuple[Interpolation, ...]
-) -> Text | Fragment:
-    """Resolve a TText ref into Text or Fragment by processing interpolations."""
-    if ref.is_literal:
-        return Text(ref.strings[0])
+@dataclass(frozen=True, slots=True)
+class ProcessContext:
+    # None means unknown not just a missing value.
+    parent_tag: str | None = None
+    # None means unknown not just a missing value.
+    ns: str | None = None
 
-    parts = [
-        Text(part)
-        if isinstance(part, str)
-        else _node_from_value(format_interpolation(part))
-        for part in _resolve_ref(ref, interpolations)
-    ]
-    flat = _flatten_nodes(parts)
+    def copy(
+        self,
+        ns: NotSet | str | None = NOT_SET,
+        parent_tag: NotSet | str | None = NOT_SET,
+    ):
+        if isinstance(ns, NotSet):
+            resolved_ns = self.ns
+        else:
+            resolved_ns = ns
+        if isinstance(parent_tag, NotSet):
+            resolved_parent_tag = self.parent_tag
+        else:
+            resolved_parent_tag = parent_tag
+        return make_ctx(
+            parent_tag=resolved_parent_tag,
+            ns=resolved_ns,
+        )
 
-    if len(flat) == 1 and isinstance(flat[0], Text):
-        return flat[0]
 
-    return Fragment(children=flat)
+type FunctionComponent = Callable[..., Template]
+type FactoryComponent = Callable[..., ComponentObject]
+type ComponentCallable = FunctionComponent | FactoryComponent
+type ComponentObject = Callable[[], Template]
 
 
-def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) -> Node:
-    """Resolve a TNode tree into a Node tree by processing interpolations."""
-    match t_node:
-        case TText(ref=ref):
-            return _resolve_t_text_ref(ref, interpolations)
-        case TComment(ref=ref):
-            comment_t = _resolve_ref(ref, interpolations)
-            comment = format_template(comment_t)
-            return Comment(comment)
-        case TDocumentType(text=text):
-            return DocumentType(text)
-        case TFragment(children=children):
-            resolved_children = _substitute_and_flatten_children(
-                children, interpolations
+type NormalTextInterpolationValue = (
+    None
+    | bool  # to support `showValue and value` idiom
+    | str
+    | HasHTMLDunder
+    | Template
+    | Iterable[NormalTextInterpolationValue]
+    | object
+)
+# Applies to both escapable raw text and raw text.
+type RawTextExactInterpolationValue = (
+    None
+    | bool  # to support `showValue and value` idiom
+    | str
+    | HasHTMLDunder
+    | object
+)
+# Applies to both escapable raw text and raw text.
+type RawTextInexactInterpolationValue = (
+    None
+    | bool  # to support `showValue and value` idiom
+    | str
+    | object
+)
+
+
+class ITemplateParserProxy(t.Protocol):
+    def to_tnode(self, template: Template) -> TNode: ...
+
+
+@dataclass(frozen=True)
+class TemplateParserProxy(ITemplateParserProxy):
+    def to_tnode(self, template: Template) -> TNode:
+        return TemplateParser.parse(template)
+
+
+@dataclass(frozen=True)
+class CachedTemplateParserProxy(TemplateParserProxy):
+    @lru_cache(512)  # noqa: B019
+    def _to_tnode(self, ct: CachableTemplate) -> TNode:
+        return super().to_tnode(ct.template)
+
+    def to_tnode(self, template: Template) -> TNode:
+        return self._to_tnode(CachableTemplate(template))
+
+
+class ITemplateProcessor(t.Protocol):
+    def process(
+        self, root_template: Template, assume_ctx: ProcessContext | None = None
+    ) -> str: ...
+
+
+@dataclass(frozen=True)
+class TemplateProcessor(ITemplateProcessor):
+    parser_api: ITemplateParserProxy = field(default_factory=CachedTemplateParserProxy)
+
+    escape_html_text: Callable = default_escape_html_text
+
+    escape_html_comment: Callable = default_escape_html_comment
+
+    escape_html_script: Callable = default_escape_html_script
+
+    escape_html_style: Callable = default_escape_html_style
+
+    slash_void: bool = False  # Apply a xhtml-style slash to void html elements.
+
+    uppercase_doctype: bool = False  # DOCTYPE vs doctype
+
+    def process(
+        self, root_template: Template, assume_ctx: ProcessContext | None = None
+    ) -> str:
+        """
+        Process a TDOM compatible template into a string.
+        """
+        if assume_ctx is None:
+            # @DESIGN: What do we want to do here?  Should we assume we are in
+            # a tag with normal text?
+            assume_ctx = make_ctx(parent_tag=DEFAULT_NORMAL_TEXT_ELEMENT, ns="html")
+        return self._process_template(root_template, assume_ctx)
+
+    def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
+        root = self.parser_api.to_tnode(template)
+        return self._process_tnode(template, last_ctx, root)
+
+    def _process_tnode(
+        self, template: Template, last_ctx: ProcessContext, tnode: TNode
+    ) -> str:
+        """
+        Process a tnode from a template's "t-tree" into a string.
+        """
+        match tnode:
+            case TDocumentType(text):
+                return self._process_document_type(last_ctx, text)
+            case TComment(ref):
+                return self._process_comment(template, last_ctx, ref)
+            case TFragment(children):
+                return self._process_fragment(template, last_ctx, children)
+            case TComponent(start_i_index, end_i_index, attrs, children):
+                return self._process_component(
+                    template, last_ctx, attrs, start_i_index, end_i_index
+                )
+            case TElement(tag, attrs, children):
+                return self._process_element(template, last_ctx, tag, attrs, children)
+            case TText(ref):
+                return self._process_texts(template, last_ctx, ref)
+            case _:
+                raise ValueError(f"Unrecognized tnode: {tnode}")
+
+    def _process_document_type(
+        self,
+        last_ctx: ProcessContext,
+        text: str,
+    ) -> str:
+        if last_ctx.ns != "html":
+            # Nit
+            raise ValueError(
+                "Cannot process document type in subtree of a foreign element."
             )
-            return Fragment(children=resolved_children)
-        case TElement(tag=tag, attrs=attrs, children=children):
-            resolved_attrs = _resolve_attrs(attrs, interpolations)
-            resolved_children = _substitute_and_flatten_children(
-                children, interpolations
+        if self.uppercase_doctype:
+            return f"<!DOCTYPE {text}>"
+        else:
+            return f"<!doctype {text}>"
+
+    def _process_fragment(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        children: Iterable[TNode],
+    ) -> str:
+        return "".join(
+            self._process_tnode(template, last_ctx, child) for child in children
+        )
+
+    def _process_texts(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        ref: TemplateRef,
+    ) -> str:
+        if last_ctx.parent_tag is None:
+            raise NotImplementedError(
+                "We cannot interpolate texts without knowing what tag they are contained in."
             )
-            return Element(tag=tag, attrs=resolved_attrs, children=resolved_children)
-        case TComponent(
-            start_i_index=start_i_index,
-            end_i_index=end_i_index,
-            attrs=t_attrs,
-            children=children,
+        elif last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
+            # Must be handled all at once.
+            return self._process_raw_texts(template, last_ctx, ref)
+        elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
+            # We can handle all at once because there are no non-text children and everything must be string-ified.
+            return self._process_escapable_raw_texts(template, last_ctx, ref)
+        else:
+            return self._process_normal_texts(template, last_ctx, ref)
+
+    def _process_comment(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        content_ref: TemplateRef,
+    ) -> str:
+        """
+        Process a comment into a string.
+        """
+        content_str = resolve_text_without_recursion(template, "<!--", content_ref)
+        escaped_comment_str = self.escape_html_comment(content_str, allow_markup=True)
+        return f"<!--{escaped_comment_str}-->"
+
+    def _process_element(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        tag: str,
+        attrs: tuple[TAttribute, ...],
+        children: tuple[TNode, ...],
+    ) -> str:
+        out: list[str] = []
+        if tag == "svg":
+            our_ctx = last_ctx.copy(parent_tag=tag, ns="svg")
+        elif tag == "math":
+            our_ctx = last_ctx.copy(parent_tag=tag, ns="math")
+        else:
+            our_ctx = last_ctx.copy(parent_tag=tag)
+        if our_ctx.ns == "svg":
+            starttag = endtag = SVG_TAG_FIX.get(tag, tag)
+        else:
+            starttag = endtag = tag
+        out.append(f"<{starttag}")
+        if attrs:
+            out.append(self._process_attrs(template, our_ctx, attrs))
+        # @TODO: How can we tell if we write out children or not in
+        # order to self-close in non-html contexts, ie. SVG?
+        if self.slash_void and tag in VOID_ELEMENTS:
+            out.append(" />")
+        else:
+            out.append(">")
+        if tag not in VOID_ELEMENTS:
+            # We were still in SVG but now we default back into HTML
+            if tag == "foreignobject":
+                child_ctx = our_ctx.copy(ns="html")
+            else:
+                child_ctx = our_ctx
+            out.extend(
+                self._process_tnode(template, child_ctx, child) for child in children
+            )
+            out.append(f"</{endtag}>")
+        return "".join(out)
+
+    def _process_attrs(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        attrs: tuple[TAttribute, ...],
+    ) -> str:
+        """
+        Process an element's attributes into a string.
+        """
+        resolved_attrs = _resolve_t_attrs(attrs, template.interpolations)
+        if last_ctx.ns == "svg":
+            attrs_str = serialize_html_attrs(
+                _fix_svg_attrs(_resolve_html_attrs(resolved_attrs))
+            )
+        else:
+            attrs_str = serialize_html_attrs(_resolve_html_attrs(resolved_attrs))
+        if attrs_str:
+            return attrs_str
+        return ""
+
+    def _process_component(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        attrs: tuple[TAttribute, ...],
+        start_i_index: int,
+        end_i_index: int | None,
+    ) -> str:
+        """
+        Invoke a component and process the result into a string.
+        """
+        body_start_s_index = (
+            start_i_index
+            + 1
+            + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
+        )
+        start_i = template.interpolations[start_i_index]
+        component_callable = t.cast(ComponentCallable, start_i.value)
+        if start_i_index != end_i_index and end_i_index is not None:
+            # @TODO: We should do this during parsing.
+            children_template = extract_embedded_template(
+                template, body_start_s_index, end_i_index
+            )
+            if component_callable != template.interpolations[end_i_index].value:
+                raise TypeError(
+                    "Component callable in start tag must match component callable in end tag."
+                )
+        else:
+            children_template = t""
+
+        if not callable(component_callable):
+            raise TypeError("Component callable must be callable.")
+
+        kwargs = _prep_component_kwargs(
+            get_callable_info(component_callable),
+            _resolve_t_attrs(attrs, template.interpolations),
+            children=children_template,
+        )
+
+        result_t = component_callable(**kwargs)
+        if (
+            result_t is not None
+            and not isinstance(result_t, Template)
+            and callable(result_t)
         ):
-            start_interpolation = interpolations[start_i_index]
-            end_interpolation = (
-                None if end_i_index is None else interpolations[end_i_index]
+            component_obj = t.cast(ComponentObject, result_t)  # ty: ignore[redundant-cast]
+            result_t = component_obj()
+        else:
+            component_obj = None
+
+        if isinstance(result_t, Template):
+            return self._process_template(result_t, last_ctx)
+        else:
+            raise TypeError(f"Unknown component return value: {type(result_t)}")
+
+    def _process_raw_texts(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        content_ref: TemplateRef,
+    ) -> str:
+        """
+        Process the given content into a string as "raw text".
+        """
+        assert last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS
+        content = resolve_text_without_recursion(
+            template, last_ctx.parent_tag, content_ref
+        )
+        if last_ctx.parent_tag == "script":
+            return self.escape_html_script(
+                content,
+                allow_markup=True,
             )
-            resolved_attrs = _resolve_t_attrs(t_attrs, interpolations)
-            resolved_children = _substitute_and_flatten_children(
-                children, interpolations
+        elif last_ctx.parent_tag == "style":
+            return self.escape_html_style(
+                content,
+                allow_markup=True,
             )
-            # HERE ALSO BE DRAGONS: validate matching start/end callables, since
-            # the underlying TemplateParser cannot do that for us.
-            if (
-                end_interpolation is not None
-                and end_interpolation.value != start_interpolation.value
-            ):
-                raise TypeError("Mismatched component start and end callables.")
-            return _invoke_component(
-                attrs=resolved_attrs,
-                children=resolved_children,
-                interpolation=start_interpolation,
+        else:
+            raise NotImplementedError(
+                f"Parent tag {last_ctx.parent_tag} is not supported."
             )
-        case _:
-            raise ValueError(f"Unknown TNode type: {type(t_node).__name__}")
+
+    def _process_escapable_raw_texts(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        content_ref: TemplateRef,
+    ) -> str:
+        """
+        Process the given content into a string as "escapable raw text".
+        """
+        assert last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS
+        content = resolve_text_without_recursion(
+            template, last_ctx.parent_tag, content_ref
+        )
+        return self.escape_html_text(content)
+
+    def _process_normal_texts(
+        self, template: Template, last_ctx: ProcessContext, content_ref: TemplateRef
+    ):
+        """
+        Process the given context into a string as "normal text".
+        """
+        return "".join(
+            (
+                self.escape_html_text(part)
+                if isinstance(part, str)
+                else self._process_normal_text(template, last_ctx, t.cast(int, part))
+            )
+            for part in content_ref
+        )
+
+    def _process_normal_text(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        values_index: int,
+    ) -> str:
+        """
+        Process the value of the interpolation into a string as "normal text".
+
+        @NOTE: This is an interpolation that must be formatted to get the value.
+        """
+        value = format_interpolation(template.interpolations[values_index])
+        value = t.cast(NormalTextInterpolationValue, value)  # ty: ignore[redundant-cast]
+        return self._process_normal_text_from_value(template, last_ctx, value)
+
+    def _process_normal_text_from_value(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        value: NormalTextInterpolationValue,
+    ) -> str:
+        """
+        Process a single value into a string as "normal text".
+
+        @NOTE: This is an actual value and NOT an interpolation.  This is meant to be
+        used when processing an iterable of values as normal text.
+        """
+        if value is None or isinstance(value, bool):
+            return ""
+        elif isinstance(value, str):
+            # @NOTE: This would apply to Markup() but not to a custom object
+            # implementing HasHTMLDunder.
+            return self.escape_html_text(value)
+        elif isinstance(value, Template):
+            return self._process_template(value, last_ctx)
+        elif isinstance(value, Iterable):
+            return "".join(
+                self._process_normal_text_from_value(template, last_ctx, v)
+                for v in value
+            )
+        elif isinstance(value, HasHTMLDunder):
+            # @NOTE: markupsafe's escape does this for us but we put this in
+            # here for completeness.
+            # @NOTE: An actual Markup() would actually pass as a str() but a
+            # custom object with __html__ might not.
+            return Markup(value.__html__())
+        else:
+            # @DESIGN: Everything that isn't an object we recognize is
+            # coerced to a str() and emitted.
+            return self.escape_html_text(value)
+
+
+def resolve_text_without_recursion(
+    template: Template, parent_tag: str, content_ref: TemplateRef
+) -> str:
+    """
+    Resolve the text in the given template without recursing into more structured text.
+
+    This can be bypassed by interpolating an exact match with an object with `__html__()`.
+
+    A non-exact match is not allowed because we cannot process escaping
+    across the boundary between other content and the pass-through content.
+    """
+    if content_ref.is_singleton:
+        value = format_interpolation(template.interpolations[content_ref.i_indexes[0]])
+        value = t.cast(RawTextExactInterpolationValue, value)  # ty: ignore[redundant-cast]
+        if value is None or isinstance(value, bool):
+            return ""
+        elif isinstance(value, str):
+            return value
+        elif isinstance(value, HasHTMLDunder):
+            # @DESIGN: We could also force callers to use `:safe` to trigger
+            # the interpolation in this special case.
+            return Markup(value.__html__())
+        elif isinstance(value, (Template, Iterable)):
+            raise ValueError(
+                f"Recursive includes are not supported within {parent_tag}"
+            )
+        else:
+            return str(value)
+    else:
+        text = []
+        for part in content_ref:
+            if isinstance(part, str):
+                if part:
+                    text.append(part)
+                continue
+            value = format_interpolation(template.interpolations[part])
+            value = t.cast(RawTextInexactInterpolationValue, value)  # ty: ignore[redundant-cast]
+            if value is None or isinstance(value, bool):
+                continue
+            elif (
+                type(value) is str
+            ):  # type() check to avoid subclasses, probably something smarter here
+                if value:
+                    text.append(value)
+            elif not isinstance(value, str) and isinstance(value, (Template, Iterable)):
+                raise ValueError(
+                    f"Recursive includes are not supported within {parent_tag}"
+                )
+            elif isinstance(value, HasHTMLDunder):
+                raise ValueError(
+                    f"Non-exact trusted interpolations are not supported within {parent_tag}"
+                )
+            else:
+                value_str = str(value)
+                if value_str:
+                    text.append(value_str)
+        return "".join(text)
+
+
+def extract_embedded_template(
+    template: Template, body_start_s_index: int, end_i_index: int
+) -> Template:
+    """
+    Extract the template parts exclusively from start tag to end tag.
+
+    Note that interpolations INSIDE the start tag make this more complex
+    than just "the `s_index` after the component callable's `i_index`".
+
+    Example:
+    ```python
+    template = (
+        t'<{comp} attr={attr}>'
+            t'<div>{content} <span>{footer}</span></div>'
+        t'</{comp}>'
+    )
+    assert extract_children_template(template, 2, 4) == (
+        t'<div>{content} <span>{footer}</span></div>'
+    )
+    starttag = t'<{comp} attr={attr}>'
+    endtag = t'</{comp}>'
+    assert template == starttag + extract_children_template(template, 2, 4) + endtag
+    ```
+    @DESIGN: "There must be a better way."
+    """
+    # Copy the parts out of the containing template.
+    index = body_start_s_index
+    last_s_index = end_i_index
+    parts = []
+    while index <= last_s_index:
+        parts.append(template.strings[index])
+        if index != last_s_index:
+            parts.append(template.interpolations[index])
+        index += 1
+    # Now trim the first part to the end of the opening tag.
+    parts[0] = parts[0][parts[0].find(">") + 1 :]
+    # Now trim the last part (could also be the first) to the start of the closing tag.
+    parts[-1] = parts[-1][: parts[-1].rfind("<")]
+    return Template(*parts)
+
+
+def _make_default_template_processor(
+    parser_api: ITemplateParserProxy | None = None,
+) -> ITemplateProcessor:
+    """
+    Wrap our default options but allow parser api to change for testing.
+    """
+    return TemplateProcessor(
+        parser_api=CachedTemplateParserProxy() if parser_api is None else parser_api,
+        slash_void=True,
+        uppercase_doctype=True,
+    )
+
+
+_default_template_processor_api: ITemplateProcessor = _make_default_template_processor()
 
 
 # --------------------------------------------------------------------------
@@ -610,15 +977,13 @@ def _resolve_t_node(t_node: TNode, interpolations: tuple[Interpolation, ...]) ->
 # --------------------------------------------------------------------------
 
 
-def html(template: Template) -> Node:
-    """Parse an HTML t-string, substitute values, and return a tree of Nodes."""
-    cachable = CachableTemplate(template)
-    t_node = _parse_and_cache(cachable)
-    return _resolve_t_node(t_node, template.interpolations)
+def html(template: Template, assume_ctx: ProcessContext | None = None) -> str:
+    """Parse an HTML t-string, substitute values, and return a string of HTML."""
+    return _default_template_processor_api.process(template, assume_ctx)
 
 
-def svg(template: Template) -> Node:
-    """Parse a standalone SVG fragment and return a tree of Nodes.
+def svg(template: Template, assume_ctx: ProcessContext | None = None) -> str:
+    """Parse a standalone SVG fragment and return a string of HTML.
 
     Use when the template does not contain an ``<svg>`` wrapper element.
     Tag and attribute case-fixing (e.g. ``clipPath``, ``viewBox``) are applied
@@ -627,6 +992,8 @@ def svg(template: Template) -> Node:
     When the template does contain ``<svg>``, use ``html()`` — the SVG context
     is detected automatically.
     """
-    cachable = CachableTemplate(template, svg_context=True)
-    t_node = _parse_and_cache(cachable)
-    return _resolve_t_node(t_node, template.interpolations)
+    if assume_ctx is None:
+        # We should probably be setting this to some sort of escaping function
+        # can raw text exist in SVG or MathML?
+        assume_ctx = make_ctx(parent_tag=DEFAULT_NORMAL_TEXT_ELEMENT, ns="svg")
+    return html(template, assume_ctx)
