@@ -1789,6 +1789,29 @@ class TestComponentErrors:
         with pytest.raises(TypeError):
             _ = html(t"<{OpenTag}>Hello</{CloseTag}>")
 
+    @pytest.mark.parametrize(
+        "bad_value", ("", "text", None, 1, ("tuple", "of", "strs"))
+    )
+    def test_function_component_returns_nontemplate_fails(self, bad_value):
+        def BadFunctionComp(children: Template):
+            return bad_value
+
+        with pytest.raises(TypeError, match="Unknown component return value:"):
+            _ = html(t"<{BadFunctionComp}>Hello</{BadFunctionComp}>")
+
+    @pytest.mark.parametrize(
+        "bad_value", ("", "text", None, 1, ("tuple", "of", "strs"))
+    )
+    def test_component_object_returns_nontemplate_fails(self, bad_value):
+        def BadFactoryComp(children: Template):
+            def component_object():
+                return bad_value
+
+            return component_object
+
+        with pytest.raises(TypeError, match="Unknown component return value:"):
+            _ = html(t"<{BadFactoryComp}>Hello</{BadFactoryComp}>")
+
 
 def test_integration_basic():
     comment_text = "comment is not literal"
