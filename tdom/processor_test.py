@@ -1,6 +1,7 @@
 import datetime
 import typing as t
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from itertools import chain, product
 from string.templatelib import Template
@@ -13,16 +14,22 @@ from .callables import get_callable_info
 from .escaping import escape_html_text
 from .processor import (
     CachedTemplateParserProxy,
+    ComponentCallable,
+    ComponentObject,
+    DefaultAppState,
+    IComponentProcessor,
     ProcessContext,
     TemplateParserProxy,
     TemplateProcessor,
     _make_default_template_processor,
+    _resolve_t_attrs,
 )
 from .processor import (
     _prep_component_kwargs as prep_component_kwargs,
 )
 from .protocols import HasHTMLDunder
 from .template_utils import TemplateRef
+from .tnodes import TAttribute
 
 processor_api = _make_default_template_processor(
     parser_api=TemplateParserProxy(),  # do not use cache
@@ -36,7 +43,7 @@ def make_ctx(**kwargs):
 def html(
     template: Template,
     assume_ctx: ProcessContext | None = None,
-    app_state: dict[str, object] | None = None,
+    app_state: DefaultAppState | None = None,
 ) -> str:
     if assume_ctx is None:
         assume_ctx = ProcessContext()
@@ -1832,6 +1839,77 @@ class TestComponentErrors:
             _ = html(t"<{BadFactoryComp}>Hello</{BadFactoryComp}>")
 
 
+@dataclass()
+class SystemState:
+    path_prefix: str
+
+
+SystemCtx: ContextVar[SystemState | None] = ContextVar("SystemCtx", default=None)
+
+
+class TestComponentProcessor:
+    class SystemComponentProcessor[T=DefaultAppState](IComponentProcessor[T]):
+        def process(
+            self,
+            template: Template,
+            last_ctx: ProcessContext,
+            app_state: T,
+            component_callable: ComponentCallable,
+            attrs: tuple[TAttribute, ...],
+            component_template: Template,
+        ) -> ComponentObject | Template:
+
+            system_ctx = SystemCtx.get()
+            if system_ctx is not None:
+                provided_attrs = (("system_path_prefix", system_ctx.path_prefix),)
+            else:
+                provided_attrs = ()
+            kwargs = prep_component_kwargs(
+                get_callable_info(component_callable),
+                _resolve_t_attrs(attrs, template.interpolations),
+                children=component_template,
+                provided_attrs=provided_attrs,
+            )
+            return component_callable(**kwargs)
+
+    def test_replacement(self):
+        def Header(children: Template) -> Template:
+            return t"<div class=hdr>{children}</div>"
+
+        def Nav(system_path_prefix: str = "") -> Template:
+            about_url = f"{system_path_prefix.rstrip('/')}/about"
+            return t"<div class=nav><a href={about_url}>About</a></div>"
+
+        sys_comp_processor = self.SystemComponentProcessor()
+
+        tp = TemplateProcessor(component_processor_api=sys_comp_processor)
+
+        assume_ctx = ProcessContext()
+        app_state = {}
+        assert tp.process(
+            t"<{Header}><{Nav} /></{Header}>",
+            assume_ctx=assume_ctx,
+            app_state=app_state,
+        ) == (
+            '<div class="hdr"><div class="nav"><a href="/about">About</a></div></div>'
+        )
+        with SystemCtx.set(SystemState(path_prefix="https://example.com/")):
+            assert tp.process(
+                t"<{Header}><{Nav} /></{Header}>",
+                assume_ctx=assume_ctx,
+                app_state=app_state,
+            ) == (
+                '<div class="hdr"><div class="nav"><a href="https://example.com/about">About</a></div></div>'
+            )
+            assert tp.process(
+                t"<{Header}><{Nav} /></{Header}>",
+                assume_ctx=assume_ctx,
+                app_state=app_state,
+            ) != (
+                '<div class="hdr"><div class="nav"><a href="/about">About</a></div></div>'
+            )
+
+
 def test_integration_basic():
     comment_text = "comment is not literal"
     interpolated_class = "red"
@@ -2172,12 +2250,12 @@ def test_mathml():
 
 
 class TestAppState:
-    class CustomTemplateProcessor(TemplateProcessor[dict[str, object]]):
+    class CustomTemplateProcessor(TemplateProcessor[DefaultAppState]):
         def _process_comment(
             self,
             template: Template,
             last_ctx: ProcessContext,
-            app_state: dict[str, object],
+            app_state: DefaultAppState,
             content_ref: TemplateRef,
         ) -> str:
             cstr = super()._process_comment(template, last_ctx, app_state, content_ref)
