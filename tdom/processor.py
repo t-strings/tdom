@@ -387,13 +387,24 @@ def _prep_component_kwargs(
     callable_info: CallableInfo,
     attrs: AttributesDict,
     children: Template,
+    provided_attrs: tuple[Attribute, ...] = (),
 ) -> AttributesDict:
+    """
+    Matchup kwargs from multiple sources to target the given callable.
+
+    The `provided_attrs` can be used by extensions that want to provide
+    kwargs even if they are not specified in a template.
+    """
     if callable_info.requires_positional:
         raise TypeError(
             "Component callables cannot have required positional arguments."
         )
 
     kwargs: AttributesDict = {}
+
+    for pattr_name, pattr_value in provided_attrs:
+        if pattr_name in callable_info.named_params or callable_info.kwargs:
+            kwargs[pattr_name] = pattr_value
 
     # Add all supported attributes
     for attr_name, attr_value in attrs.items():
