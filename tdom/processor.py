@@ -561,6 +561,10 @@ class ComponentProcessor(IComponentProcessor):
         Default strategy just uses `_prep_component_kwargs` for `kwargs`
         injecting `children` if asked.
         """
+        if not callable(component_callable):
+            raise TypeError(
+                f"Component callable must be callable: {type(component_callable)}"
+            )
         kwargs = _prep_component_kwargs(
             get_callable_info(component_callable),
             _resolve_t_attrs(attrs, template.interpolations),
