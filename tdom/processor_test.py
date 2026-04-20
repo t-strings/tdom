@@ -1,6 +1,7 @@
 import datetime
 import typing as t
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass
 from itertools import chain, product
 from string.templatelib import Template
@@ -13,15 +14,21 @@ from .callables import get_callable_info
 from .escaping import escape_html_text
 from .processor import (
     CachedTemplateParserProxy,
+    ComponentCallable,
+    ComponentObject,
+    IComponentProcessor,
     ProcessContext,
     TemplateParserProxy,
     TemplateProcessor,
     _make_default_template_processor,
+    _resolve_t_attrs,
+    make_ctx,
 )
 from .processor import (
     _prep_component_kwargs as prep_component_kwargs,
 )
 from .protocols import HasHTMLDunder
+from .tnodes import TAttribute
 
 processor_api = _make_default_template_processor(
     parser_api=TemplateParserProxy(),  # do not use cache
@@ -1823,6 +1830,62 @@ class TestComponentErrors:
 
         with pytest.raises(TypeError, match="Unknown component return value:"):
             _ = html(t"<{BadFactoryComp}>Hello</{BadFactoryComp}>")
+
+
+@dataclass()
+class SystemState:
+    path_prefix: str
+
+
+SystemCtx: ContextVar[SystemState | None] = ContextVar("SystemCtx", default=None)
+
+
+class TestComponentProcessor:
+    class SystemComponentProcessor(IComponentProcessor):
+        def process(
+            self,
+            template: Template,
+            last_ctx: ProcessContext,
+            component_callable: ComponentCallable,
+            attrs: tuple[TAttribute, ...],
+            component_template: Template,
+        ) -> ComponentObject | Template:
+
+            system_ctx = SystemCtx.get()
+            if system_ctx is not None:
+                provided_attrs = (("system_path_prefix", system_ctx.path_prefix),)
+            else:
+                provided_attrs = ()
+            kwargs = prep_component_kwargs(
+                get_callable_info(component_callable),
+                _resolve_t_attrs(attrs, template.interpolations),
+                children=component_template,
+                provided_attrs=provided_attrs,
+            )
+            return component_callable(**kwargs)
+
+    def test_replacement(self):
+        def Header(children: Template) -> Template:
+            return t"<div class=hdr>{children}</div>"
+
+        def Nav(system_path_prefix: str = "") -> Template:
+            about_url = f"{system_path_prefix.rstrip('/')}/about"
+            return t"<div class=nav><a href={about_url}>About</a></div>"
+
+        sys_comp_processor = self.SystemComponentProcessor()
+
+        tp = TemplateProcessor(component_processor_api=sys_comp_processor)
+
+        assert tp.process(t"<{Header}><{Nav} /></{Header}>") == (
+            '<div class="hdr"><div class="nav"><a href="/about">About</a></div></div>'
+        )
+        with SystemCtx.set(SystemState(path_prefix="https://example.com/")):
+            assert tp.process(t"<{Header}><{Nav} /></{Header}>") == (
+                '<div class="hdr"><div class="nav"><a href="https://example.com/about">About</a></div></div>'
+            )
+            assert tp.process(t"<{Header}><{Nav} /></{Header}>") != (
+                '<div class="hdr"><div class="nav"><a href="/about">About</a></div></div>'
+            )
 
 
 def test_integration_basic():
