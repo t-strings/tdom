@@ -534,6 +534,7 @@ class IComponentProcessor(t.Protocol):
         component_callable: ComponentCallable,
         attrs: tuple[TAttribute, ...],
         component_template: Template,
+        provided_attrs: tuple[Attribute, ...] = (),
     ) -> ComponentObject | Template:
         """
         Process available component details into a queryable object or template.
@@ -554,6 +555,7 @@ class ComponentProcessor(IComponentProcessor):
         component_callable: ComponentCallable,
         attrs: tuple[TAttribute, ...],
         component_template: Template,
+        provided_attrs: tuple[Attribute, ...] = (),
     ) -> ComponentObject | Template:
         """
         Process available component details into a queryable object or template.
@@ -569,6 +571,7 @@ class ComponentProcessor(IComponentProcessor):
             get_callable_info(component_callable),
             _resolve_t_attrs(attrs, template.interpolations),
             children=component_template,
+            provided_attrs=provided_attrs,
         )
         return component_callable(**kwargs)
 
