@@ -2,7 +2,7 @@ import datetime
 import typing as t
 from collections.abc import Callable
 from contextvars import ContextVar
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from itertools import chain, product
 from string.templatelib import Template
 
@@ -13,16 +13,17 @@ from markupsafe import escape as markupsafe_escape
 from .callables import get_callable_info
 from .escaping import escape_html_text
 from .processor import (
+    Attribute,
     CachedTemplateParserProxy,
     ComponentCallable,
     ComponentObject,
+    ComponentProcessor,
     DefaultAppState,
     IComponentProcessor,
     ProcessContext,
     TemplateParserProxy,
     TemplateProcessor,
     _make_default_template_processor,
-    _resolve_t_attrs,
 )
 from .processor import (
     _prep_component_kwargs as prep_component_kwargs,
@@ -1841,14 +1842,62 @@ class TestComponentErrors:
 
 @dataclass()
 class SystemState:
-    path_prefix: str
+    components: dict[object, ComponentCallable] = field(
+        default_factory=dict
+    )  # t.Type[t.Protocol]
 
 
 SystemCtx: ContextVar[SystemState | None] = ContextVar("SystemCtx", default=None)
 
 
 class TestComponentProcessor:
+    class IHeader(t.Protocol):
+        children: Template
+        hdr_class: str
+
+        def __call__(self) -> Template: ...
+
+    @dataclass
+    class Header(IHeader):
+        children: Template
+
+        hdr_class: str = "hdr"
+
+        def __call__(self) -> Template:
+            return t"<div class={self.hdr_class}>{self.children}</div>"
+
+    class INav(t.Protocol):
+        links: tuple[tuple[str, str], ...]
+
+        def __call__(self) -> Template: ...
+
+    @dataclass
+    class Nav(INav):
+        links: tuple[tuple[str, str], ...] = ()
+
+        nav_class: str = "nav"
+
+        def _make_nav_links(self) -> list[Template]:
+            return [t"<a href={href}>{label}</a>" for label, href in self.links]
+
+        def __call__(self) -> Template:
+            return t"<div class={self.nav_class}>{self._make_nav_links()}</div>"
+
+    @dataclass
+    class Logo:  # NO DI / NO Protocol
+        logo_fallback: str = "LOGO"
+
+        logo_class: str = "logo"
+
+        def __call__(self) -> Template:
+            return t"<span class={self.logo_class}>{self.logo_fallback}</span>"
+
+    @dataclass
     class SystemComponentProcessor[T=DefaultAppState](IComponentProcessor[T]):
+        default_component_processor_api: IComponentProcessor[T] = field(
+            default_factory=ComponentProcessor[T]
+        )
+
         def process(
             self,
             template: Template,
@@ -1857,56 +1906,45 @@ class TestComponentProcessor:
             component_callable: ComponentCallable,
             attrs: tuple[TAttribute, ...],
             component_template: Template,
+            provided_attrs: tuple[Attribute, ...] = (),
         ) -> ComponentObject | Template:
+            from inspect import isclass
 
             system_ctx = SystemCtx.get()
-            if system_ctx is not None:
-                provided_attrs = (("system_path_prefix", system_ctx.path_prefix),)
-            else:
-                provided_attrs = ()
-            kwargs = prep_component_kwargs(
-                get_callable_info(component_callable),
-                _resolve_t_attrs(attrs, template.interpolations),
-                children=component_template,
+            if (
+                system_ctx is not None
+                and isclass(component_callable)
+                and t.is_protocol(component_callable)
+                and component_callable in system_ctx.components
+            ):
+                component_callable = system_ctx.components[component_callable]
+            return self.default_component_processor_api.process(
+                template=template,
+                last_ctx=last_ctx,
+                app_state=app_state,
+                component_callable=component_callable,
+                attrs=attrs,
+                component_template=component_template,
                 provided_attrs=provided_attrs,
             )
-            return component_callable(**kwargs)
 
     def test_replacement(self):
-        def Header(children: Template) -> Template:
-            return t"<div class=hdr>{children}</div>"
-
-        def Nav(system_path_prefix: str = "") -> Template:
-            about_url = f"{system_path_prefix.rstrip('/')}/about"
-            return t"<div class=nav><a href={about_url}>About</a></div>"
-
         sys_comp_processor = self.SystemComponentProcessor()
 
         tp = TemplateProcessor(component_processor_api=sys_comp_processor)
 
         assume_ctx = ProcessContext()
         app_state = {}
-        assert tp.process(
-            t"<{Header}><{Nav} /></{Header}>",
-            assume_ctx=assume_ctx,
-            app_state=app_state,
-        ) == (
-            '<div class="hdr"><div class="nav"><a href="/about">About</a></div></div>'
-        )
-        with SystemCtx.set(SystemState(path_prefix="https://example.com/")):
-            assert tp.process(
-                t"<{Header}><{Nav} /></{Header}>",
-                assume_ctx=assume_ctx,
-                app_state=app_state,
-            ) == (
-                '<div class="hdr"><div class="nav"><a href="https://example.com/about">About</a></div></div>'
-            )
-            assert tp.process(
-                t"<{Header}><{Nav} /></{Header}>",
-                assume_ctx=assume_ctx,
-                app_state=app_state,
-            ) != (
-                '<div class="hdr"><div class="nav"><a href="/about">About</a></div></div>'
+        # Mapping established beforehand.
+        components: dict[object, ComponentCallable] = {  # t.Type[t.Protocol]
+            self.IHeader: self.Header,
+            self.INav: self.Nav,
+        }
+        with SystemCtx.set(SystemState(components=components)):
+            links = [("Home", "/"), ("About", "/about")]
+            header_t = t"<{self.IHeader}><{self.Logo} /><{self.INav} links={links} /></{self.IHeader}>"
+            assert tp.process(header_t, assume_ctx=assume_ctx, app_state=app_state) == (
+                '<div class="hdr"><span class="logo">LOGO</span><div class="nav"><a href="/">Home</a><a href="/about">About</a></div></div>'
             )
 
 
