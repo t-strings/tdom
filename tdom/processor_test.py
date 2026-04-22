@@ -22,6 +22,7 @@ from .processor import (
     _prep_component_kwargs as prep_component_kwargs,
 )
 from .protocols import HasHTMLDunder
+from .template_utils import TemplateRef
 
 processor_api = _make_default_template_processor(
     parser_api=TemplateParserProxy(),  # do not use cache
@@ -2168,3 +2169,30 @@ def test_mathml():
   is not a decimal number.
 </p>"""
     )
+
+
+class TestAppContext:
+    class CustomTemplateProcessor(TemplateProcessor[dict[str, object]]):
+        def _process_comment(
+            self,
+            template: Template,
+            last_ctx: ProcessContext,
+            app_ctx: dict[str, object],
+            content_ref: TemplateRef,
+        ) -> str:
+            cstr = super()._process_comment(template, last_ctx, app_ctx, content_ref)
+            if app_ctx.get("logged_in", None):
+                return "".join([cstr[: -len("-->")], "LOGGEDIN", "-->"])
+            return cstr
+
+    def test_app_context(self):
+        tp = self.CustomTemplateProcessor()
+        last_ctx = ProcessContext()
+        res = tp.process(
+            t"<!--sample-->", assume_ctx=last_ctx, app_ctx={"logged_in": True}
+        )
+        assert res == "<!--sampleLOGGEDIN-->" and res != "<!--sample-->"
+        res = tp.process(
+            t"<!--sample-->", assume_ctx=last_ctx, app_ctx={"logged_in": False}
+        )
+        assert res != "<!--sampleLOGGEDIN-->" and res == "<!--sample-->"
