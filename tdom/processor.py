@@ -46,7 +46,6 @@ from .parser import (
     TText,
 )
 from .protocols import HasHTMLDunder
-from .sentinel import NOT_SET, NotSet
 from .template_utils import TemplateRef
 from .utils import CachableTemplate, LastUpdatedOrderedDict
 
@@ -430,33 +429,19 @@ def _fix_svg_attrs(html_attrs: Iterable[HTMLAttribute]) -> Iterable[HTMLAttribut
         yield SVG_ATTR_FIX.get(k, k), v
 
 
-def make_ctx(parent_tag: str | None = None, ns: str | None = "html"):
-    return ProcessContext(parent_tag=parent_tag, ns=ns)
-
-
 @dataclass(frozen=True, slots=True)
 class ProcessContext:
-    # None means unknown not just a missing value.
-    parent_tag: str | None = None
-    # None means unknown not just a missing value.
-    ns: str | None = None
+    parent_tag: str = DEFAULT_NORMAL_TEXT_ELEMENT
+    ns: str = "html"
 
     def copy(
         self,
-        ns: NotSet | str | None = NOT_SET,
-        parent_tag: NotSet | str | None = NOT_SET,
-    ):
-        if isinstance(ns, NotSet):
-            resolved_ns = self.ns
-        else:
-            resolved_ns = ns
-        if isinstance(parent_tag, NotSet):
-            resolved_parent_tag = self.parent_tag
-        else:
-            resolved_parent_tag = parent_tag
-        return make_ctx(
-            parent_tag=resolved_parent_tag,
-            ns=resolved_ns,
+        ns: str | None = None,
+        parent_tag: str | None = None,
+    ) -> ProcessContext:
+        return ProcessContext(
+            parent_tag=parent_tag if parent_tag is not None else self.parent_tag,
+            ns=ns if ns is not None else self.ns,
         )
 
 
@@ -513,9 +498,7 @@ class CachedTemplateParserProxy(TemplateParserProxy):
 
 
 class ITemplateProcessor(t.Protocol):
-    def process(
-        self, root_template: Template, assume_ctx: ProcessContext | None = None
-    ) -> str: ...
+    def process(self, root_template: Template, assume_ctx: ProcessContext) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -535,15 +518,13 @@ class TemplateProcessor(ITemplateProcessor):
     uppercase_doctype: bool = False  # DOCTYPE vs doctype
 
     def process(
-        self, root_template: Template, assume_ctx: ProcessContext | None = None
+        self,
+        root_template: Template,
+        assume_ctx: ProcessContext,
     ) -> str:
         """
         Process a TDOM compatible template into a string.
         """
-        if assume_ctx is None:
-            # @DESIGN: What do we want to do here?  Should we assume we are in
-            # a tag with normal text?
-            assume_ctx = make_ctx(parent_tag=DEFAULT_NORMAL_TEXT_ELEMENT, ns="html")
         return self._process_template(root_template, assume_ctx)
 
     def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
@@ -979,6 +960,8 @@ _default_template_processor_api: ITemplateProcessor = _make_default_template_pro
 
 def html(template: Template, assume_ctx: ProcessContext | None = None) -> str:
     """Parse an HTML t-string, substitute values, and return a string of HTML."""
+    if assume_ctx is None:
+        assume_ctx = ProcessContext()
     return _default_template_processor_api.process(template, assume_ctx)
 
 
@@ -993,7 +976,5 @@ def svg(template: Template, assume_ctx: ProcessContext | None = None) -> str:
     is detected automatically.
     """
     if assume_ctx is None:
-        # We should probably be setting this to some sort of escaping function
-        # can raw text exist in SVG or MathML?
-        assume_ctx = make_ctx(parent_tag=DEFAULT_NORMAL_TEXT_ELEMENT, ns="svg")
-    return html(template, assume_ctx)
+        assume_ctx = ProcessContext(ns="svg")
+    return html(template, assume_ctx=assume_ctx)
