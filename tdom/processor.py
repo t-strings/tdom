@@ -586,11 +586,7 @@ class TemplateProcessor(ITemplateProcessor):
         last_ctx: ProcessContext,
         ref: TemplateRef,
     ) -> str:
-        if last_ctx.parent_tag is None:
-            raise NotImplementedError(
-                "We cannot interpolate texts without knowing what tag they are contained in."
-            )
-        elif last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
+        if last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
             # Must be handled all at once.
             return self._process_raw_texts(template, last_ctx, ref)
         elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:

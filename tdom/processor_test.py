@@ -63,10 +63,9 @@ class TestBareTemplate:
 
     def test_text_singleton_without_parent(self):
         greeting = "</script>"
-        with pytest.raises(NotImplementedError):
-            # Explicitly set the parent tag as None.
-            ctx = make_ctx(parent_tag=None, ns="html")
-            _ = html(t"{greeting}", assume_ctx=ctx)
+        res = html(t"{greeting}")
+        assert res == "&lt;/script&gt;"
+        assert res != greeting
 
     def test_text_singleton_explicit_parent_script(self):
         greeting = "</script>"
