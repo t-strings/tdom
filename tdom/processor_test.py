@@ -32,10 +32,16 @@ def make_ctx(**kwargs):
     return ProcessContext(**kwargs)
 
 
-def html(template: Template, assume_ctx: ProcessContext | None = None):
+def html(
+    template: Template,
+    assume_ctx: ProcessContext | None = None,
+    app_ctx: dict[str, object] | None = None,
+) -> str:
     if assume_ctx is None:
         assume_ctx = ProcessContext()
-    return processor_api.process(template, assume_ctx=assume_ctx)
+    if app_ctx is None:
+        app_ctx = {}
+    return processor_api.process(template, assume_ctx=assume_ctx, app_ctx=app_ctx)
 
 
 # --------------------------------------------------------------------------
@@ -222,7 +228,7 @@ class TestDocumentType:
     def test_literal_lowercase(self):
         tp = TemplateProcessor(uppercase_doctype=False)
         assert (
-            tp.process(t"<!doctype html>", assume_ctx=ProcessContext())
+            tp.process(t"<!doctype html>", assume_ctx=ProcessContext(), app_ctx={})
             == "<!doctype html>"
         )
 

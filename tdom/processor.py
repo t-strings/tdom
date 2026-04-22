@@ -497,12 +497,17 @@ class CachedTemplateParserProxy(TemplateParserProxy):
         return self._to_tnode(CachableTemplate(template))
 
 
-class ITemplateProcessor(t.Protocol):
-    def process(self, root_template: Template, assume_ctx: ProcessContext) -> str: ...
+class ITemplateProcessor[T = dict[str, object]](t.Protocol):
+    def process(
+        self,
+        root_template: Template,
+        assume_ctx: ProcessContext,
+        app_ctx: T,
+    ) -> str: ...
 
 
 @dataclass(frozen=True)
-class TemplateProcessor(ITemplateProcessor):
+class TemplateProcessor[T = dict[str, object]](ITemplateProcessor[T]):
     parser_api: ITemplateParserProxy = field(default_factory=CachedTemplateParserProxy)
 
     escape_html_text: Callable = default_escape_html_text
@@ -521,43 +526,51 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         root_template: Template,
         assume_ctx: ProcessContext,
+        app_ctx: T,
     ) -> str:
         """
         Process a TDOM compatible template into a string.
         """
-        return self._process_template(root_template, assume_ctx)
+        return self._process_template(
+            root_template, last_ctx=assume_ctx, app_ctx=app_ctx
+        )
 
-    def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
+    def _process_template(
+        self, template: Template, last_ctx: ProcessContext, app_ctx: T
+    ) -> str:
         root = self.parser_api.to_tnode(template)
-        return self._process_tnode(template, last_ctx, root)
+        return self._process_tnode(template, last_ctx, app_ctx, root)
 
     def _process_tnode(
-        self, template: Template, last_ctx: ProcessContext, tnode: TNode
+        self, template: Template, last_ctx: ProcessContext, app_ctx: T, tnode: TNode
     ) -> str:
         """
         Process a tnode from a template's "t-tree" into a string.
         """
         match tnode:
             case TDocumentType(text):
-                return self._process_document_type(last_ctx, text)
+                return self._process_document_type(last_ctx, app_ctx, text)
             case TComment(ref):
-                return self._process_comment(template, last_ctx, ref)
+                return self._process_comment(template, last_ctx, app_ctx, ref)
             case TFragment(children):
-                return self._process_fragment(template, last_ctx, children)
+                return self._process_fragment(template, last_ctx, app_ctx, children)
             case TComponent(start_i_index, end_i_index, attrs, children):
                 return self._process_component(
-                    template, last_ctx, attrs, start_i_index, end_i_index
+                    template, last_ctx, app_ctx, attrs, start_i_index, end_i_index
                 )
             case TElement(tag, attrs, children):
-                return self._process_element(template, last_ctx, tag, attrs, children)
+                return self._process_element(
+                    template, last_ctx, app_ctx, tag, attrs, children
+                )
             case TText(ref):
-                return self._process_texts(template, last_ctx, ref)
+                return self._process_texts(template, last_ctx, app_ctx, ref)
             case _:
                 raise ValueError(f"Unrecognized tnode: {tnode}")
 
     def _process_document_type(
         self,
         last_ctx: ProcessContext,
+        app_ctx: T,
         text: str,
     ) -> str:
         if last_ctx.ns != "html":
@@ -574,31 +587,35 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_ctx: T,
         children: Iterable[TNode],
     ) -> str:
         return "".join(
-            self._process_tnode(template, last_ctx, child) for child in children
+            self._process_tnode(template, last_ctx, app_ctx, child)
+            for child in children
         )
 
     def _process_texts(
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_ctx: T,
         ref: TemplateRef,
     ) -> str:
         if last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
             # Must be handled all at once.
-            return self._process_raw_texts(template, last_ctx, ref)
+            return self._process_raw_texts(template, last_ctx, app_ctx, ref)
         elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
             # We can handle all at once because there are no non-text children and everything must be string-ified.
-            return self._process_escapable_raw_texts(template, last_ctx, ref)
+            return self._process_escapable_raw_texts(template, last_ctx, app_ctx, ref)
         else:
-            return self._process_normal_texts(template, last_ctx, ref)
+            return self._process_normal_texts(template, last_ctx, app_ctx, ref)
 
     def _process_comment(
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_ctx: T,
         content_ref: TemplateRef,
     ) -> str:
         """
@@ -612,6 +629,7 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_ctx: T,
         tag: str,
         attrs: tuple[TAttribute, ...],
         children: tuple[TNode, ...],
@@ -629,7 +647,7 @@ class TemplateProcessor(ITemplateProcessor):
             starttag = endtag = tag
         out.append(f"<{starttag}")
         if attrs:
-            out.append(self._process_attrs(template, our_ctx, attrs))
+            out.append(self._process_attrs(template, our_ctx, app_ctx, attrs))
         # @TODO: How can we tell if we write out children or not in
         # order to self-close in non-html contexts, ie. SVG?
         if self.slash_void and tag in VOID_ELEMENTS:
@@ -643,7 +661,8 @@ class TemplateProcessor(ITemplateProcessor):
             else:
                 child_ctx = our_ctx
             out.extend(
-                self._process_tnode(template, child_ctx, child) for child in children
+                self._process_tnode(template, child_ctx, app_ctx, child)
+                for child in children
             )
             out.append(f"</{endtag}>")
         return "".join(out)
@@ -652,6 +671,7 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_ctx: T,
         attrs: tuple[TAttribute, ...],
     ) -> str:
         """
@@ -672,6 +692,7 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_ctx: T,
         attrs: tuple[TAttribute, ...],
         start_i_index: int,
         end_i_index: int | None,
@@ -719,7 +740,7 @@ class TemplateProcessor(ITemplateProcessor):
             component_obj = None
 
         if isinstance(result_t, Template):
-            return self._process_template(result_t, last_ctx)
+            return self._process_template(result_t, last_ctx, app_ctx)
         else:
             raise TypeError(f"Unknown component return value: {type(result_t)}")
 
@@ -727,6 +748,7 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_ctx: T,
         content_ref: TemplateRef,
     ) -> str:
         """
@@ -755,6 +777,7 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_ctx: T,
         content_ref: TemplateRef,
     ) -> str:
         """
@@ -767,7 +790,11 @@ class TemplateProcessor(ITemplateProcessor):
         return self.escape_html_text(content)
 
     def _process_normal_texts(
-        self, template: Template, last_ctx: ProcessContext, content_ref: TemplateRef
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        app_ctx: T,
+        content_ref: TemplateRef,
     ):
         """
         Process the given context into a string as "normal text".
@@ -776,7 +803,9 @@ class TemplateProcessor(ITemplateProcessor):
             (
                 self.escape_html_text(part)
                 if isinstance(part, str)
-                else self._process_normal_text(template, last_ctx, t.cast(int, part))
+                else self._process_normal_text(
+                    template, last_ctx, app_ctx, t.cast(int, part)
+                )
             )
             for part in content_ref
         )
@@ -785,6 +814,7 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_ctx: T,
         values_index: int,
     ) -> str:
         """
@@ -794,12 +824,13 @@ class TemplateProcessor(ITemplateProcessor):
         """
         value = format_interpolation(template.interpolations[values_index])
         value = t.cast(NormalTextInterpolationValue, value)  # ty: ignore[redundant-cast]
-        return self._process_normal_text_from_value(template, last_ctx, value)
+        return self._process_normal_text_from_value(template, last_ctx, app_ctx, value)
 
     def _process_normal_text_from_value(
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_ctx: T,
         value: NormalTextInterpolationValue,
     ) -> str:
         """
@@ -815,10 +846,10 @@ class TemplateProcessor(ITemplateProcessor):
             # implementing HasHTMLDunder.
             return self.escape_html_text(value)
         elif isinstance(value, Template):
-            return self._process_template(value, last_ctx)
+            return self._process_template(value, last_ctx, app_ctx)
         elif isinstance(value, Iterable):
             return "".join(
-                self._process_normal_text_from_value(template, last_ctx, v)
+                self._process_normal_text_from_value(template, last_ctx, app_ctx, v)
                 for v in value
             )
         elif isinstance(value, HasHTMLDunder):
@@ -934,19 +965,21 @@ def extract_embedded_template(
 
 
 def _make_default_template_processor(
-    parser_api: ITemplateParserProxy | None = None,
+    parser_api: ITemplateParserProxy,
 ) -> ITemplateProcessor:
     """
     Wrap our default options but allow parser api to change for testing.
     """
     return TemplateProcessor(
-        parser_api=CachedTemplateParserProxy() if parser_api is None else parser_api,
+        parser_api=parser_api,
         slash_void=True,
         uppercase_doctype=True,
     )
 
 
-_default_template_processor_api: ITemplateProcessor = _make_default_template_processor()
+_default_template_processor_api: ITemplateProcessor = _make_default_template_processor(
+    parser_api=CachedTemplateParserProxy()
+)
 
 
 # --------------------------------------------------------------------------
@@ -954,14 +987,25 @@ _default_template_processor_api: ITemplateProcessor = _make_default_template_pro
 # --------------------------------------------------------------------------
 
 
-def html(template: Template, assume_ctx: ProcessContext | None = None) -> str:
+# Commit to a dict[str, object] here.
+def html(
+    template: Template,
+    assume_ctx: ProcessContext | None = None,
+    app_ctx: dict[str, object] | None = None,
+) -> str:
     """Parse an HTML t-string, substitute values, and return a string of HTML."""
     if assume_ctx is None:
         assume_ctx = ProcessContext()
-    return _default_template_processor_api.process(template, assume_ctx)
+    if app_ctx is None:
+        app_ctx = {}
+    return _default_template_processor_api.process(template, assume_ctx, app_ctx)
 
 
-def svg(template: Template, assume_ctx: ProcessContext | None = None) -> str:
+def svg(
+    template: Template,
+    assume_ctx: ProcessContext | None = None,
+    app_ctx: dict[str, object] | None = None,
+) -> str:
     """Parse a standalone SVG fragment and return a string of HTML.
 
     Use when the template does not contain an ``<svg>`` wrapper element.
@@ -973,4 +1017,4 @@ def svg(template: Template, assume_ctx: ProcessContext | None = None) -> str:
     """
     if assume_ctx is None:
         assume_ctx = ProcessContext(ns="svg")
-    return html(template, assume_ctx=assume_ctx)
+    return html(template, assume_ctx=assume_ctx, app_ctx=app_ctx)
