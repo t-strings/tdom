@@ -1835,6 +1835,7 @@ class TestComponentErrors:
 
 @dataclass()
 class SystemState:
+    request: ISimpleRequest
     components: dict[object, ComponentCallable] = field(
         default_factory=dict
     )  # t.Type[t.Protocol]
@@ -1843,7 +1844,20 @@ class SystemState:
 SystemCtx: ContextVar[SystemState | None] = ContextVar("SystemCtx", default=None)
 
 
+class ISimpleRequest(t.Protocol):
+    def make_url(self, path: str) -> str: ...
+
+
 class TestComponentProcessor:
+    @dataclass
+    class SimpleRequest(ISimpleRequest):
+        scheme: str
+        host: str
+
+        def make_url(self, path: str) -> str:
+            # @NOTE: Don't actually make URLs this way, this is just an example.
+            return f"{self.scheme}://{self.host}/{path.lstrip('/')}"
+
     class IHeader(t.Protocol):
         children: Template
         hdr_class: str
@@ -1860,18 +1874,25 @@ class TestComponentProcessor:
             return t"<div class={self.hdr_class}>{self.children}</div>"
 
     class INav(t.Protocol):
+        request: ISimpleRequest
+
         links: tuple[tuple[str, str], ...]
 
         def __call__(self) -> Template: ...
 
     @dataclass
     class Nav(INav):
+        request: ISimpleRequest
+
         links: tuple[tuple[str, str], ...] = ()
 
         nav_class: str = "nav"
 
         def _make_nav_links(self) -> list[Template]:
-            return [t"<a href={href}>{label}</a>" for label, href in self.links]
+            return [
+                t"<a href={self.request.make_url(href)}>{label}</a>"
+                for label, href in self.links
+            ]
 
         def __call__(self) -> Template:
             return t"<div class={self.nav_class}>{self._make_nav_links()}</div>"
@@ -1909,7 +1930,28 @@ class TestComponentProcessor:
                 and t.is_protocol(component_callable)
                 and component_callable in system_ctx.components
             ):
+                # Use the protocol to get the concrete component factory.
+                # @NOTE: This is using the contextvars.ContextVar to
+                # get this information but maybe in the future we'd have
+                # a way to get ctx directly from a parameter.
                 component_callable = system_ctx.components[component_callable]
+
+            # Also pass in system provided attributes to EVERY
+            # component (but it will only be used during the call if it needed.
+            # @NOTE: This is using the contextvars.ContextVar to
+            # get this information but maybe in the future we'd have
+            # a way to get ctx directly from a parameter.
+            if system_ctx is not None:
+                system_attrs = (("request", system_ctx.request),)
+                provided_attrs = provided_attrs + system_attrs
+
+            # @NOTE: We mostly just put the correct values in the right places
+            # to perform the default component processing.
+            # - `component_callable` is now the actual concrete implementation
+            # - `provided_attrs` now has attrs that might not be in the template
+            # So we can just wrap the default processor and let it do all the
+            # work. BUT... if we wanted to just replace the invocation we could
+            # do that and just return the correct thing ourselves.
             return self.default_component_processor_api.process(
                 template=template,
                 last_ctx=last_ctx,
@@ -1929,11 +1971,18 @@ class TestComponentProcessor:
             self.IHeader: self.Header,
             self.INav: self.Nav,
         }
-        with SystemCtx.set(SystemState(components=components)):
+        current_request = self.SimpleRequest(scheme="https", host="www.example.com")
+        with SystemCtx.set(SystemState(components=components, request=current_request)):
             links = [("Home", "/"), ("About", "/about")]
             header_t = t"<{self.IHeader}><{self.Logo} /><{self.INav} links={links} /></{self.IHeader}>"
             assert tp.process(header_t) == (
-                '<div class="hdr"><span class="logo">LOGO</span><div class="nav"><a href="/">Home</a><a href="/about">About</a></div></div>'
+                '<div class="hdr">'
+                '<span class="logo">LOGO</span>'
+                '<div class="nav">'
+                '<a href="https://www.example.com/">Home</a>'
+                '<a href="https://www.example.com/about">About</a>'
+                "</div>"
+                "</div>"
             )
 
 
