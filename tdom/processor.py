@@ -990,11 +990,10 @@ _default_template_processor_api: ITemplateProcessor = _make_default_template_pro
 # --------------------------------------------------------------------------
 
 
-# Commit to a dict[str, object] here.
 def html(
     template: Template,
     assume_ctx: ProcessContext | None = None,
-    app_ctx: dict[str, object] | None = None,
+    app_ctx: DefaultAppContext | None = None,
 ) -> str:
     """Parse an HTML t-string, substitute values, and return a string of HTML."""
     if assume_ctx is None:
@@ -1007,7 +1006,7 @@ def html(
 def svg(
     template: Template,
     assume_ctx: ProcessContext | None = None,
-    app_ctx: dict[str, object] | None = None,
+    app_ctx: DefaultAppContext | None = None,
 ) -> str:
     """Parse a standalone SVG fragment and return a string of HTML.
 
