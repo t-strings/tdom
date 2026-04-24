@@ -1823,7 +1823,9 @@ class TestComponentErrors:
         def BadFunctionComp(children: Template):
             return bad_value
 
-        with pytest.raises(TypeError, match="Unknown component return value:"):
+        with pytest.raises(
+            TypeError, match="Component callable must return Template or Callable:"
+        ):
             _ = html(t"<{BadFunctionComp}>Hello</{BadFunctionComp}>")
 
     @pytest.mark.parametrize(
@@ -1836,7 +1838,9 @@ class TestComponentErrors:
 
             return component_object
 
-        with pytest.raises(TypeError, match="Unknown component return value:"):
+        with pytest.raises(
+            TypeError, match="Component object must return Template when called:"
+        ):
             _ = html(t"<{BadFactoryComp}>Hello</{BadFactoryComp}>")
 
 
@@ -1914,7 +1918,7 @@ class TestComponentProcessor:
             return t"<span class={self.logo_class}>{self.logo_fallback}</span>"
 
     @dataclass
-    class SystemComponentProcessor[T=DefaultAppState](IComponentProcessor[T]):
+    class SystemComponentProcessor[T = DefaultAppState](IComponentProcessor[T]):
         default_component_processor_api: IComponentProcessor[T] = field(
             default_factory=ComponentProcessor[T]
         )
@@ -1924,11 +1928,11 @@ class TestComponentProcessor:
             template: Template,
             last_ctx: ProcessContext,
             app_state: T,
-            component_callable: ComponentCallable,
+            component_callable: object,
             attrs: tuple[TAttribute, ...],
             component_template: Template,
             provided_attrs: tuple[Attribute, ...] = (),
-        ) -> ComponentObject | Template:
+        ) -> tuple[Template, ComponentObject | None]:
             from inspect import isclass
 
             system_ctx = SystemCtx.get()
