@@ -528,14 +528,13 @@ class IComponentProcessor(t.Protocol):
 
     def process(
         self,
-        # TODO: ? processor_api: IProcessor,
         template: Template,
         last_ctx: ProcessContext,
-        component_callable: ComponentCallable,
+        component_callable: t.Annotated[object, ComponentCallable],
         attrs: tuple[TAttribute, ...],
         component_template: Template,
         provided_attrs: tuple[Attribute, ...] = (),
-    ) -> ComponentObject | Template:
+    ) -> tuple[Template, ComponentObject | None]:
         """
         Process available component details into a queryable object or template.
         """
@@ -549,14 +548,13 @@ class ComponentProcessor(IComponentProcessor):
 
     def process(
         self,
-        # @TODO: ? processor_api: IProcessor,
         template: Template,
         last_ctx: ProcessContext,
-        component_callable: ComponentCallable,
+        component_callable: t.Annotated[object, ComponentCallable],
         attrs: tuple[TAttribute, ...],
         component_template: Template,
         provided_attrs: tuple[Attribute, ...] = (),
-    ) -> ComponentObject | Template:
+    ) -> tuple[Template, ComponentObject | None]:
         """
         Process available component details into a queryable object or template.
 
@@ -573,7 +571,28 @@ class ComponentProcessor(IComponentProcessor):
             children=component_template,
             provided_attrs=provided_attrs,
         )
-        return component_callable(**kwargs)
+        res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
+        # This integration API seems a lot cleaner but we lose the ability for
+        # component_object.__call__ to be wrapped in any sort of context setting
+        # mechanism provided by the class, but maybe that's ok?  It could be
+        # cached on the instance although that is kind of gross.
+        if isinstance(res1, Template):
+            return res1, None
+        elif callable(res1):
+            res2 = res1() # ty: ignore[call-top-callable]
+            if isinstance(res2, Template):
+                # @TODO: It seems like we should not need this.
+                # Although our check against res2 doesn't seem to affect the
+                # return value of res1.
+                return res2, t.cast(ComponentObject, res1)
+            else:
+                raise TypeError(
+                    f"Component object must return Template when called: {type(res2)}"
+                )
+        else:
+            raise TypeError(
+                f"Component callable must return Template or Callable: {type(res1)}"
+            )
 
 
 class ITemplateProcessor(t.Protocol):
@@ -759,6 +778,33 @@ class TemplateProcessor(ITemplateProcessor):
             return attrs_str
         return ""
 
+    def _extract_component_template(
+        self,
+        template: Template,
+        attrs: tuple[TAttribute, ...],
+        start_i_index: int,
+        end_i_index: int | None,
+        check_callables: bool = True,
+    ) -> Template:
+        body_start_s_index = (
+            start_i_index
+            + 1
+            + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
+        )
+        if start_i_index != end_i_index and end_i_index is not None:
+            # @TODO: We should do this during parsing.
+            if (
+                check_callables
+                and template.interpolations[start_i_index].value
+                != template.interpolations[end_i_index].value
+            ):
+                raise TypeError(
+                    "Component callable in start tag must match component callable in end tag."
+                )
+            return extract_embedded_template(template, body_start_s_index, end_i_index)
+        else:
+            return t""
+
     def _process_component(
         self,
         template: Template,
@@ -770,43 +816,15 @@ class TemplateProcessor(ITemplateProcessor):
         """
         Invoke a component and process the result into a string.
         """
-        body_start_s_index = (
-            start_i_index
-            + 1
-            + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
+        children_template = self._extract_component_template(
+            template, attrs, start_i_index, end_i_index, check_callables=True
         )
-        start_i = template.interpolations[start_i_index]
-        component_callable = t.cast(ComponentCallable, start_i.value)
-        if start_i_index != end_i_index and end_i_index is not None:
-            # @TODO: We should do this during parsing.
-            children_template = extract_embedded_template(
-                template, body_start_s_index, end_i_index
-            )
-            if component_callable != template.interpolations[end_i_index].value:
-                raise TypeError(
-                    "Component callable in start tag must match component callable in end tag."
-                )
-        else:
-            children_template = t""
-
-        result_t = self.component_processor_api.process(
+        component_callable = template.interpolations[start_i_index].value
+        result_t, component_object = self.component_processor_api.process(
             template, last_ctx, component_callable, attrs, children_template
         )
-
-        if (
-            result_t is not None
-            and not isinstance(result_t, Template)
-            and callable(result_t)
-        ):
-            component_obj = t.cast(ComponentObject, result_t)  # ty: ignore[redundant-cast]
-            result_t = component_obj()
-        else:
-            component_obj = None
-
-        if isinstance(result_t, Template):
-            return self._process_template(result_t, last_ctx)
-        else:
-            raise TypeError(f"Unknown component return value: {type(result_t)}")
+        assert isinstance(component_object, object)
+        return self._process_template(result_t, last_ctx)
 
     def _process_raw_texts(
         self,
