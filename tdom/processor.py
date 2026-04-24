@@ -497,7 +497,10 @@ class CachedTemplateParserProxy(TemplateParserProxy):
         return self._to_tnode(CachableTemplate(template))
 
 
-class ITemplateProcessor[T = dict[str, object]](t.Protocol):
+type DefaultAppContext = dict[str, object]
+
+
+class ITemplateProcessor[T = DefaultAppContext](t.Protocol):
     def process(
         self,
         root_template: Template,
@@ -507,7 +510,7 @@ class ITemplateProcessor[T = dict[str, object]](t.Protocol):
 
 
 @dataclass(frozen=True)
-class TemplateProcessor[T = dict[str, object]](ITemplateProcessor[T]):
+class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
     parser_api: ITemplateParserProxy = field(default_factory=CachedTemplateParserProxy)
 
     escape_html_text: Callable = default_escape_html_text
