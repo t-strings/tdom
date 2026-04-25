@@ -2173,5 +2173,3 @@ def test_mathml():
   is not a decimal number.
 </p>"""
     )
-
-

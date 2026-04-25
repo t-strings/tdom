@@ -173,6 +173,26 @@ class TestContextVarIntegration:
             )
 
 
+@dataclass
+class AuthStatus:
+    """
+    Component factory that shows authentication status.
+
+    app_logged_in:
+        True if the user is logged in, otherwise False.
+    classes:
+        Tuple of css classes to apply to the wrapping element.
+    """
+
+    app_logged_in: bool = False
+
+    classes: tuple[str, ...] = ("auth-display",)
+
+    def __call__(self) -> Template:
+        status_msg = "Logged In" if self.app_logged_in else "Logged Out"
+        return t"<span class={self.classes}>{status_msg}</span>"
+
+
 class TestAppStateIntegration:
     @dataclass
     class AppStateComponentProcessor(IComponentProcessor[DefaultAppState]):
@@ -203,31 +223,80 @@ class TestAppStateIntegration:
                 provided_attrs=provided_attrs,
             )
 
-    @dataclass
-    class AuthStatus:
-        app_logged_in: bool = False
-
-        classes: tuple[str, ...] = ("auth-display",)
-
-        def __call__(self) -> Template:
-            status_msg = "Logged In" if self.app_logged_in else "Logged Out"
-            return t"<span class={self.classes}>{status_msg}</span>"
-
     def test_injecting_app_state_into_component_kwargs(self):
         tp = TemplateProcessor(
             component_processor_api=self.AppStateComponentProcessor()
         )
         last_ctx = ProcessContext()
         res = tp.process(
-            t"<div><{self.AuthStatus} /></div>",
+            t"<div><{AuthStatus} /></div>",
             assume_ctx=last_ctx,
             app_state={"app_logged_in": True},
         )
         assert res == '<div><span class="auth-display">Logged In</span></div>'
         auth_cls = "auth-status"
         res = tp.process(
-            t"<div><{self.AuthStatus} classes={(auth_cls,)} /></div>",
+            t"<div><{AuthStatus} classes={(auth_cls,)} /></div>",
             assume_ctx=last_ctx,
             app_state={"app_logged_in": False},
+        )
+        assert res == '<div><span class="auth-status">Logged Out</span></div>'
+
+
+@dataclass
+class AppState:
+    """
+    Well defined application state that is created on every request
+    and provided to components via a custom component processor.
+    """
+
+    logged_in: bool = False
+
+
+class TestTypedAppStateIntegration:
+    @dataclass
+    class TypedAppStateComponentProcessor(IComponentProcessor[AppState]):
+        default_component_processor_api: IComponentProcessor[AppState] = field(
+            default_factory=ComponentProcessor[AppState]
+        )
+
+        def process(
+            self,
+            template: Template,
+            last_ctx: ProcessContext,
+            app_state: AppState,
+            component_callable: object,
+            attrs: tuple[TAttribute, ...],
+            component_template: Template,
+            provided_attrs: tuple[Attribute, ...] = (),
+        ) -> tuple[Template, ComponentObject | None]:
+            provided_attrs = provided_attrs + (("app_logged_in", app_state.logged_in),)
+            return self.default_component_processor_api.process(
+                template=template,
+                last_ctx=last_ctx,
+                app_state=app_state,
+                component_callable=component_callable,
+                attrs=attrs,
+                component_template=component_template,
+                provided_attrs=provided_attrs,
+            )
+
+    def test_injecting_typed_app_state_into_component_kwargs(self):
+        tp = TemplateProcessor(
+            component_processor_api=self.TypedAppStateComponentProcessor()
+        )
+        # assert False
+        last_ctx = ProcessContext()
+        res = tp.process(
+            t"<div><{AuthStatus} /></div>",
+            assume_ctx=last_ctx,
+            app_state=AppState(logged_in=True),
+        )
+        assert res == '<div><span class="auth-display">Logged In</span></div>'
+        auth_cls = "auth-status"
+        res = tp.process(
+            t"<div><{AuthStatus} classes={(auth_cls,)} /></div>",
+            assume_ctx=last_ctx,
+            app_state=AppState(logged_in=False),
         )
         assert res == '<div><span class="auth-status">Logged Out</span></div>'
