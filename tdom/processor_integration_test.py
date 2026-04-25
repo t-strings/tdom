@@ -198,6 +198,40 @@ class AuthStatus:
         return t"<span class={self.classes}>{status_msg}</span>"
 
 
+AppLoggedInCtx = ContextVar("AppLoggedInCtx", default=False)
+
+
+class TestSimpleContextVarIntegration:
+    def _make_html(self) -> t.Callable[[Template], str]:
+        # @NOTE: This integration does not use a component processor at all.
+        tp = TemplateProcessor()
+        assume_ctx = ProcessContext()
+
+        def _html(t: Template) -> str:
+            # @NOTE: This integration does not really use app state.
+            return tp.process(t, assume_ctx=assume_ctx, app_state={})
+
+        return _html
+
+    def test_inject_kwargs_with_cvar(self):
+        html = self._make_html()
+
+        def get_app_logged_in() -> bool:
+            return AppLoggedInCtx.get()
+
+        # @NOTE: This does not call the function immediately but rather it is called
+        # only when the template is processed.
+        test_t = (
+            t"<div><{AuthStatus} app_logged_in={get_app_logged_in:callback} /></div>"
+        )
+        with AppLoggedInCtx.set(True):
+            res = html(test_t)
+            assert res == '<div><span class="auth-display">Logged In</span></div>'
+        with AppLoggedInCtx.set(False):
+            res = html(test_t)
+            assert res == '<div><span class="auth-display">Logged Out</span></div>'
+
+
 class TestAppStateIntegration:
     @dataclass
     class AppStateComponentProcessor(IComponentProcessor[DefaultAppState]):
