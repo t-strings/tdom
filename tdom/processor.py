@@ -46,7 +46,6 @@ from .parser import (
     TText,
 )
 from .protocols import HasHTMLDunder
-from .sentinel import NOT_SET, NotSet
 from .template_utils import TemplateRef
 from .utils import CachableTemplate, LastUpdatedOrderedDict
 
@@ -387,13 +386,24 @@ def _prep_component_kwargs(
     callable_info: CallableInfo,
     attrs: AttributesDict,
     children: Template,
+    provided_attrs: tuple[Attribute, ...] = (),
 ) -> AttributesDict:
+    """
+    Matchup kwargs from multiple sources to target the given callable.
+
+    The `provided_attrs` can be used by extensions that want to provide
+    kwargs even if they are not specified in a template.
+    """
     if callable_info.requires_positional:
         raise TypeError(
             "Component callables cannot have required positional arguments."
         )
 
     kwargs: AttributesDict = {}
+
+    for pattr_name, pattr_value in provided_attrs:
+        if pattr_name in callable_info.named_params or callable_info.kwargs:
+            kwargs[pattr_name] = pattr_value
 
     # Add all supported attributes
     for attr_name, attr_value in attrs.items():
@@ -430,33 +440,19 @@ def _fix_svg_attrs(html_attrs: Iterable[HTMLAttribute]) -> Iterable[HTMLAttribut
         yield SVG_ATTR_FIX.get(k, k), v
 
 
-def make_ctx(parent_tag: str | None = None, ns: str | None = "html"):
-    return ProcessContext(parent_tag=parent_tag, ns=ns)
-
-
 @dataclass(frozen=True, slots=True)
 class ProcessContext:
-    # None means unknown not just a missing value.
-    parent_tag: str | None = None
-    # None means unknown not just a missing value.
-    ns: str | None = None
+    parent_tag: str = DEFAULT_NORMAL_TEXT_ELEMENT
+    ns: str = "html"
 
     def copy(
         self,
-        ns: NotSet | str | None = NOT_SET,
-        parent_tag: NotSet | str | None = NOT_SET,
-    ):
-        if isinstance(ns, NotSet):
-            resolved_ns = self.ns
-        else:
-            resolved_ns = ns
-        if isinstance(parent_tag, NotSet):
-            resolved_parent_tag = self.parent_tag
-        else:
-            resolved_parent_tag = parent_tag
-        return make_ctx(
-            parent_tag=resolved_parent_tag,
-            ns=resolved_ns,
+        ns: str | None = None,
+        parent_tag: str | None = None,
+    ) -> ProcessContext:
+        return ProcessContext(
+            parent_tag=parent_tag if parent_tag is not None else self.parent_tag,
+            ns=ns if ns is not None else self.ns,
         )
 
 
@@ -512,15 +508,99 @@ class CachedTemplateParserProxy(TemplateParserProxy):
         return self._to_tnode(CachableTemplate(template))
 
 
-class ITemplateProcessor(t.Protocol):
+class IComponentProcessor[T = DefaultAppState](t.Protocol):
+    """Isolate component processing to allow for replacement."""
+
     def process(
-        self, root_template: Template, assume_ctx: ProcessContext | None = None
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        app_state: T,
+        component_callable: t.Annotated[object, ComponentCallable],
+        attrs: tuple[TAttribute, ...],
+        component_template: Template,
+        provided_attrs: tuple[Attribute, ...] = (),
+    ) -> tuple[Template, ComponentObject | None]:
+        """
+        Process available component details into a queryable object or template.
+        """
+        ...
+
+
+class ComponentProcessor[T = DefaultAppState](IComponentProcessor[T]):
+    """
+    Default component processor.
+    """
+
+    def process(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        app_state: T,
+        component_callable: t.Annotated[object, ComponentCallable],
+        attrs: tuple[TAttribute, ...],
+        component_template: Template,
+        provided_attrs: tuple[Attribute, ...] = (),
+    ) -> tuple[Template, ComponentObject | None]:
+        """
+        Process available component details into a queryable object or template.
+
+        Default strategy just uses `_prep_component_kwargs` for `kwargs`
+        injecting `children` if asked.
+        """
+        if not callable(component_callable):
+            raise TypeError(
+                f"Component callable must be callable: {type(component_callable)}"
+            )
+        kwargs = _prep_component_kwargs(
+            get_callable_info(component_callable),
+            _resolve_t_attrs(attrs, template.interpolations),
+            children=component_template,
+            provided_attrs=provided_attrs,
+        )
+        res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
+        # This integration API seems a lot cleaner but we lose the ability for
+        # component_object.__call__ to be wrapped in any sort of context setting
+        # mechanism provided by the class, but maybe that's ok?  It could be
+        # cached on the instance although that is kind of gross.
+        if isinstance(res1, Template):
+            return res1, None
+        elif callable(res1):
+            res2 = res1()  # ty: ignore[call-top-callable]
+            if isinstance(res2, Template):
+                # @TODO: It seems like we should not need this.
+                # Although our check against res2 doesn't seem to affect the
+                # return value of res1.
+                return res2, t.cast(ComponentObject, res1)
+            else:
+                raise TypeError(
+                    f"Component object must return Template when called: {type(res2)}"
+                )
+        else:
+            raise TypeError(
+                f"Component callable must return Template or Callable: {type(res1)}"
+            )
+
+
+class ITemplateProcessor[T = DefaultAppState](t.Protocol):
+    def process(
+        self,
+        root_template: Template,
+        assume_ctx: ProcessContext,
+        app_state: T,
     ) -> str: ...
 
 
+type DefaultAppState = None
+
+
 @dataclass(frozen=True)
-class TemplateProcessor(ITemplateProcessor):
+class TemplateProcessor[T = DefaultAppState](ITemplateProcessor[T]):
     parser_api: ITemplateParserProxy = field(default_factory=CachedTemplateParserProxy)
+
+    component_processor_api: IComponentProcessor[T] = field(
+        default_factory=ComponentProcessor[T]
+    )
 
     escape_html_text: Callable = default_escape_html_text
 
@@ -535,48 +615,54 @@ class TemplateProcessor(ITemplateProcessor):
     uppercase_doctype: bool = False  # DOCTYPE vs doctype
 
     def process(
-        self, root_template: Template, assume_ctx: ProcessContext | None = None
+        self,
+        root_template: Template,
+        assume_ctx: ProcessContext,
+        app_state: T,
     ) -> str:
         """
         Process a TDOM compatible template into a string.
         """
-        if assume_ctx is None:
-            # @DESIGN: What do we want to do here?  Should we assume we are in
-            # a tag with normal text?
-            assume_ctx = make_ctx(parent_tag=DEFAULT_NORMAL_TEXT_ELEMENT, ns="html")
-        return self._process_template(root_template, assume_ctx)
+        return self._process_template(
+            root_template, last_ctx=assume_ctx, app_state=app_state
+        )
 
-    def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
+    def _process_template(
+        self, template: Template, last_ctx: ProcessContext, app_state: T
+    ) -> str:
         root = self.parser_api.to_tnode(template)
-        return self._process_tnode(template, last_ctx, root)
+        return self._process_tnode(template, last_ctx, app_state, root)
 
     def _process_tnode(
-        self, template: Template, last_ctx: ProcessContext, tnode: TNode
+        self, template: Template, last_ctx: ProcessContext, app_state: T, tnode: TNode
     ) -> str:
         """
         Process a tnode from a template's "t-tree" into a string.
         """
         match tnode:
             case TDocumentType(text):
-                return self._process_document_type(last_ctx, text)
+                return self._process_document_type(last_ctx, app_state, text)
             case TComment(ref):
-                return self._process_comment(template, last_ctx, ref)
+                return self._process_comment(template, last_ctx, app_state, ref)
             case TFragment(children):
-                return self._process_fragment(template, last_ctx, children)
+                return self._process_fragment(template, last_ctx, app_state, children)
             case TComponent(start_i_index, end_i_index, attrs, children):
                 return self._process_component(
-                    template, last_ctx, attrs, start_i_index, end_i_index
+                    template, last_ctx, app_state, attrs, start_i_index, end_i_index
                 )
             case TElement(tag, attrs, children):
-                return self._process_element(template, last_ctx, tag, attrs, children)
+                return self._process_element(
+                    template, last_ctx, app_state, tag, attrs, children
+                )
             case TText(ref):
-                return self._process_texts(template, last_ctx, ref)
+                return self._process_texts(template, last_ctx, app_state, ref)
             case _:
                 raise ValueError(f"Unrecognized tnode: {tnode}")
 
     def _process_document_type(
         self,
         last_ctx: ProcessContext,
+        app_state: T,
         text: str,
     ) -> str:
         if last_ctx.ns != "html":
@@ -593,35 +679,35 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_state: T,
         children: Iterable[TNode],
     ) -> str:
         return "".join(
-            self._process_tnode(template, last_ctx, child) for child in children
+            self._process_tnode(template, last_ctx, app_state, child)
+            for child in children
         )
 
     def _process_texts(
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_state: T,
         ref: TemplateRef,
     ) -> str:
-        if last_ctx.parent_tag is None:
-            raise NotImplementedError(
-                "We cannot interpolate texts without knowing what tag they are contained in."
-            )
-        elif last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
+        if last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
             # Must be handled all at once.
-            return self._process_raw_texts(template, last_ctx, ref)
+            return self._process_raw_texts(template, last_ctx, app_state, ref)
         elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
             # We can handle all at once because there are no non-text children and everything must be string-ified.
-            return self._process_escapable_raw_texts(template, last_ctx, ref)
+            return self._process_escapable_raw_texts(template, last_ctx, app_state, ref)
         else:
-            return self._process_normal_texts(template, last_ctx, ref)
+            return self._process_normal_texts(template, last_ctx, app_state, ref)
 
     def _process_comment(
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_state: T,
         content_ref: TemplateRef,
     ) -> str:
         """
@@ -635,6 +721,7 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_state: T,
         tag: str,
         attrs: tuple[TAttribute, ...],
         children: tuple[TNode, ...],
@@ -652,7 +739,7 @@ class TemplateProcessor(ITemplateProcessor):
             starttag = endtag = tag
         out.append(f"<{starttag}")
         if attrs:
-            out.append(self._process_attrs(template, our_ctx, attrs))
+            out.append(self._process_attrs(template, our_ctx, app_state, attrs))
         # @TODO: How can we tell if we write out children or not in
         # order to self-close in non-html contexts, ie. SVG?
         if self.slash_void and tag in VOID_ELEMENTS:
@@ -666,7 +753,8 @@ class TemplateProcessor(ITemplateProcessor):
             else:
                 child_ctx = our_ctx
             out.extend(
-                self._process_tnode(template, child_ctx, child) for child in children
+                self._process_tnode(template, child_ctx, app_state, child)
+                for child in children
             )
             out.append(f"</{endtag}>")
         return "".join(out)
@@ -675,6 +763,7 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_state: T,
         attrs: tuple[TAttribute, ...],
     ) -> str:
         """
@@ -691,10 +780,48 @@ class TemplateProcessor(ITemplateProcessor):
             return attrs_str
         return ""
 
+    def _extract_component_template(
+        self,
+        template: Template,
+        attrs: tuple[TAttribute, ...],
+        start_i_index: int,
+        end_i_index: int | None,
+        check_callables: bool = True,
+    ) -> Template:
+        """
+        Extract the "children" template out of a component.
+
+        check_callables:
+            Check start_tag value matches the end_tag value.
+
+        @NOTE: If a component has no content between its start tag and end tag
+        OR a component is self-closing then an empty string Template, `t""`,
+        is returned.
+        """
+        body_start_s_index = (
+            start_i_index
+            + 1
+            + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
+        )
+        if start_i_index != end_i_index and end_i_index is not None:
+            # @TODO: We should do this during parsing.
+            if (
+                check_callables
+                and template.interpolations[start_i_index].value
+                != template.interpolations[end_i_index].value
+            ):
+                raise TypeError(
+                    "Component callable in start tag must match component callable in end tag."
+                )
+            return extract_embedded_template(template, body_start_s_index, end_i_index)
+        else:
+            return t""
+
     def _process_component(
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_state: T,
         attrs: tuple[TAttribute, ...],
         start_i_index: int,
         end_i_index: int | None,
@@ -702,54 +829,21 @@ class TemplateProcessor(ITemplateProcessor):
         """
         Invoke a component and process the result into a string.
         """
-        body_start_s_index = (
-            start_i_index
-            + 1
-            + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
+        children_template = self._extract_component_template(
+            template, attrs, start_i_index, end_i_index, check_callables=True
         )
-        start_i = template.interpolations[start_i_index]
-        component_callable = t.cast(ComponentCallable, start_i.value)
-        if start_i_index != end_i_index and end_i_index is not None:
-            # @TODO: We should do this during parsing.
-            children_template = extract_embedded_template(
-                template, body_start_s_index, end_i_index
-            )
-            if component_callable != template.interpolations[end_i_index].value:
-                raise TypeError(
-                    "Component callable in start tag must match component callable in end tag."
-                )
-        else:
-            children_template = t""
-
-        if not callable(component_callable):
-            raise TypeError("Component callable must be callable.")
-
-        kwargs = _prep_component_kwargs(
-            get_callable_info(component_callable),
-            _resolve_t_attrs(attrs, template.interpolations),
-            children=children_template,
+        component_callable = template.interpolations[start_i_index].value
+        result_t, component_object = self.component_processor_api.process(
+            template, last_ctx, app_state, component_callable, attrs, children_template
         )
-
-        result_t = component_callable(**kwargs)
-        if (
-            result_t is not None
-            and not isinstance(result_t, Template)
-            and callable(result_t)
-        ):
-            component_obj = t.cast(ComponentObject, result_t)  # ty: ignore[redundant-cast]
-            result_t = component_obj()
-        else:
-            component_obj = None
-
-        if isinstance(result_t, Template):
-            return self._process_template(result_t, last_ctx)
-        else:
-            raise TypeError(f"Unknown component return value: {type(result_t)}")
+        assert isinstance(component_object, object)
+        return self._process_template(result_t, last_ctx, app_state)
 
     def _process_raw_texts(
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_state: T,
         content_ref: TemplateRef,
     ) -> str:
         """
@@ -778,6 +872,7 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_state: T,
         content_ref: TemplateRef,
     ) -> str:
         """
@@ -790,7 +885,11 @@ class TemplateProcessor(ITemplateProcessor):
         return self.escape_html_text(content)
 
     def _process_normal_texts(
-        self, template: Template, last_ctx: ProcessContext, content_ref: TemplateRef
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        app_state: T,
+        content_ref: TemplateRef,
     ):
         """
         Process the given context into a string as "normal text".
@@ -799,7 +898,9 @@ class TemplateProcessor(ITemplateProcessor):
             (
                 self.escape_html_text(part)
                 if isinstance(part, str)
-                else self._process_normal_text(template, last_ctx, t.cast(int, part))
+                else self._process_normal_text(
+                    template, last_ctx, app_state, t.cast(int, part)
+                )
             )
             for part in content_ref
         )
@@ -808,6 +909,7 @@ class TemplateProcessor(ITemplateProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_state: T,
         values_index: int,
     ) -> str:
         """
@@ -817,12 +919,15 @@ class TemplateProcessor(ITemplateProcessor):
         """
         value = format_interpolation(template.interpolations[values_index])
         value = t.cast(NormalTextInterpolationValue, value)  # ty: ignore[redundant-cast]
-        return self._process_normal_text_from_value(template, last_ctx, value)
+        return self._process_normal_text_from_value(
+            template, last_ctx, app_state, value
+        )
 
     def _process_normal_text_from_value(
         self,
         template: Template,
         last_ctx: ProcessContext,
+        app_state: T,
         value: NormalTextInterpolationValue,
     ) -> str:
         """
@@ -838,10 +943,10 @@ class TemplateProcessor(ITemplateProcessor):
             # implementing HasHTMLDunder.
             return self.escape_html_text(value)
         elif isinstance(value, Template):
-            return self._process_template(value, last_ctx)
+            return self._process_template(value, last_ctx, app_state)
         elif isinstance(value, Iterable):
             return "".join(
-                self._process_normal_text_from_value(template, last_ctx, v)
+                self._process_normal_text_from_value(template, last_ctx, app_state, v)
                 for v in value
             )
         elif isinstance(value, HasHTMLDunder):
@@ -957,32 +1062,42 @@ def extract_embedded_template(
 
 
 def _make_default_template_processor(
-    parser_api: ITemplateParserProxy | None = None,
+    parser_api: ITemplateParserProxy,
 ) -> ITemplateProcessor:
     """
     Wrap our default options but allow parser api to change for testing.
     """
     return TemplateProcessor(
-        parser_api=CachedTemplateParserProxy() if parser_api is None else parser_api,
+        parser_api=parser_api,
         slash_void=True,
         uppercase_doctype=True,
     )
 
 
-_default_template_processor_api: ITemplateProcessor = _make_default_template_processor()
+_default_template_processor_api: ITemplateProcessor = _make_default_template_processor(
+    parser_api=CachedTemplateParserProxy()
+)
 
+
+_default_process_ctx = ProcessContext()
 
 # --------------------------------------------------------------------------
 # Public API
 # --------------------------------------------------------------------------
 
 
-def html(template: Template, assume_ctx: ProcessContext | None = None) -> str:
+def html(
+    template: Template,
+) -> str:
     """Parse an HTML t-string, substitute values, and return a string of HTML."""
-    return _default_template_processor_api.process(template, assume_ctx)
+    return _default_template_processor_api.process(
+        template, assume_ctx=_default_process_ctx, app_state=None
+    )
 
 
-def svg(template: Template, assume_ctx: ProcessContext | None = None) -> str:
+def svg(
+    template: Template,
+) -> str:
     """Parse a standalone SVG fragment and return a string of HTML.
 
     Use when the template does not contain an ``<svg>`` wrapper element.
@@ -992,8 +1107,6 @@ def svg(template: Template, assume_ctx: ProcessContext | None = None) -> str:
     When the template does contain ``<svg>``, use ``html()`` — the SVG context
     is detected automatically.
     """
-    if assume_ctx is None:
-        # We should probably be setting this to some sort of escaping function
-        # can raw text exist in SVG or MathML?
-        assume_ctx = make_ctx(parent_tag=DEFAULT_NORMAL_TEXT_ELEMENT, ns="svg")
-    return html(template, assume_ctx)
+    return _default_template_processor_api.process(
+        template, assume_ctx=ProcessContext(ns="svg"), app_state=None
+    )

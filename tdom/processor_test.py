@@ -13,10 +13,12 @@ from .callables import get_callable_info
 from .escaping import escape_html_text
 from .processor import (
     CachedTemplateParserProxy,
+    DefaultAppState,
+    ProcessContext,
     TemplateParserProxy,
     TemplateProcessor,
+    _default_process_ctx,
     _make_default_template_processor,
-    make_ctx,
 )
 from .processor import (
     _prep_component_kwargs as prep_component_kwargs,
@@ -28,8 +30,23 @@ processor_api = _make_default_template_processor(
 )
 
 
-def html(*args, **kwargs):
-    return processor_api.process(*args, **kwargs)
+def make_ctx(**kwargs):
+    return ProcessContext(**kwargs)
+
+
+def html(
+    template: Template,
+) -> str:
+    return processor_api.process(
+        template, assume_ctx=_default_process_ctx, app_state=None
+    )
+
+
+def html_ext(
+    template: Template,
+    assume_ctx: ProcessContext,
+) -> str:
+    return processor_api.process(template, assume_ctx=assume_ctx, app_state=None)
 
 
 # --------------------------------------------------------------------------
@@ -49,42 +66,43 @@ class TestBareTemplate:
 
     def test_text_singleton(self):
         greeting = "Hello, Alice!"
-        assert html(t"{greeting}", make_ctx(parent_tag="div")) == "Hello, Alice!"
-        assert html(t"{greeting}", make_ctx(parent_tag="script")) == "Hello, Alice!"
-        assert html(t"{greeting}", make_ctx(parent_tag="style")) == "Hello, Alice!"
-        assert html(t"{greeting}", make_ctx(parent_tag="textarea")) == "Hello, Alice!"
-        assert html(t"{greeting}", make_ctx(parent_tag="title")) == "Hello, Alice!"
+        assert html_ext(t"{greeting}", make_ctx(parent_tag="div")) == "Hello, Alice!"
+        assert html_ext(t"{greeting}", make_ctx(parent_tag="script")) == "Hello, Alice!"
+        assert html_ext(t"{greeting}", make_ctx(parent_tag="style")) == "Hello, Alice!"
+        assert (
+            html_ext(t"{greeting}", make_ctx(parent_tag="textarea")) == "Hello, Alice!"
+        )
+        assert html_ext(t"{greeting}", make_ctx(parent_tag="title")) == "Hello, Alice!"
 
     def test_text_singleton_without_parent(self):
         greeting = "</script>"
-        with pytest.raises(NotImplementedError):
-            # Explicitly set the parent tag as None.
-            ctx = make_ctx(parent_tag=None, ns="html")
-            _ = html(t"{greeting}", assume_ctx=ctx)
+        res = html(t"{greeting}")
+        assert res == "&lt;/script&gt;"
+        assert res != greeting
 
     def test_text_singleton_explicit_parent_script(self):
         greeting = "</script>"
-        res = html(t"{greeting}", assume_ctx=make_ctx(parent_tag="script"))
+        res = html_ext(t"{greeting}", assume_ctx=make_ctx(parent_tag="script"))
         assert res == "\\x3c/script>"
         assert res != "</script>"
 
     def test_text_singleton_explicit_parent_div(self):
         greeting = "</div>"
-        res = html(t"{greeting}", assume_ctx=make_ctx(parent_tag="div"))
+        res = html_ext(t"{greeting}", assume_ctx=make_ctx(parent_tag="div"))
         assert res == "&lt;/div&gt;"
         assert res != "</div>"
 
     def test_text_template(self):
         name = "Alice"
         assert (
-            html(t"Hello, {name}!", assume_ctx=make_ctx(parent_tag="div"))
+            html_ext(t"Hello, {name}!", assume_ctx=make_ctx(parent_tag="div"))
             == "Hello, Alice!"
         )
 
     def test_text_template_escaping(self):
         name = "Alice & Bob"
         assert (
-            html(t"Hello, {name}!", assume_ctx=make_ctx(parent_tag="div"))
+            html_ext(t"Hello, {name}!", assume_ctx=make_ctx(parent_tag="div"))
             == "Hello, Alice &amp; Bob!"
         )
 
@@ -215,8 +233,11 @@ class TestDocumentType:
         assert html(t"<!doctype html>") == "<!DOCTYPE html>"
 
     def test_literal_lowercase(self):
-        tp = TemplateProcessor(uppercase_doctype=False)
-        assert tp.process(t"<!doctype html>") == "<!doctype html>"
+        tp = TemplateProcessor[DefaultAppState](uppercase_doctype=False)
+        assert (
+            tp.process(t"<!doctype html>", assume_ctx=ProcessContext(), app_state=None)
+            == "<!doctype html>"
+        )
 
 
 class TestVoidElementLiteral:
@@ -1632,7 +1653,7 @@ class TestComponentSpecialUsage:
         def Header() -> Template:
             return t"{'Hello World'}"
 
-        res = html(t"<{Header} />", assume_ctx=make_ctx(parent_tag="div"))
+        res = html_ext(t"<{Header} />", assume_ctx=make_ctx(parent_tag="div"))
         assert res == "Hello World"
 
 
@@ -1800,7 +1821,9 @@ class TestComponentErrors:
         def BadFunctionComp(children: Template):
             return bad_value
 
-        with pytest.raises(TypeError, match="Unknown component return value:"):
+        with pytest.raises(
+            TypeError, match="Component callable must return Template or Callable:"
+        ):
             _ = html(t"<{BadFunctionComp}>Hello</{BadFunctionComp}>")
 
     @pytest.mark.parametrize(
@@ -1813,7 +1836,9 @@ class TestComponentErrors:
 
             return component_object
 
-        with pytest.raises(TypeError, match="Unknown component return value:"):
+        with pytest.raises(
+            TypeError, match="Component object must return Template when called:"
+        ):
             _ = html(t"<{BadFactoryComp}>Hello</{BadFactoryComp}>")
 
 
