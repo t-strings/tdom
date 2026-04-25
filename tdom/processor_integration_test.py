@@ -316,3 +316,13 @@ class TestTypedAppStateIntegration:
             AppState(logged_in=False),
         )
         assert res == '<div><span class="auth-status">Logged Out</span></div>'
+
+    def test_local_precedence(self):
+        html = self._make_html()
+        global_logged_in = False
+        local_logged_in = True
+        res = html(
+            t"<div><{AuthStatus} { {'app_logged_in': local_logged_in} } /></div>",
+            AppState(logged_in=global_logged_in),
+        )
+        assert res == '<div><span class="auth-display">Logged In</span></div>'
