@@ -29,7 +29,6 @@ from .processor import (
     _prep_component_kwargs as prep_component_kwargs,
 )
 from .protocols import HasHTMLDunder
-from .template_utils import TemplateRef
 from .tnodes import TAttribute
 
 processor_api = _make_default_template_processor(
@@ -2341,27 +2340,60 @@ def test_mathml():
 
 
 class TestAppState:
-    class CustomTemplateProcessor(TemplateProcessor[DefaultAppState]):
-        def _process_comment(
+    @dataclass
+    class AppStateComponentProcessor(IComponentProcessor[DefaultAppState]):
+        default_component_processor_api: IComponentProcessor[DefaultAppState] = field(
+            default_factory=ComponentProcessor[DefaultAppState]
+        )
+
+        def process(
             self,
             template: Template,
             last_ctx: ProcessContext,
             app_state: DefaultAppState,
-            content_ref: TemplateRef,
-        ) -> str:
-            cstr = super()._process_comment(template, last_ctx, app_state, content_ref)
-            if app_state.get("logged_in", None):
-                return "".join([cstr[: -len("-->")], "LOGGEDIN", "-->"])
-            return cstr
+            component_callable: object,
+            attrs: tuple[TAttribute, ...],
+            component_template: Template,
+            provided_attrs: tuple[Attribute, ...] = (),
+        ) -> tuple[Template, ComponentObject | None]:
+            provided_attrs = provided_attrs + (
+                ("app_logged_in", app_state.get("app_logged_in", False)),
+            )
+            return self.default_component_processor_api.process(
+                template=template,
+                last_ctx=last_ctx,
+                app_state=app_state,
+                component_callable=component_callable,
+                attrs=attrs,
+                component_template=component_template,
+                provided_attrs=provided_attrs,
+            )
+
+    @dataclass
+    class AuthStatus:
+        app_logged_in: bool = False
+
+        classes: tuple[str, ...] = ("auth-display",)
+
+        def __call__(self) -> Template:
+            status_msg = "Logged In" if self.app_logged_in else "Logged Out"
+            return t"<span class={self.classes}>{status_msg}</span>"
 
     def test_app_context(self):
-        tp = self.CustomTemplateProcessor()
+        tp = TemplateProcessor(
+            component_processor_api=self.AppStateComponentProcessor()
+        )
         last_ctx = ProcessContext()
         res = tp.process(
-            t"<!--sample-->", assume_ctx=last_ctx, app_state={"logged_in": True}
+            t"<div><{self.AuthStatus} /></div>",
+            assume_ctx=last_ctx,
+            app_state={"app_logged_in": True},
         )
-        assert res == "<!--sampleLOGGEDIN-->" and res != "<!--sample-->"
+        assert res == '<div><span class="auth-display">Logged In</span></div>'
+        auth_cls = "auth-status"
         res = tp.process(
-            t"<!--sample-->", assume_ctx=last_ctx, app_state={"logged_in": False}
+            t"<div><{self.AuthStatus} classes={(auth_cls,)} /></div>",
+            assume_ctx=last_ctx,
+            app_state={"app_logged_in": False},
         )
-        assert res != "<!--sampleLOGGEDIN-->" and res == "<!--sample-->"
+        assert res == '<div><span class="auth-status">Logged Out</span></div>'
