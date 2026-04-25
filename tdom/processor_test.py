@@ -13,10 +13,10 @@ from .callables import get_callable_info
 from .escaping import escape_html_text
 from .processor import (
     CachedTemplateParserProxy,
+    ProcessContext,
     TemplateParserProxy,
     TemplateProcessor,
     _make_default_template_processor,
-    make_ctx,
 )
 from .processor import (
     _prep_component_kwargs as prep_component_kwargs,
@@ -28,8 +28,14 @@ processor_api = _make_default_template_processor(
 )
 
 
-def html(*args, **kwargs):
-    return processor_api.process(*args, **kwargs)
+def make_ctx(**kwargs):
+    return ProcessContext(**kwargs)
+
+
+def html(template: Template, assume_ctx: ProcessContext | None = None):
+    if assume_ctx is None:
+        assume_ctx = ProcessContext()
+    return processor_api.process(template, assume_ctx=assume_ctx)
 
 
 # --------------------------------------------------------------------------
@@ -57,10 +63,9 @@ class TestBareTemplate:
 
     def test_text_singleton_without_parent(self):
         greeting = "</script>"
-        with pytest.raises(NotImplementedError):
-            # Explicitly set the parent tag as None.
-            ctx = make_ctx(parent_tag=None, ns="html")
-            _ = html(t"{greeting}", assume_ctx=ctx)
+        res = html(t"{greeting}")
+        assert res == "&lt;/script&gt;"
+        assert res != greeting
 
     def test_text_singleton_explicit_parent_script(self):
         greeting = "</script>"
@@ -216,7 +221,10 @@ class TestDocumentType:
 
     def test_literal_lowercase(self):
         tp = TemplateProcessor(uppercase_doctype=False)
-        assert tp.process(t"<!doctype html>") == "<!doctype html>"
+        assert (
+            tp.process(t"<!doctype html>", assume_ctx=ProcessContext())
+            == "<!doctype html>"
+        )
 
 
 class TestVoidElementLiteral:
