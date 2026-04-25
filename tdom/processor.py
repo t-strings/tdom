@@ -591,7 +591,7 @@ class ITemplateProcessor[T = DefaultAppState](t.Protocol):
     ) -> str: ...
 
 
-type DefaultAppState = dict[str, object]
+type DefaultAppState = None
 
 
 @dataclass(frozen=True)
@@ -1079,6 +1079,8 @@ _default_template_processor_api: ITemplateProcessor = _make_default_template_pro
 )
 
 
+_default_process_ctx = ProcessContext()
+
 # --------------------------------------------------------------------------
 # Public API
 # --------------------------------------------------------------------------
@@ -1086,21 +1088,15 @@ _default_template_processor_api: ITemplateProcessor = _make_default_template_pro
 
 def html(
     template: Template,
-    assume_ctx: ProcessContext | None = None,
-    app_state: DefaultAppState | None = None,
 ) -> str:
     """Parse an HTML t-string, substitute values, and return a string of HTML."""
-    if assume_ctx is None:
-        assume_ctx = ProcessContext()
-    if app_state is None:
-        app_state = {}
-    return _default_template_processor_api.process(template, assume_ctx, app_state)
+    return _default_template_processor_api.process(
+        template, assume_ctx=_default_process_ctx, app_state=None
+    )
 
 
 def svg(
     template: Template,
-    assume_ctx: ProcessContext | None = None,
-    app_state: DefaultAppState | None = None,
 ) -> str:
     """Parse a standalone SVG fragment and return a string of HTML.
 
@@ -1111,6 +1107,6 @@ def svg(
     When the template does contain ``<svg>``, use ``html()`` — the SVG context
     is detected automatically.
     """
-    if assume_ctx is None:
-        assume_ctx = ProcessContext(ns="svg")
-    return html(template, assume_ctx=assume_ctx, app_state=app_state)
+    return _default_template_processor_api.process(
+        template, assume_ctx=ProcessContext(ns="svg"), app_state=None
+    )

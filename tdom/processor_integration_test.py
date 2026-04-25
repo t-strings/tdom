@@ -151,8 +151,7 @@ class TestContextVarIntegration:
         assume_ctx = ProcessContext()
 
         def _html(t: Template) -> str:
-            # @NOTE: This integration does not really use app state.
-            return tp.process(t, assume_ctx=assume_ctx, app_state={})
+            return tp.process(t, assume_ctx=assume_ctx, app_state=None)
 
         return _html
 
@@ -208,8 +207,7 @@ class TestSimpleContextVarIntegration:
         assume_ctx = ProcessContext()
 
         def _html(t: Template) -> str:
-            # @NOTE: This integration does not really use app state.
-            return tp.process(t, assume_ctx=assume_ctx, app_state={})
+            return tp.process(t, assume_ctx=assume_ctx, app_state=None)
 
         return _html
 
@@ -232,18 +230,21 @@ class TestSimpleContextVarIntegration:
             assert res == '<div><span class="auth-display">Logged Out</span></div>'
 
 
+type DictAppState = dict[str, object]
+
+
 class TestAppStateIntegration:
     @dataclass
-    class AppStateComponentProcessor(IComponentProcessor[DefaultAppState]):
-        default_component_processor_api: IComponentProcessor[DefaultAppState] = field(
-            default_factory=ComponentProcessor[DefaultAppState]
+    class AppStateComponentProcessor(IComponentProcessor[DictAppState]):
+        default_component_processor_api: IComponentProcessor[DictAppState] = field(
+            default_factory=ComponentProcessor[DictAppState]
         )
 
         def process(
             self,
             template: Template,
             last_ctx: ProcessContext,
-            app_state: DefaultAppState,
+            app_state: DictAppState,
             component_callable: object,
             attrs: tuple[TAttribute, ...],
             component_template: Template,
@@ -262,13 +263,13 @@ class TestAppStateIntegration:
                 provided_attrs=provided_attrs,
             )
 
-    def _make_html(self) -> t.Callable[[Template, DefaultAppState], str]:
+    def _make_html(self) -> t.Callable[[Template, DictAppState], str]:
         tp = TemplateProcessor(
             component_processor_api=self.AppStateComponentProcessor()
         )
         assume_ctx = ProcessContext()
 
-        def _html(t: Template, app_state: DefaultAppState) -> str:
+        def _html(t: Template, app_state: DictAppState) -> str:
             return tp.process(t, assume_ctx=assume_ctx, app_state=app_state)
 
         return _html
