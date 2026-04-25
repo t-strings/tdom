@@ -146,13 +146,18 @@ class TestContextVarIntegration:
                 provided_attrs=provided_attrs,
             )
 
-    def test_dynamic_component_callable_resolution_and_dynamic_component_kwargs(self):
-        sys_comp_processor = self.SystemComponentProcessor()
-
-        tp = TemplateProcessor(component_processor_api=sys_comp_processor)
-
+    def _make_html(self) -> t.Callable[[Template], str]:
+        tp = TemplateProcessor(component_processor_api=self.SystemComponentProcessor())
         assume_ctx = ProcessContext()
-        app_state = {}
+
+        def _html(t: Template) -> str:
+            # @NOTE: This integration does not really use app state.
+            return tp.process(t, assume_ctx=assume_ctx, app_state={})
+
+        return _html
+
+    def test_dynamic_component_callable_resolution_and_dynamic_component_kwargs(self):
+        html = self._make_html()
         # Mapping established beforehand.
         components: dict[object, ComponentCallable] = {  # t.Type[t.Protocol]
             self.IHeader: self.Header,
@@ -162,7 +167,7 @@ class TestContextVarIntegration:
         with SystemCtx.set(SystemState(components=components, request=current_request)):
             links = [("Home", "/"), ("About", "/about")]
             header_t = t"<{self.IHeader}><{self.Logo} /><{self.INav} links={links} /></{self.IHeader}>"
-            assert tp.process(header_t, assume_ctx=assume_ctx, app_state=app_state) == (
+            assert html(header_t) == (
                 '<div class="hdr">'
                 '<span class="logo">LOGO</span>'
                 '<div class="nav">'
@@ -223,22 +228,28 @@ class TestAppStateIntegration:
                 provided_attrs=provided_attrs,
             )
 
-    def test_injecting_app_state_into_component_kwargs(self):
+    def _make_html(self) -> t.Callable[[Template, DefaultAppState], str]:
         tp = TemplateProcessor(
             component_processor_api=self.AppStateComponentProcessor()
         )
-        last_ctx = ProcessContext()
-        res = tp.process(
+        assume_ctx = ProcessContext()
+
+        def _html(t: Template, app_state: DefaultAppState) -> str:
+            return tp.process(t, assume_ctx=assume_ctx, app_state=app_state)
+
+        return _html
+
+    def test_injecting_app_state_into_component_kwargs(self):
+        html = self._make_html()
+        res = html(
             t"<div><{AuthStatus} /></div>",
-            assume_ctx=last_ctx,
-            app_state={"app_logged_in": True},
+            {"app_logged_in": True},
         )
         assert res == '<div><span class="auth-display">Logged In</span></div>'
         auth_cls = "auth-status"
-        res = tp.process(
+        res = html(
             t"<div><{AuthStatus} classes={(auth_cls,)} /></div>",
-            assume_ctx=last_ctx,
-            app_state={"app_logged_in": False},
+            {"app_logged_in": False},
         )
         assert res == '<div><span class="auth-status">Logged Out</span></div>'
 
@@ -281,22 +292,27 @@ class TestTypedAppStateIntegration:
                 provided_attrs=provided_attrs,
             )
 
-    def test_injecting_typed_app_state_into_component_kwargs(self):
+    def _make_html(self) -> t.Callable[[Template, AppState], str]:
         tp = TemplateProcessor(
             component_processor_api=self.TypedAppStateComponentProcessor()
         )
-        # assert False
-        last_ctx = ProcessContext()
-        res = tp.process(
+        assume_ctx = ProcessContext()
+
+        def _html(t: Template, app_state: AppState) -> str:
+            return tp.process(t, assume_ctx=assume_ctx, app_state=app_state)
+
+        return _html
+
+    def test_injecting_typed_app_state_into_component_kwargs(self):
+        html = self._make_html()
+        res = html(
             t"<div><{AuthStatus} /></div>",
-            assume_ctx=last_ctx,
-            app_state=AppState(logged_in=True),
+            AppState(logged_in=True),
         )
         assert res == '<div><span class="auth-display">Logged In</span></div>'
         auth_cls = "auth-status"
-        res = tp.process(
+        res = html(
             t"<div><{AuthStatus} classes={(auth_cls,)} /></div>",
-            assume_ctx=last_ctx,
-            app_state=AppState(logged_in=False),
+            AppState(logged_in=False),
         )
         assert res == '<div><span class="auth-status">Logged Out</span></div>'
