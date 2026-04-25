@@ -36,13 +36,13 @@ def make_ctx(**kwargs):
 def html(
     template: Template,
     assume_ctx: ProcessContext | None = None,
-    app_ctx: dict[str, object] | None = None,
+    app_state: dict[str, object] | None = None,
 ) -> str:
     if assume_ctx is None:
         assume_ctx = ProcessContext()
-    if app_ctx is None:
-        app_ctx = {}
-    return processor_api.process(template, assume_ctx=assume_ctx, app_ctx=app_ctx)
+    if app_state is None:
+        app_state = {}
+    return processor_api.process(template, assume_ctx=assume_ctx, app_state=app_state)
 
 
 # --------------------------------------------------------------------------
@@ -229,7 +229,7 @@ class TestDocumentType:
     def test_literal_lowercase(self):
         tp = TemplateProcessor(uppercase_doctype=False)
         assert (
-            tp.process(t"<!doctype html>", assume_ctx=ProcessContext(), app_ctx={})
+            tp.process(t"<!doctype html>", assume_ctx=ProcessContext(), app_state={})
             == "<!doctype html>"
         )
 
@@ -2171,17 +2171,17 @@ def test_mathml():
     )
 
 
-class TestAppContext:
+class TestAppState:
     class CustomTemplateProcessor(TemplateProcessor[dict[str, object]]):
         def _process_comment(
             self,
             template: Template,
             last_ctx: ProcessContext,
-            app_ctx: dict[str, object],
+            app_state: dict[str, object],
             content_ref: TemplateRef,
         ) -> str:
-            cstr = super()._process_comment(template, last_ctx, app_ctx, content_ref)
-            if app_ctx.get("logged_in", None):
+            cstr = super()._process_comment(template, last_ctx, app_state, content_ref)
+            if app_state.get("logged_in", None):
                 return "".join([cstr[: -len("-->")], "LOGGEDIN", "-->"])
             return cstr
 
@@ -2189,10 +2189,10 @@ class TestAppContext:
         tp = self.CustomTemplateProcessor()
         last_ctx = ProcessContext()
         res = tp.process(
-            t"<!--sample-->", assume_ctx=last_ctx, app_ctx={"logged_in": True}
+            t"<!--sample-->", assume_ctx=last_ctx, app_state={"logged_in": True}
         )
         assert res == "<!--sampleLOGGEDIN-->" and res != "<!--sample-->"
         res = tp.process(
-            t"<!--sample-->", assume_ctx=last_ctx, app_ctx={"logged_in": False}
+            t"<!--sample-->", assume_ctx=last_ctx, app_state={"logged_in": False}
         )
         assert res != "<!--sampleLOGGEDIN-->" and res == "<!--sample-->"

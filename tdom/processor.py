@@ -497,20 +497,20 @@ class CachedTemplateParserProxy(TemplateParserProxy):
         return self._to_tnode(CachableTemplate(template))
 
 
-type DefaultAppContext = dict[str, object]
+type DefaultAppState = dict[str, object]
 
 
-class ITemplateProcessor[T = DefaultAppContext](t.Protocol):
+class ITemplateProcessor[T = DefaultAppState](t.Protocol):
     def process(
         self,
         root_template: Template,
         assume_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
     ) -> str: ...
 
 
 @dataclass(frozen=True)
-class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
+class TemplateProcessor[T = DefaultAppState](ITemplateProcessor[T]):
     parser_api: ITemplateParserProxy = field(default_factory=CachedTemplateParserProxy)
 
     escape_html_text: Callable = default_escape_html_text
@@ -529,51 +529,51 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
         self,
         root_template: Template,
         assume_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
     ) -> str:
         """
         Process a TDOM compatible template into a string.
         """
         return self._process_template(
-            root_template, last_ctx=assume_ctx, app_ctx=app_ctx
+            root_template, last_ctx=assume_ctx, app_state=app_state
         )
 
     def _process_template(
-        self, template: Template, last_ctx: ProcessContext, app_ctx: T
+        self, template: Template, last_ctx: ProcessContext, app_state: T
     ) -> str:
         root = self.parser_api.to_tnode(template)
-        return self._process_tnode(template, last_ctx, app_ctx, root)
+        return self._process_tnode(template, last_ctx, app_state, root)
 
     def _process_tnode(
-        self, template: Template, last_ctx: ProcessContext, app_ctx: T, tnode: TNode
+        self, template: Template, last_ctx: ProcessContext, app_state: T, tnode: TNode
     ) -> str:
         """
         Process a tnode from a template's "t-tree" into a string.
         """
         match tnode:
             case TDocumentType(text):
-                return self._process_document_type(last_ctx, app_ctx, text)
+                return self._process_document_type(last_ctx, app_state, text)
             case TComment(ref):
-                return self._process_comment(template, last_ctx, app_ctx, ref)
+                return self._process_comment(template, last_ctx, app_state, ref)
             case TFragment(children):
-                return self._process_fragment(template, last_ctx, app_ctx, children)
+                return self._process_fragment(template, last_ctx, app_state, children)
             case TComponent(start_i_index, end_i_index, attrs, children):
                 return self._process_component(
-                    template, last_ctx, app_ctx, attrs, start_i_index, end_i_index
+                    template, last_ctx, app_state, attrs, start_i_index, end_i_index
                 )
             case TElement(tag, attrs, children):
                 return self._process_element(
-                    template, last_ctx, app_ctx, tag, attrs, children
+                    template, last_ctx, app_state, tag, attrs, children
                 )
             case TText(ref):
-                return self._process_texts(template, last_ctx, app_ctx, ref)
+                return self._process_texts(template, last_ctx, app_state, ref)
             case _:
                 raise ValueError(f"Unrecognized tnode: {tnode}")
 
     def _process_document_type(
         self,
         last_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
         text: str,
     ) -> str:
         if last_ctx.ns != "html":
@@ -590,11 +590,11 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
         self,
         template: Template,
         last_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
         children: Iterable[TNode],
     ) -> str:
         return "".join(
-            self._process_tnode(template, last_ctx, app_ctx, child)
+            self._process_tnode(template, last_ctx, app_state, child)
             for child in children
         )
 
@@ -602,23 +602,23 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
         self,
         template: Template,
         last_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
         ref: TemplateRef,
     ) -> str:
         if last_ctx.parent_tag in CDATA_CONTENT_ELEMENTS:
             # Must be handled all at once.
-            return self._process_raw_texts(template, last_ctx, app_ctx, ref)
+            return self._process_raw_texts(template, last_ctx, app_state, ref)
         elif last_ctx.parent_tag in RCDATA_CONTENT_ELEMENTS:
             # We can handle all at once because there are no non-text children and everything must be string-ified.
-            return self._process_escapable_raw_texts(template, last_ctx, app_ctx, ref)
+            return self._process_escapable_raw_texts(template, last_ctx, app_state, ref)
         else:
-            return self._process_normal_texts(template, last_ctx, app_ctx, ref)
+            return self._process_normal_texts(template, last_ctx, app_state, ref)
 
     def _process_comment(
         self,
         template: Template,
         last_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
         content_ref: TemplateRef,
     ) -> str:
         """
@@ -632,7 +632,7 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
         self,
         template: Template,
         last_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
         tag: str,
         attrs: tuple[TAttribute, ...],
         children: tuple[TNode, ...],
@@ -650,7 +650,7 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
             starttag = endtag = tag
         out.append(f"<{starttag}")
         if attrs:
-            out.append(self._process_attrs(template, our_ctx, app_ctx, attrs))
+            out.append(self._process_attrs(template, our_ctx, app_state, attrs))
         # @TODO: How can we tell if we write out children or not in
         # order to self-close in non-html contexts, ie. SVG?
         if self.slash_void and tag in VOID_ELEMENTS:
@@ -664,7 +664,7 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
             else:
                 child_ctx = our_ctx
             out.extend(
-                self._process_tnode(template, child_ctx, app_ctx, child)
+                self._process_tnode(template, child_ctx, app_state, child)
                 for child in children
             )
             out.append(f"</{endtag}>")
@@ -674,7 +674,7 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
         self,
         template: Template,
         last_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
         attrs: tuple[TAttribute, ...],
     ) -> str:
         """
@@ -695,7 +695,7 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
         self,
         template: Template,
         last_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
         attrs: tuple[TAttribute, ...],
         start_i_index: int,
         end_i_index: int | None,
@@ -743,7 +743,7 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
             component_obj = None
 
         if isinstance(result_t, Template):
-            return self._process_template(result_t, last_ctx, app_ctx)
+            return self._process_template(result_t, last_ctx, app_state)
         else:
             raise TypeError(f"Unknown component return value: {type(result_t)}")
 
@@ -751,7 +751,7 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
         self,
         template: Template,
         last_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
         content_ref: TemplateRef,
     ) -> str:
         """
@@ -780,7 +780,7 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
         self,
         template: Template,
         last_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
         content_ref: TemplateRef,
     ) -> str:
         """
@@ -796,7 +796,7 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
         self,
         template: Template,
         last_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
         content_ref: TemplateRef,
     ):
         """
@@ -807,7 +807,7 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
                 self.escape_html_text(part)
                 if isinstance(part, str)
                 else self._process_normal_text(
-                    template, last_ctx, app_ctx, t.cast(int, part)
+                    template, last_ctx, app_state, t.cast(int, part)
                 )
             )
             for part in content_ref
@@ -817,7 +817,7 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
         self,
         template: Template,
         last_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
         values_index: int,
     ) -> str:
         """
@@ -827,13 +827,15 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
         """
         value = format_interpolation(template.interpolations[values_index])
         value = t.cast(NormalTextInterpolationValue, value)  # ty: ignore[redundant-cast]
-        return self._process_normal_text_from_value(template, last_ctx, app_ctx, value)
+        return self._process_normal_text_from_value(
+            template, last_ctx, app_state, value
+        )
 
     def _process_normal_text_from_value(
         self,
         template: Template,
         last_ctx: ProcessContext,
-        app_ctx: T,
+        app_state: T,
         value: NormalTextInterpolationValue,
     ) -> str:
         """
@@ -849,10 +851,10 @@ class TemplateProcessor[T = DefaultAppContext](ITemplateProcessor[T]):
             # implementing HasHTMLDunder.
             return self.escape_html_text(value)
         elif isinstance(value, Template):
-            return self._process_template(value, last_ctx, app_ctx)
+            return self._process_template(value, last_ctx, app_state)
         elif isinstance(value, Iterable):
             return "".join(
-                self._process_normal_text_from_value(template, last_ctx, app_ctx, v)
+                self._process_normal_text_from_value(template, last_ctx, app_state, v)
                 for v in value
             )
         elif isinstance(value, HasHTMLDunder):
@@ -993,20 +995,20 @@ _default_template_processor_api: ITemplateProcessor = _make_default_template_pro
 def html(
     template: Template,
     assume_ctx: ProcessContext | None = None,
-    app_ctx: DefaultAppContext | None = None,
+    app_state: DefaultAppState | None = None,
 ) -> str:
     """Parse an HTML t-string, substitute values, and return a string of HTML."""
     if assume_ctx is None:
         assume_ctx = ProcessContext()
-    if app_ctx is None:
-        app_ctx = {}
-    return _default_template_processor_api.process(template, assume_ctx, app_ctx)
+    if app_state is None:
+        app_state = {}
+    return _default_template_processor_api.process(template, assume_ctx, app_state)
 
 
 def svg(
     template: Template,
     assume_ctx: ProcessContext | None = None,
-    app_ctx: DefaultAppContext | None = None,
+    app_state: DefaultAppState | None = None,
 ) -> str:
     """Parse a standalone SVG fragment and return a string of HTML.
 
@@ -1019,4 +1021,4 @@ def svg(
     """
     if assume_ctx is None:
         assume_ctx = ProcessContext(ns="svg")
-    return html(template, assume_ctx=assume_ctx, app_ctx=app_ctx)
+    return html(template, assume_ctx=assume_ctx, app_state=app_state)
