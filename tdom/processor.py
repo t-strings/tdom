@@ -788,6 +788,16 @@ class TemplateProcessor[T = DefaultAppState](ITemplateProcessor[T]):
         end_i_index: int | None,
         check_callables: bool = True,
     ) -> Template:
+        """
+        Extract the "children" template out of a component.
+
+        check_callables:
+            Check start_tag value matches the end_tag value.
+
+        @NOTE: If a component has no content between its start tag and end tag
+        OR a component is self-closing then an empty string Template, `t""`,
+        is returned.
+        """
         body_start_s_index = (
             start_i_index
             + 1
