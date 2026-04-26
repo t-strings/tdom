@@ -387,6 +387,8 @@ def _prep_component_kwargs(
     attrs: AttributesDict,
     children: Template,
     provided_attrs: tuple[Attribute, ...] = (),
+    raise_on_requires_positional=True,
+    raise_on_missing=True,
 ) -> AttributesDict:
     """
     Matchup kwargs from multiple sources to target the given callable.
@@ -394,16 +396,14 @@ def _prep_component_kwargs(
     The `provided_attrs` can be used by extensions that want to provide
     kwargs even if they are not specified in a template.
     """
-    if callable_info.requires_positional:
+
+    # We can't know what kwarg to put here...
+    if raise_on_requires_positional and callable_info.requires_positional:
         raise TypeError(
             "Component callables cannot have required positional arguments."
         )
 
     kwargs: AttributesDict = {}
-
-    for pattr_name, pattr_value in provided_attrs:
-        if pattr_name in callable_info.named_params or callable_info.kwargs:
-            kwargs[pattr_name] = pattr_value
 
     # Add all supported attributes
     for attr_name, attr_value in attrs.items():
@@ -414,12 +414,20 @@ def _prep_component_kwargs(
     if "children" in callable_info.named_params or callable_info.kwargs:
         kwargs["children"] = children
 
+    # Add in provided attrs if they haven't been set already and are wanted.
+    for pattr_name, pattr_value in provided_attrs:
+        if pattr_name not in kwargs and (
+            pattr_name in callable_info.named_params or callable_info.kwargs
+        ):
+            kwargs[pattr_name] = pattr_value
+
     # Check to make sure we've fully satisfied the callable's requirements
-    missing = callable_info.required_named_params - kwargs.keys()
-    if missing:
-        raise TypeError(
-            f"Missing required parameters for component: {', '.join(missing)}"
-        )
+    if raise_on_missing:
+        missing = callable_info.required_named_params - kwargs.keys()
+        if missing:
+            raise TypeError(
+                f"Missing required parameters for component: {', '.join(missing)}"
+            )
 
     return kwargs
 
@@ -557,6 +565,8 @@ class ComponentProcessor[T = DefaultAppState](IComponentProcessor[T]):
             _resolve_t_attrs(attrs, template.interpolations),
             children=component_template,
             provided_attrs=provided_attrs,
+            raise_on_requires_positional=True,
+            raise_on_missing=True,
         )
         res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
         # This integration API seems a lot cleaner but we lose the ability for
