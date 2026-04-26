@@ -1081,23 +1081,24 @@ _default_template_processor_api: ITemplateProcessor = _make_default_template_pro
 
 _default_process_ctx = ProcessContext()
 
+
+_default_svg_process_ctx = ProcessContext(ns="svg")
+
 # --------------------------------------------------------------------------
 # Public API
 # --------------------------------------------------------------------------
 
 
-def html(
-    template: Template,
-) -> str:
+def html(template: Template, assume_ctx: ProcessContext | None = None) -> str:
     """Parse an HTML t-string, substitute values, and return a string of HTML."""
+    if assume_ctx is None:
+        assume_ctx = _default_process_ctx
     return _default_template_processor_api.process(
-        template, assume_ctx=_default_process_ctx, app_state=None
+        template, assume_ctx=assume_ctx, app_state=None
     )
 
 
-def svg(
-    template: Template,
-) -> str:
+def svg(template: Template, assume_ctx: ProcessContext | None = None) -> str:
     """Parse a standalone SVG fragment and return a string of HTML.
 
     Use when the template does not contain an ``<svg>`` wrapper element.
@@ -1107,6 +1108,6 @@ def svg(
     When the template does contain ``<svg>``, use ``html()`` — the SVG context
     is detected automatically.
     """
-    return _default_template_processor_api.process(
-        template, assume_ctx=ProcessContext(ns="svg"), app_state=None
-    )
+    if assume_ctx is None:
+        assume_ctx = _default_svg_process_ctx
+    return _default_template_processor_api.process(template, assume_ctx, app_state=None)
