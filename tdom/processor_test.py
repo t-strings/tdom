@@ -23,7 +23,6 @@ from .processor import (
     TemplateParserProxy,
     TemplateProcessor,
     _make_default_template_processor,
-    make_ctx,
 )
 from .processor import (
     _prep_component_kwargs as prep_component_kwargs,
@@ -1979,7 +1978,7 @@ class TestComponentProcessor:
         with SystemCtx.set(SystemState(components=components, request=current_request)):
             links = [("Home", "/"), ("About", "/about")]
             header_t = t"<{self.IHeader}><{self.Logo} /><{self.INav} links={links} /></{self.IHeader}>"
-            assert tp.process(header_t) == (
+            assert tp.process(header_t, assume_ctx=ProcessContext()) == (
                 '<div class="hdr">'
                 '<span class="logo">LOGO</span>'
                 '<div class="nav">'

@@ -574,7 +574,7 @@ class ComponentProcessor(IComponentProcessor):
         if isinstance(res1, Template):
             return res1, None
         elif callable(res1):
-            res2 = res1() # ty: ignore[call-top-callable]
+            res2 = res1()  # ty: ignore[call-top-callable]
             if isinstance(res2, Template):
                 # @TODO: It seems like we should not need this.
                 # Although our check against res2 doesn't seem to affect the
