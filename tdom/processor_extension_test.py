@@ -6,7 +6,6 @@ from string.templatelib import Template
 from .processor import (
     Attribute,
     ComponentCallable,
-    ComponentObject,
     ComponentProcessor,
     IComponentProcessor,
     ProcessContext,
@@ -102,7 +101,7 @@ class TestComponentProcessor:
             attrs: tuple[TAttribute, ...],
             component_template: Template,
             provided_attrs: tuple[Attribute, ...] = (),
-        ) -> tuple[Template, ComponentObject | None]:
+        ) -> Template:
             from inspect import isclass
 
             system_ctx = SystemCtx.get()
@@ -112,28 +111,12 @@ class TestComponentProcessor:
                 and t.is_protocol(component_callable)
                 and component_callable in system_ctx.components
             ):
-                # Use the protocol to get the concrete component factory.
-                # @NOTE: This is using the contextvars.ContextVar to
-                # get this information but maybe in the future we'd have
-                # a way to get ctx directly from a parameter.
                 component_callable = system_ctx.components[component_callable]
 
-            # Also pass in system provided attributes to EVERY
-            # component (but it will only be used during the call if it needed.
-            # @NOTE: This is using the contextvars.ContextVar to
-            # get this information but maybe in the future we'd have
-            # a way to get ctx directly from a parameter.
             if system_ctx is not None:
                 system_attrs = (("request", system_ctx.request),)
                 provided_attrs = provided_attrs + system_attrs
 
-            # @NOTE: We mostly just put the correct values in the right places
-            # to perform the default component processing.
-            # - `component_callable` is now the actual concrete implementation
-            # - `provided_attrs` now has attrs that might not be in the template
-            # So we can just wrap the default processor and let it do all the
-            # work. BUT... if we wanted to just replace the invocation we could
-            # do that and just return the correct thing ourselves.
             return self.default_component_processor_api.process(
                 template=template,
                 last_ctx=last_ctx,

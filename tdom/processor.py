@@ -527,9 +527,9 @@ class IComponentProcessor(t.Protocol):
         attrs: tuple[TAttribute, ...],
         component_template: Template,
         provided_attrs: tuple[Attribute, ...] = (),
-    ) -> tuple[Template, ComponentObject | None]:
+    ) -> Template:
         """
-        Process available component details into a queryable object or template.
+        Process available component details into a Template.
         """
         ...
 
@@ -547,12 +547,29 @@ class ComponentProcessor(IComponentProcessor):
         attrs: tuple[TAttribute, ...],
         component_template: Template,
         provided_attrs: tuple[Attribute, ...] = (),
-    ) -> tuple[Template, ComponentObject | None]:
+    ) -> Template:
         """
-        Process available component details into a queryable object or template.
+        Process available component details into a Template.
 
-        Default strategy just uses `_prep_component_kwargs` for `kwargs`
-        injecting `children` if asked.
+        There are two general "styles" supported:
+
+        1. FunctionComponent
+
+        Calling `component_callable` with the prepared kwargs should
+        return a `Template`.
+
+        The primary purpose of this style is to support
+        using a normal function as a component.
+
+        2. FactoryComponent
+
+        Calling `component_callable` with the prepared kwargs should
+        return another `Callable` which when called with no arguments should
+        return a `Template`.
+
+        The primary purpose of this style is to support
+        using a `dataclass` with `def __call__(self) -> Template` as a
+        component.
         """
         if not callable(component_callable):
             raise TypeError(
@@ -567,19 +584,12 @@ class ComponentProcessor(IComponentProcessor):
             raise_on_missing=True,
         )
         res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
-        # This integration API seems a lot cleaner but we lose the ability for
-        # component_object.__call__ to be wrapped in any sort of context setting
-        # mechanism provided by the class, but maybe that's ok?  It could be
-        # cached on the instance although that is kind of gross.
         if isinstance(res1, Template):
-            return res1, None
+            return res1
         elif callable(res1):
             res2 = res1()  # ty: ignore[call-top-callable]
             if isinstance(res2, Template):
-                # @TODO: It seems like we should not need this.
-                # Although our check against res2 doesn't seem to affect the
-                # return value of res1.
-                return res2, t.cast(ComponentObject, res1)
+                return res2
             else:
                 raise TypeError(
                     f"Component object must return Template when called: {type(res2)}"
@@ -807,10 +817,9 @@ class TemplateProcessor(ITemplateProcessor):
             template, attrs, start_i_index, end_i_index, check_callables=True
         )
         component_callable = template.interpolations[start_i_index].value
-        result_t, component_object = self.component_processor_api.process(
+        result_t = self.component_processor_api.process(
             template, last_ctx, component_callable, attrs, children_template
         )
-        assert isinstance(component_object, object)
         return self._process_template(result_t, last_ctx)
 
     def _process_raw_texts(
