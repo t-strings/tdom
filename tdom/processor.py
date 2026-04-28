@@ -1,5 +1,6 @@
 import typing as t
 from collections.abc import Callable, Iterable, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
@@ -7,6 +8,7 @@ from string.templatelib import Interpolation, Template
 from markupsafe import Markup
 
 from .callables import CallableInfo, get_callable_info
+from .cvar_utils import ContextVarSetter
 from .escaping import (
     escape_html_comment as default_escape_html_comment,
 )
@@ -545,7 +547,7 @@ class IComponentProcessor(t.Protocol):
         attrs: tuple[TAttribute, ...],
         component_template: Template,
         provided_attrs: tuple[Attribute, ...] = (),
-    ) -> Template:
+    ) -> Template | tuple[Template, object]:
         """
         Process available component details into a Template.
         """
@@ -565,7 +567,7 @@ class ComponentProcessor(IComponentProcessor):
         attrs: tuple[TAttribute, ...],
         component_template: Template,
         provided_attrs: tuple[Attribute, ...] = (),
-    ) -> Template:
+    ) -> Template | tuple[Template, object]:
         """
         Process available component details into a Template.
 
@@ -603,19 +605,46 @@ class ComponentProcessor(IComponentProcessor):
         )
         res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
         if isinstance(res1, Template):
-            return res1
+            return res1, None
         elif callable(res1):
             res2 = res1()  # ty: ignore[call-top-callable]
             if isinstance(res2, Template):
                 return res2
+            elif isinstance(res2, tuple):
+                if len(res2) == 2:
+                    if not isinstance(res2[0], Template):
+                        raise TypeError(
+                            f"Component object returned unxpected type in first entry of 2-tuple: {type(res2[0])}"
+                        )
+                    else:
+                        # @TYPING:
+                        # Rebuild tuple so TY can correctly narrow types,
+                        # pyright works with `return res2`.
+                        return (res2[0], res2[1])
+                else:
+                    raise ValueError(
+                        f"Component object returned tuple with length != 2: {len(res2)}"
+                    )
+
             else:
                 raise TypeError(
-                    f"Component object must return Template when called: {type(res2)}"
+                    f"Component object must return Template or 2-tuple when called: {type(res2)}"
                 )
         else:
             raise TypeError(
                 f"Component callable must return Template or Callable: {type(res1)}"
             )
+
+
+@t.runtime_checkable
+class IMiddlewareGetContextValues(t.Protocol):
+    """
+    Middleware that provides a tuple of 2-tuples each with a context variable
+    paired with a value to set when processing the component's template.
+    """
+
+    # @TODO: Can we match a contextvar's type with the value to set like this?
+    def get_context_values(self) -> tuple[tuple[ContextVar, object], ...]: ...
 
 
 class ITemplateProcessor(t.Protocol):
@@ -835,10 +864,44 @@ class TemplateProcessor(ITemplateProcessor):
             template, attrs, start_i_index, end_i_index, check_callables=True
         )
         component_callable = template.interpolations[start_i_index].value
-        result_t = self.component_processor_api.process(
+        result = self.component_processor_api.process(
             template, last_ctx, component_callable, attrs, children_template
         )
-        return self._process_template(result_t, last_ctx)
+        if isinstance(result, Template):
+            result_t, middleware_api = result, None
+        elif isinstance(result, tuple):
+            if len(result) == 2:
+                if not isinstance(result[0], Template):
+                    raise TypeError(
+                        f"Component processor returned unxpected type in first entry of 2-tuple: {type(result[0])}"
+                    )
+                else:
+                    result_t, middleware_api = result
+            else:
+                raise ValueError(
+                    f"Component processor returned tuple with length != 2: {len(result)}"
+                )
+        else:
+            raise TypeError(
+                f"Component processor should return unexpected type: {type(result)}"
+            )
+
+        context_values: tuple[tuple[ContextVar, object], ...] = ()
+
+        if middleware_api is not None:
+            if isinstance(middleware_api, IMiddlewareGetContextValues):
+                context_values = middleware_api.get_context_values()
+            else:
+                # @DESIGN: It is NOT an error if a middleware object is provided but it
+                # provides no actual middleware functionality.  Should it be?
+                pass
+
+        # Try to consolidate "final" call(s) to the last block regardless of middleware.
+        if context_values:
+            with ContextVarSetter(context_values=context_values):
+                return self._process_template(result_t, last_ctx)
+        else:
+            return self._process_template(result_t, last_ctx)
 
     def _process_raw_texts(
         self,
