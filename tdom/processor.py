@@ -393,8 +393,26 @@ def _prep_component_kwargs(
     """
     Matchup kwargs from multiple sources to target the given callable.
 
-    The `provided_attrs` can be used by extensions that want to provide
-    kwargs even if they are not specified in a template.
+    `provided_attrs`:
+        These can be used by extensions that want to provide
+        attrs even if they are not specified in the component's `attrs` in
+        the template. If an attribute with the same name is provided in
+        `attrs` then it takes priority over entries in `provided_attrs`.
+        @NOTE: These will be injected into any component with `**kwargs`
+        in their signature unless provided already by `attrs`.
+
+    `raise_on_requires_positional`:
+        Optionally check and raise `TypeError` if the `callable_info` requires
+        positional arguments which we cannot fulfill normally.
+        An exception might not be desired if the caller will finish preparing
+        the arguments after this call.
+
+    `raise_on_missing`:
+        Optionally check and raise `TypeError` if we are not able to fulfill all
+        the arguments the `callable_info` expects since in the common case this
+        raise an exception whose cause might not be clear.
+        An exception might not be desired if the caller will finish preparing
+        the arguments after this call.
     """
 
     # We can't know what kwarg to put here...
