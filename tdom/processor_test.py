@@ -1808,7 +1808,9 @@ class TestComponentErrors:
         def BadFunctionComp(children: Template):
             return bad_value
 
-        with pytest.raises(TypeError, match="Unknown component return value:"):
+        with pytest.raises(
+            TypeError, match="Component callable must return Template or Callable:"
+        ):
             _ = html(t"<{BadFunctionComp}>Hello</{BadFunctionComp}>")
 
     @pytest.mark.parametrize(
@@ -1821,7 +1823,9 @@ class TestComponentErrors:
 
             return component_object
 
-        with pytest.raises(TypeError, match="Unknown component return value:"):
+        with pytest.raises(
+            TypeError, match="Component object must return Template when called:"
+        ):
             _ = html(t"<{BadFactoryComp}>Hello</{BadFactoryComp}>")
 
 
