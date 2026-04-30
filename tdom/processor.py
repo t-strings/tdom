@@ -484,10 +484,35 @@ class ProcessContext:
         )
 
 
-type FunctionComponent = Callable[..., Template]
-type FactoryComponent = Callable[..., ComponentObject]
-type ComponentCallable = FunctionComponent | FactoryComponent
-type ComponentObject = Callable[[], Template]
+@t.runtime_checkable
+class IFunctionComponent(t.Protocol):
+    __call__: Callable[..., Template]
+
+
+@t.runtime_checkable
+class IFunctionMiddlewareComponent(t.Protocol):
+    __call__: Callable[..., tuple[Template, object]]
+
+
+@t.runtime_checkable
+class IFactoryComponent(t.Protocol):
+    __call__: IFunctionComponent
+
+
+@t.runtime_checkable
+class IFactoryMiddlewareComponent(t.Protocol):
+    __call__: IFunctionMiddlewareComponent
+
+
+# type FunctionComponent = Callable[..., Template | tuple[Template, object]]
+# type FactoryComponent = Callable[..., ComponentObject]
+type ComponentCallable = (
+    IFunctionComponent
+    | IFactoryComponent
+    | IFunctionMiddlewareComponent
+    | IFactoryMiddlewareComponent
+)
+type ComponentObject = IFunctionComponent | IFunctionMiddlewareComponent
 
 
 type NormalTextInterpolationValue = (
@@ -563,7 +588,7 @@ class ComponentProcessor(IComponentProcessor):
         self,
         template: Template,
         last_ctx: ProcessContext,
-        component_callable: t.Annotated[object, ComponentCallable],
+        component_callable: t.Annotated[object, IFactoryComponent | IFunctionComponent],
         attrs: tuple[TAttribute, ...],
         component_template: Template,
         provided_attrs: tuple[Attribute, ...] = (),
@@ -605,34 +630,40 @@ class ComponentProcessor(IComponentProcessor):
         )
         res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
         if isinstance(res1, Template):
-            return res1, None
+            return res1
+        elif isinstance(res1, tuple):
+            return self._check_tuple_response(res1, error_target="callable")
         elif callable(res1):
             res2 = res1()  # ty: ignore[call-top-callable]
             if isinstance(res2, Template):
                 return res2
             elif isinstance(res2, tuple):
-                if len(res2) == 2:
-                    if not isinstance(res2[0], Template):
-                        raise TypeError(
-                            f"Component object returned unxpected type in first entry of 2-tuple: {type(res2[0])}"
-                        )
-                    else:
-                        # @TYPING:
-                        # Rebuild tuple so TY can correctly narrow types,
-                        # pyright works with `return res2`.
-                        return (res2[0], res2[1])
-                else:
-                    raise ValueError(
-                        f"Component object returned tuple with length != 2: {len(res2)}"
-                    )
-
+                return self._check_tuple_response(res2, error_target="object")
             else:
                 raise TypeError(
                     f"Component object must return Template or 2-tuple when called: {type(res2)}"
                 )
         else:
             raise TypeError(
-                f"Component callable must return Template or Callable: {type(res1)}"
+                f"Component callable must return Template, 2-tuple or Callable: {type(res1)}"
+            )
+
+    def _check_tuple_response(
+        self, response: tuple, error_target: str
+    ) -> tuple[Template, object]:
+        if len(response) == 2:
+            if not isinstance(response[0], Template):
+                raise TypeError(
+                    f"Component {error_target} returned unxpected type in first entry of 2-tuple: {type(response[0])}"
+                )
+            else:
+                # @TYPING:
+                # Rebuild tuple so TY can correctly narrow types,
+                # pyright works with `return response`.
+                return (response[0], response[1])
+        else:
+            raise TypeError(
+                f"Component {error_target} returned tuple with length != 2: {len(response)}"
             )
 
 

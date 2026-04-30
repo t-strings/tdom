@@ -6,6 +6,9 @@ from .processor import (
     Attribute,
     ComponentProcessor,
     IComponentProcessor,
+    IFactoryComponent,
+    IFactoryMiddlewareComponent,
+    IFunctionComponent,
     ProcessContext,
     TemplateProcessor,
 )
@@ -21,15 +24,11 @@ AppStateCtx: ContextVar[AppState | None] = ContextVar("AppStateCtx", default=Non
 
 
 class TestComponentProcessor:
-    @dataclass
-    class Body:
-        children: Template
-
-        def __call__(self) -> Template:
-            return t"<body>{self.children}</body>"
+    def Body(self, children: Template) -> Template:
+        return t"<body>{children}</body>"
 
     @dataclass
-    class Header:
+    class Header(IFactoryComponent):
         children: Template
 
         app_state: AppState
@@ -85,6 +84,7 @@ class TestComponentProcessor:
 
     def test_injected_app_state(self):
         name = "App"
+        assert isinstance(self.Body, IFunctionComponent)
         body_t = (
             t"<{self.Body}><{self.Header}><h1>{name}</h1></{self.Header}></{self.Body}>"
         )
@@ -110,7 +110,7 @@ ModeCtx: ContextVar[str] = ContextVar("ModeCtx")
 
 class TestMiddlewareGetContextValues:
     @dataclass
-    class ThemeProvider:
+    class ThemeProvider(IFactoryMiddlewareComponent):
         theme_name: str
 
         children: Template
@@ -130,7 +130,7 @@ class TestMiddlewareGetContextValues:
             return context_values
 
     @dataclass
-    class ThemeDisplay:
+    class ThemeDisplay(IFactoryComponent):
         theme_name: str
 
         mode: str | None = None

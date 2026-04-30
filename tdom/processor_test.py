@@ -1801,13 +1801,31 @@ class TestComponentErrors:
         with pytest.raises(TypeError):
             _ = html(t"<{OpenTag}>Hello</{CloseTag}>")
 
-    @pytest.mark.parametrize("bad_value", ("", "text", None, 1, ("list", "of", "strs")))
+    @pytest.mark.parametrize("bad_value", ("", "text", None, 1))
     def test_function_component_returns_nontemplate_fails(self, bad_value):
         def BadFunctionComp(children: Template):
             return bad_value
 
         with pytest.raises(
-            TypeError, match="Component callable must return Template or Callable:"
+            TypeError,
+            match="Component callable must return Template, 2-tuple or Callable:",
+        ):
+            _ = html(t"<{BadFunctionComp}>Hello</{BadFunctionComp}>")
+
+    @pytest.mark.parametrize(
+        "bad_value",
+        (
+            (t"",),
+            (t"", None, None),
+        ),
+    )
+    def test_function_object_returns_mislengthed_tuple_fails(self, bad_value):
+        def BadFunctionComp(children: Template):
+            return bad_value
+
+        with pytest.raises(
+            TypeError,
+            match="Component callable returned tuple with length != 2:",
         ):
             _ = html(t"<{BadFunctionComp}>Hello</{BadFunctionComp}>")
 
@@ -1840,7 +1858,7 @@ class TestComponentErrors:
             return component_object
 
         with pytest.raises(
-            ValueError, match="Component object returned tuple with length != 2"
+            TypeError, match="Component object returned tuple with length != 2"
         ):
             _ = html(t"<{BadFactoryComp}>Hello</{BadFactoryComp}>")
 
