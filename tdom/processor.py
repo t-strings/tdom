@@ -1,5 +1,6 @@
 import typing as t
 from collections.abc import Callable, Iterable, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
@@ -7,6 +8,7 @@ from string.templatelib import Interpolation, Template
 from markupsafe import Markup
 
 from .callables import CallableInfo, get_callable_info
+from .cvar_utils import ContextVarSetter
 from .escaping import (
     escape_html_comment as default_escape_html_comment,
 )
@@ -386,8 +388,37 @@ def _prep_component_kwargs(
     callable_info: CallableInfo,
     attrs: AttributesDict,
     children: Template,
+    provided_attrs: tuple[Attribute, ...] = (),
+    raise_on_requires_positional=True,
+    raise_on_missing=True,
 ) -> AttributesDict:
-    if callable_info.requires_positional:
+    """
+    Matchup kwargs from multiple sources to target the given callable.
+
+    `provided_attrs`:
+        These can be used by extensions that want to provide
+        attrs even if they are not specified in the component's `attrs` in
+        the template. If an attribute with the same name is provided in
+        `attrs` then it takes priority over entries in `provided_attrs`.
+        @NOTE: These will be injected into any component with `**kwargs`
+        in their signature unless provided already by `attrs`.
+
+    `raise_on_requires_positional`:
+        Optionally check and raise `TypeError` if the `callable_info` requires
+        positional arguments which we cannot fulfill normally.
+        An exception might not be desired if the caller will finish preparing
+        the arguments after this call.
+
+    `raise_on_missing`:
+        Optionally check and raise `TypeError` if we are not able to fulfill all
+        the arguments the `callable_info` expects since in the common case this
+        raise an exception whose cause might not be clear.
+        An exception might not be desired if the caller will finish preparing
+        the arguments after this call.
+    """
+
+    # We can't know what kwarg to put here...
+    if raise_on_requires_positional and callable_info.requires_positional:
         raise TypeError(
             "Component callables cannot have required positional arguments."
         )
@@ -403,12 +434,20 @@ def _prep_component_kwargs(
     if "children" in callable_info.named_params or callable_info.kwargs:
         kwargs["children"] = children
 
+    # Add in provided attrs if they haven't been set already and are wanted.
+    for pattr_name, pattr_value in provided_attrs:
+        if pattr_name not in kwargs and (
+            pattr_name in callable_info.named_params or callable_info.kwargs
+        ):
+            kwargs[pattr_name] = pattr_value
+
     # Check to make sure we've fully satisfied the callable's requirements
-    missing = callable_info.required_named_params - kwargs.keys()
-    if missing:
-        raise TypeError(
-            f"Missing required parameters for component: {', '.join(missing)}"
-        )
+    if raise_on_missing:
+        missing = callable_info.required_named_params - kwargs.keys()
+        if missing:
+            raise TypeError(
+                f"Missing required parameters for component: {', '.join(missing)}"
+            )
 
     return kwargs
 
@@ -445,10 +484,35 @@ class ProcessContext:
         )
 
 
-type FunctionComponent = Callable[..., Template]
-type FactoryComponent = Callable[..., ComponentObject]
-type ComponentCallable = FunctionComponent | FactoryComponent
-type ComponentObject = Callable[[], Template]
+@t.runtime_checkable
+class IFunctionComponent(t.Protocol):
+    __call__: Callable[..., Template]
+
+
+@t.runtime_checkable
+class IFunctionMiddlewareComponent(t.Protocol):
+    __call__: Callable[..., tuple[Template, object]]
+
+
+@t.runtime_checkable
+class IFactoryComponent(t.Protocol):
+    __call__: IFunctionComponent
+
+
+@t.runtime_checkable
+class IFactoryMiddlewareComponent(t.Protocol):
+    __call__: IFunctionMiddlewareComponent
+
+
+# type FunctionComponent = Callable[..., Template | tuple[Template, object]]
+# type FactoryComponent = Callable[..., ComponentObject]
+type ComponentCallable = (
+    IFunctionComponent
+    | IFactoryComponent
+    | IFunctionMiddlewareComponent
+    | IFactoryMiddlewareComponent
+)
+type ComponentObject = IFunctionComponent | IFunctionMiddlewareComponent
 
 
 type NormalTextInterpolationValue = (
@@ -497,6 +561,123 @@ class CachedTemplateParserProxy(TemplateParserProxy):
         return self._to_tnode(CachableTemplate(template))
 
 
+class IComponentProcessor(t.Protocol):
+    """Isolate component processing to allow for replacement."""
+
+    def process(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        component_callable: t.Annotated[object, ComponentCallable],
+        attrs: tuple[TAttribute, ...],
+        component_template: Template,
+        provided_attrs: tuple[Attribute, ...] = (),
+    ) -> Template | tuple[Template, object]:
+        """
+        Process available component details into a Template.
+        """
+        ...
+
+
+class ComponentProcessor(IComponentProcessor):
+    """
+    Default component processor.
+    """
+
+    def process(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        component_callable: t.Annotated[object, IFactoryComponent | IFunctionComponent],
+        attrs: tuple[TAttribute, ...],
+        component_template: Template,
+        provided_attrs: tuple[Attribute, ...] = (),
+    ) -> Template | tuple[Template, object]:
+        """
+        Process available component details into a Template.
+
+        There are two general "styles" supported:
+
+        1. FunctionComponent
+
+        Calling `component_callable` with the prepared kwargs should
+        return a `Template`.
+
+        The primary purpose of this style is to support
+        using a normal function as a component.
+
+        2. FactoryComponent
+
+        Calling `component_callable` with the prepared kwargs should
+        return another `Callable` which when called with no arguments should
+        return a `Template`.
+
+        The primary purpose of this style is to support
+        using a `dataclass` with `def __call__(self) -> Template` as a
+        component.
+        """
+        if not callable(component_callable):
+            raise TypeError(
+                f"Component callable must be callable: {type(component_callable)}"
+            )
+        kwargs = _prep_component_kwargs(
+            get_callable_info(component_callable),
+            _resolve_t_attrs(attrs, template.interpolations),
+            children=component_template,
+            provided_attrs=provided_attrs,
+            raise_on_requires_positional=True,
+            raise_on_missing=True,
+        )
+        res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
+        if isinstance(res1, Template):
+            return res1
+        elif isinstance(res1, tuple):
+            return self._check_tuple_response(res1, error_target="callable")
+        elif callable(res1):
+            res2 = res1()  # ty: ignore[call-top-callable]
+            if isinstance(res2, Template):
+                return res2
+            elif isinstance(res2, tuple):
+                return self._check_tuple_response(res2, error_target="object")
+            else:
+                raise TypeError(
+                    f"Component object must return Template or 2-tuple when called: {type(res2)}"
+                )
+        else:
+            raise TypeError(
+                f"Component callable must return Template, 2-tuple or Callable: {type(res1)}"
+            )
+
+    def _check_tuple_response(
+        self, response: tuple, error_target: str
+    ) -> tuple[Template, object]:
+        if len(response) == 2:
+            if not isinstance(response[0], Template):
+                raise TypeError(
+                    f"Component {error_target} returned unxpected type in first entry of 2-tuple: {type(response[0])}"
+                )
+            else:
+                # @TYPING:
+                # Rebuild tuple so TY can correctly narrow types,
+                # pyright works with `return response`.
+                return (response[0], response[1])
+        else:
+            raise TypeError(
+                f"Component {error_target} returned tuple with length != 2: {len(response)}"
+            )
+
+
+@t.runtime_checkable
+class IMiddlewareGetContextValues(t.Protocol):
+    """
+    Middleware that provides a tuple of 2-tuples each with a context variable
+    paired with a value to set when processing the component's template.
+    """
+
+    # @TODO: Can we match a contextvar's type with the value to set like this?
+    def get_context_values(self) -> tuple[tuple[ContextVar, object], ...]: ...
+
+
 class ITemplateProcessor(t.Protocol):
     def process(self, root_template: Template, assume_ctx: ProcessContext) -> str: ...
 
@@ -504,6 +685,10 @@ class ITemplateProcessor(t.Protocol):
 @dataclass(frozen=True)
 class TemplateProcessor(ITemplateProcessor):
     parser_api: ITemplateParserProxy = field(default_factory=CachedTemplateParserProxy)
+
+    component_processor_api: IComponentProcessor = field(
+        default_factory=ComponentProcessor
+    )
 
     escape_html_text: Callable = default_escape_html_text
 
@@ -668,6 +853,33 @@ class TemplateProcessor(ITemplateProcessor):
             return attrs_str
         return ""
 
+    def _extract_component_template(
+        self,
+        template: Template,
+        attrs: tuple[TAttribute, ...],
+        start_i_index: int,
+        end_i_index: int | None,
+        check_callables: bool = True,
+    ) -> Template:
+        body_start_s_index = (
+            start_i_index
+            + 1
+            + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
+        )
+        if start_i_index != end_i_index and end_i_index is not None:
+            # @TODO: We should do this during parsing.
+            if (
+                check_callables
+                and template.interpolations[start_i_index].value
+                != template.interpolations[end_i_index].value
+            ):
+                raise TypeError(
+                    "Component callable in start tag must match component callable in end tag."
+                )
+            return extract_embedded_template(template, body_start_s_index, end_i_index)
+        else:
+            return t""
+
     def _process_component(
         self,
         template: Template,
@@ -679,49 +891,68 @@ class TemplateProcessor(ITemplateProcessor):
         """
         Invoke a component and process the result into a string.
         """
-        body_start_s_index = (
-            start_i_index
-            + 1
-            + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
+        children_template = self._extract_component_template(
+            template, attrs, start_i_index, end_i_index, check_callables=True
         )
-        start_i = template.interpolations[start_i_index]
-        component_callable = t.cast(ComponentCallable, start_i.value)
-        if start_i_index != end_i_index and end_i_index is not None:
-            # @TODO: We should do this during parsing.
-            children_template = extract_embedded_template(
-                template, body_start_s_index, end_i_index
-            )
-            if component_callable != template.interpolations[end_i_index].value:
-                raise TypeError(
-                    "Component callable in start tag must match component callable in end tag."
+        component_callable = template.interpolations[start_i_index].value
+        response = self.component_processor_api.process(
+            template, last_ctx, component_callable, attrs, children_template
+        )
+        if isinstance(response, Template):
+            response_t = response
+            response_middleware = None
+        elif isinstance(response, tuple):
+            if len(response) == 2:
+                if not isinstance(response[0], Template):
+                    raise TypeError(
+                        f"Component processor returned unxpected type in first entry of 2-tuple: {type(response[0])}"
+                    )
+                else:
+                    response_t, response_middleware = response
+            else:
+                raise ValueError(
+                    f"Component processor returned tuple with length != 2: {len(response)}"
                 )
         else:
-            children_template = t""
+            raise TypeError(
+                f"Component processor should return unexpected type: {type(response)}"
+            )
 
-        if not callable(component_callable):
-            raise TypeError("Component callable must be callable.")
-
-        kwargs = _prep_component_kwargs(
-            get_callable_info(component_callable),
-            _resolve_t_attrs(attrs, template.interpolations),
-            children=children_template,
-        )
-
-        result_t = component_callable(**kwargs)
-        if (
-            result_t is not None
-            and not isinstance(result_t, Template)
-            and callable(result_t)
-        ):
-            component_obj = t.cast(ComponentObject, result_t)  # ty: ignore[redundant-cast]
-            result_t = component_obj()
+        if response_middleware is not None:
+            return self._process_middleware(
+                template, last_ctx, response_t, response_middleware
+            )
         else:
-            component_obj = None
+            return self._process_template(response_t, last_ctx)
 
-        if isinstance(result_t, Template):
-            return self._process_template(result_t, last_ctx)
+    def _process_middleware(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        response_t: Template,
+        response_middleware: object,
+    ) -> str:
+        """
+        Process the given middleware and apply it to the component's response
+        template.
+        """
+
+        context_values: tuple[tuple[ContextVar, object], ...] = ()
+
+        if isinstance(
+            response_middleware, IMiddlewareGetContextValues
+        ):  # @TODO: Probably use hasattr.
+            context_values = response_middleware.get_context_values()
         else:
-            raise TypeError(f"Unknown component return value: {type(result_t)}")
+            # @DESIGN: It is NOT an error if a middleware object is provided but it
+            # provides no actual middleware functionality.  Should it be?
+            pass
+
+        if context_values:
+            with ContextVarSetter(context_values=context_values):
+                return self._process_template(response_t, last_ctx)
+        else:
+            return self._process_template(response_t, last_ctx)
 
     def _process_raw_texts(
         self,
