@@ -895,44 +895,64 @@ class TemplateProcessor(ITemplateProcessor):
             template, attrs, start_i_index, end_i_index, check_callables=True
         )
         component_callable = template.interpolations[start_i_index].value
-        result = self.component_processor_api.process(
+        response = self.component_processor_api.process(
             template, last_ctx, component_callable, attrs, children_template
         )
-        if isinstance(result, Template):
-            result_t, middleware_api = result, None
-        elif isinstance(result, tuple):
-            if len(result) == 2:
-                if not isinstance(result[0], Template):
+        if isinstance(response, Template):
+            response_t = response
+            response_middleware = None
+        elif isinstance(response, tuple):
+            if len(response) == 2:
+                if not isinstance(response[0], Template):
                     raise TypeError(
-                        f"Component processor returned unxpected type in first entry of 2-tuple: {type(result[0])}"
+                        f"Component processor returned unxpected type in first entry of 2-tuple: {type(response[0])}"
                     )
                 else:
-                    result_t, middleware_api = result
+                    response_t, response_middleware = response
             else:
                 raise ValueError(
-                    f"Component processor returned tuple with length != 2: {len(result)}"
+                    f"Component processor returned tuple with length != 2: {len(response)}"
                 )
         else:
             raise TypeError(
-                f"Component processor should return unexpected type: {type(result)}"
+                f"Component processor should return unexpected type: {type(response)}"
             )
+
+        if response_middleware is not None:
+            return self._process_middleware(
+                template, last_ctx, response_t, response_middleware
+            )
+        else:
+            return self._process_template(response_t, last_ctx)
+
+    def _process_middleware(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        response_t: Template,
+        response_middleware: object,
+    ) -> str:
+        """
+        Process the given middleware and apply it to the component's response
+        template.
+        """
 
         context_values: tuple[tuple[ContextVar, object], ...] = ()
 
-        if middleware_api is not None:
-            if isinstance(middleware_api, IMiddlewareGetContextValues):
-                context_values = middleware_api.get_context_values()
-            else:
-                # @DESIGN: It is NOT an error if a middleware object is provided but it
-                # provides no actual middleware functionality.  Should it be?
-                pass
+        if isinstance(
+            response_middleware, IMiddlewareGetContextValues
+        ):  # @TODO: Probably use hasattr.
+            context_values = response_middleware.get_context_values()
+        else:
+            # @DESIGN: It is NOT an error if a middleware object is provided but it
+            # provides no actual middleware functionality.  Should it be?
+            pass
 
-        # Try to consolidate "final" call(s) to the last block regardless of middleware.
         if context_values:
             with ContextVarSetter(context_values=context_values):
-                return self._process_template(result_t, last_ctx)
+                return self._process_template(response_t, last_ctx)
         else:
-            return self._process_template(result_t, last_ctx)
+            return self._process_template(response_t, last_ctx)
 
     def _process_raw_texts(
         self,
