@@ -386,8 +386,37 @@ def _prep_component_kwargs(
     callable_info: CallableInfo,
     attrs: AttributesDict,
     children: Template,
+    provided_attrs: tuple[Attribute, ...] = (),
+    raise_on_requires_positional=True,
+    raise_on_missing=True,
 ) -> AttributesDict:
-    if callable_info.requires_positional:
+    """
+    Matchup kwargs from multiple sources to target the given callable.
+
+    `provided_attrs`:
+        These can be used by extensions that want to provide
+        attrs even if they are not specified in the component's `attrs` in
+        the template. If an attribute with the same name is provided in
+        `attrs` then it takes priority over entries in `provided_attrs`.
+        @NOTE: These will be injected into any component with `**kwargs`
+        in their signature unless provided already by `attrs`.
+
+    `raise_on_requires_positional`:
+        Optionally check and raise `TypeError` if the `callable_info` requires
+        positional arguments which we cannot fulfill normally.
+        An exception might not be desired if the caller will finish preparing
+        the arguments after this call.
+
+    `raise_on_missing`:
+        Optionally check and raise `TypeError` if we are not able to fulfill all
+        the arguments the `callable_info` expects since in the common case this
+        raise an exception whose cause might not be clear.
+        An exception might not be desired if the caller will finish preparing
+        the arguments after this call.
+    """
+
+    # We can't know what kwarg to put here...
+    if raise_on_requires_positional and callable_info.requires_positional:
         raise TypeError(
             "Component callables cannot have required positional arguments."
         )
@@ -403,12 +432,20 @@ def _prep_component_kwargs(
     if "children" in callable_info.named_params or callable_info.kwargs:
         kwargs["children"] = children
 
+    # Add in provided attrs if they haven't been set already and are wanted.
+    for pattr_name, pattr_value in provided_attrs:
+        if pattr_name not in kwargs and (
+            pattr_name in callable_info.named_params or callable_info.kwargs
+        ):
+            kwargs[pattr_name] = pattr_value
+
     # Check to make sure we've fully satisfied the callable's requirements
-    missing = callable_info.required_named_params - kwargs.keys()
-    if missing:
-        raise TypeError(
-            f"Missing required parameters for component: {', '.join(missing)}"
-        )
+    if raise_on_missing:
+        missing = callable_info.required_named_params - kwargs.keys()
+        if missing:
+            raise TypeError(
+                f"Missing required parameters for component: {', '.join(missing)}"
+            )
 
     return kwargs
 
@@ -497,6 +534,90 @@ class CachedTemplateParserProxy(TemplateParserProxy):
         return self._to_tnode(CachableTemplate(template))
 
 
+class IComponentProcessor(t.Protocol):
+    """Isolate component processing to allow for replacement."""
+
+    def process(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        component_callable: t.Annotated[object, ComponentCallable],
+        attrs: tuple[TAttribute, ...],
+        component_template: Template,
+        provided_attrs: tuple[Attribute, ...] = (),
+    ) -> Template:
+        """
+        Process available component details into a Template.
+        """
+        ...
+
+
+class ComponentProcessor(IComponentProcessor):
+    """
+    Default component processor.
+    """
+
+    def process(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        component_callable: t.Annotated[object, ComponentCallable],
+        attrs: tuple[TAttribute, ...],
+        component_template: Template,
+        provided_attrs: tuple[Attribute, ...] = (),
+    ) -> Template:
+        """
+        Process available component details into a Template.
+
+        There are two general "styles" supported:
+
+        1. FunctionComponent
+
+        Calling `component_callable` with the prepared kwargs should
+        return a `Template`.
+
+        The primary purpose of this style is to support
+        using a normal function as a component.
+
+        2. FactoryComponent
+
+        Calling `component_callable` with the prepared kwargs should
+        return another `Callable` which when called with no arguments should
+        return a `Template`.
+
+        The primary purpose of this style is to support
+        using a `dataclass` with `def __call__(self) -> Template` as a
+        component.
+        """
+        if not callable(component_callable):
+            raise TypeError(
+                f"Component callable must be callable: {type(component_callable)}"
+            )
+        kwargs = _prep_component_kwargs(
+            get_callable_info(component_callable),
+            _resolve_t_attrs(attrs, template.interpolations),
+            children=component_template,
+            provided_attrs=provided_attrs,
+            raise_on_requires_positional=True,
+            raise_on_missing=True,
+        )
+        res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
+        if isinstance(res1, Template):
+            return res1
+        elif callable(res1):
+            res2 = res1()  # ty: ignore[call-top-callable]
+            if isinstance(res2, Template):
+                return res2
+            else:
+                raise TypeError(
+                    f"Component object must return Template when called: {type(res2)}"
+                )
+        else:
+            raise TypeError(
+                f"Component callable must return Template or Callable: {type(res1)}"
+            )
+
+
 class ITemplateProcessor(t.Protocol):
     def process(self, root_template: Template, assume_ctx: ProcessContext) -> str: ...
 
@@ -504,6 +625,10 @@ class ITemplateProcessor(t.Protocol):
 @dataclass(frozen=True)
 class TemplateProcessor(ITemplateProcessor):
     parser_api: ITemplateParserProxy = field(default_factory=CachedTemplateParserProxy)
+
+    component_processor_api: IComponentProcessor = field(
+        default_factory=ComponentProcessor
+    )
 
     escape_html_text: Callable = default_escape_html_text
 
@@ -668,6 +793,33 @@ class TemplateProcessor(ITemplateProcessor):
             return attrs_str
         return ""
 
+    def _extract_component_template(
+        self,
+        template: Template,
+        attrs: tuple[TAttribute, ...],
+        start_i_index: int,
+        end_i_index: int | None,
+        check_callables: bool = True,
+    ) -> Template:
+        body_start_s_index = (
+            start_i_index
+            + 1
+            + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
+        )
+        if start_i_index != end_i_index and end_i_index is not None:
+            # @TODO: We should do this during parsing.
+            if (
+                check_callables
+                and template.interpolations[start_i_index].value
+                != template.interpolations[end_i_index].value
+            ):
+                raise TypeError(
+                    "Component callable in start tag must match component callable in end tag."
+                )
+            return extract_embedded_template(template, body_start_s_index, end_i_index)
+        else:
+            return t""
+
     def _process_component(
         self,
         template: Template,
@@ -679,49 +831,14 @@ class TemplateProcessor(ITemplateProcessor):
         """
         Invoke a component and process the result into a string.
         """
-        body_start_s_index = (
-            start_i_index
-            + 1
-            + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
+        children_template = self._extract_component_template(
+            template, attrs, start_i_index, end_i_index, check_callables=True
         )
-        start_i = template.interpolations[start_i_index]
-        component_callable = t.cast(ComponentCallable, start_i.value)
-        if start_i_index != end_i_index and end_i_index is not None:
-            # @TODO: We should do this during parsing.
-            children_template = extract_embedded_template(
-                template, body_start_s_index, end_i_index
-            )
-            if component_callable != template.interpolations[end_i_index].value:
-                raise TypeError(
-                    "Component callable in start tag must match component callable in end tag."
-                )
-        else:
-            children_template = t""
-
-        if not callable(component_callable):
-            raise TypeError("Component callable must be callable.")
-
-        kwargs = _prep_component_kwargs(
-            get_callable_info(component_callable),
-            _resolve_t_attrs(attrs, template.interpolations),
-            children=children_template,
+        component_callable = template.interpolations[start_i_index].value
+        result_t = self.component_processor_api.process(
+            template, last_ctx, component_callable, attrs, children_template
         )
-
-        result_t = component_callable(**kwargs)
-        if (
-            result_t is not None
-            and not isinstance(result_t, Template)
-            and callable(result_t)
-        ):
-            component_obj = t.cast(ComponentObject, result_t)  # ty: ignore[redundant-cast]
-            result_t = component_obj()
-        else:
-            component_obj = None
-
-        if isinstance(result_t, Template):
-            return self._process_template(result_t, last_ctx)
-        else:
-            raise TypeError(f"Unknown component return value: {type(result_t)}")
+        return self._process_template(result_t, last_ctx)
 
     def _process_raw_texts(
         self,
