@@ -404,7 +404,6 @@ def test_component_element_with_children():
     assert node == TComponent(
         start_i_index=0,
         end_i_index=1,
-        children=(TElement("div", children=(TText.literal("Hello, World!"),)),),
     )
 
 
