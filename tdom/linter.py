@@ -1,21 +1,21 @@
 import typing as t
-from collections.abc import Sequence, Iterable, Generator
+import warnings
+from collections.abc import Callable, Generator, Iterable, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
-import warnings
 from enum import StrEnum
+from itertools import chain
 from string.templatelib import Template
 from types import NoneType
 
 from .processor import (
     ProcessContext,
-    RawTextExactInterpolationValue,
-    RawTextInexactInterpolationValue,
-    NormalTextInterpolationValue,
     TemplateProcessor,
+    _substitute_spread_attrs,
     format_interpolation,
 )
 from .protocols import HasHTMLDunder
+from .template_utils import TemplateRef
 from .tnodes import (
     TAttribute,
     TComment,
@@ -30,28 +30,29 @@ from .tnodes import (
     TTemplatedAttribute,
     TText,
 )
-from .template_utils import TemplateRef
 
 type InterpolationErrorItem = tuple[int, ValueError]
 
 
 class OnErrors(StrEnum):
-    IGNORE = 'IGNORE'
-    RAISE = 'RAISE'
-    WARN = 'WARN'
+    IGNORE = "IGNORE"
+    RAISE = "RAISE"
+    WARN = "WARN"
 
 
-CommonNumberTypes = (float, int, Decimal) # AND bool because bool is subclass of int
+CommonNumberTypes = (float, int, Decimal)  # AND bool because bool is subclass of int
 
 
 class RuntimeType:
     pass
+
 
 @dataclass(frozen=True)
 class IterableOf(RuntimeType):
     """
     An iterable that must contain values that are instances of these types.
     """
+
     item: type | tuple[type, ...]
 
 
@@ -61,20 +62,38 @@ class DictOf(RuntimeType):
     value: type | tuple[type, ...]
 
 
+@t.runtime_checkable
+class IFunctionComponent(t.Protocol):
+    __call__: Callable[..., Template]
+
+
+@t.runtime_checkable
+class IFactoryComponent(t.Protocol):
+    __call__: Callable[..., Callable[[], Template]]
+
+
 # Non-strict base type placeholders AND values.
 _NormalTextInterpolationValueItem = (NoneType, str, object)
 RawTextExactInterpolationValue = (NoneType, str, HasHTMLDunder, object)
 RawTextInexactInterpolationValue = (NoneType, str, object)
-NormalTextInterpolationValue = _NormalTextInterpolationValueItem + (IterableOf(_NormalTextInterpolationValueItem),) # Throw on generator
+NormalTextInterpolationValue = _NormalTextInterpolationValueItem + (
+    IterableOf(_NormalTextInterpolationValueItem),
+)  # Throw on generator
 _ClassAttributeValueItem = (NoneType, str)
-ClassAttributeValue = _ClassAttributeValueItem + (IterableOf(_ClassAttributeValueItem), DictOf(str, bool))
+ClassAttributeValue = _ClassAttributeValueItem + (
+    IterableOf(_ClassAttributeValueItem),
+    DictOf(str, bool),
+)
 _StyleAttributeValueItem = (NoneType, str)
-StyleAttributeValue = _StyleAttributeValueItem + (IterableOf(_StyleAttributeValueItem), DictOf(str, (str, NoneType)))
+StyleAttributeValue = _StyleAttributeValueItem + (
+    IterableOf(_StyleAttributeValueItem),
+    DictOf(str, (str, NoneType)),
+)
 AriaAttributeValue = (NoneType, DictOf(str, (NoneType, object)))
 DataAttributeValue = (NoneType, DictOf(str, (NoneType, object)))
 InterpolatedAttributeValue = (NoneType, str, object)
 TemplatedAttributeValueItem = (NoneType, str, object)
-
+ComponentInterpolationValue = (IFunctionComponent, IFactoryComponent)
 
 # Base mapping.
 checked_types_map = {
@@ -87,37 +106,44 @@ checked_types_map = {
     DataAttributeValue: DataAttributeValue,
     InterpolatedAttributeValue: InterpolatedAttributeValue,
     TemplatedAttributeValueItem: TemplatedAttributeValueItem,
+    ComponentInterpolationValue: ComponentInterpolationValue,
 }
 
 
-_StrictNormalTextInterpolationValueItem = (NoneType, bool, str, Template, HasHTMLDunder) + CommonNumberTypes
+_StrictNormalTextInterpolationValueItem = (
+    NoneType,
+    bool,
+    str,
+    Template,
+    HasHTMLDunder,
+) + CommonNumberTypes
 
 
 # Mapping with more more strict variants replaced.
 strict_checked_types_map = checked_types_map | {
-    RawTextExactInterpolationValue: (NoneType, bool, str, HasHTMLDunder) + CommonNumberTypes,
+    RawTextExactInterpolationValue: (NoneType, bool, str, HasHTMLDunder)
+    + CommonNumberTypes,
     RawTextInexactInterpolationValue: (NoneType, bool, str) + CommonNumberTypes,
-    NormalTextInterpolationValue: _StrictNormalTextInterpolationValueItem + (IterableOf(_StrictNormalTextInterpolationValueItem),), # Throw on generator
+    NormalTextInterpolationValue: _StrictNormalTextInterpolationValueItem
+    + (IterableOf(_StrictNormalTextInterpolationValueItem),),  # Throw on generator
     AriaAttributeValue: (NoneType, DictOf(str, (NoneType, str, bool))),
     DataAttributeValue: (NoneType, DictOf(str, (NoneType, str) + CommonNumberTypes)),
     InterpolatedAttributeValue: (NoneType, str) + CommonNumberTypes,
-    #@NOTE: This is an item within a "subtemplate" that forms the attribute value.
+    # @NOTE: This is an item within a "subtemplate" that forms the attribute value.
     TemplatedAttributeValueItem: (NoneType, str) + CommonNumberTypes,
 }
 
 
 @dataclass(frozen=True)
 class LintingTemplateProcessor(TemplateProcessor):
-
     on_errors: OnErrors = OnErrors.IGNORE
 
-    checked_types_map: dict[t.TypeAliasType, tuple[type]] = field(default_factory=lambda: strict_checked_types_map.copy())
+    checked_types_map: dict[t.TypeAliasType, tuple[type]] = field(
+        default_factory=lambda: strict_checked_types_map.copy()
+    )
 
     def _check_tnode(
-        self,
-        template: Template,
-        last_ctx: ProcessContext,
-        tnode: TNode
+        self, template: Template, last_ctx: ProcessContext, tnode: TNode
     ) -> Sequence[InterpolationErrorItem]:
         match tnode:
             case TDocumentType(text):
@@ -127,13 +153,17 @@ class LintingTemplateProcessor(TemplateProcessor):
             case TFragment(children):
                 return self._check_fragment(template, last_ctx, children)
             case TComponent(start_i_index, end_i_index, attrs, children):
-                return self._check_component(template, last_ctx, attrs, start_i_index, end_i_index)
+                return self._check_component(
+                    template, last_ctx, attrs, start_i_index, end_i_index
+                )
             case TElement(tag, attrs, children):
                 return self._check_element(template, last_ctx, tag, attrs, children)
             case TText(ref):
                 return self._check_texts(template, last_ctx, ref)
             case _:
-                return [(-1, ValueError(f"Unrecognized tnode: {tnode}")),]
+                return [
+                    (-1, ValueError(f"Unrecognized tnode: {tnode}")),
+                ]
 
     def _check_document_type(
         self,
@@ -153,29 +183,40 @@ class LintingTemplateProcessor(TemplateProcessor):
                 case DictOf(key=key_types, value=value_types):
                     if isinstance(value, dict):
                         for k, v in value.items():
-                            if not isinstance(k, key_types):
-                                return False
-                            elif not isinstance(v, value_types):
+                            if not isinstance(k, key_types) or not isinstance(
+                                v, value_types
+                            ):
                                 return False
                         return True
                 case IterableOf(item=item_types):
-                    if isinstance(value, Iterable) and not isinstance(value, (str, dict)):
+                    if isinstance(value, Iterable) and not isinstance(
+                        value, (str, dict)
+                    ):
                         # @NOTE: THESE CANNOT BE REPLAYED!!
                         if isinstance(value, Generator):
-                            raise AssertionError('Cannot replay generators!')
+                            raise TypeError("Cannot replay generators!")
                         for i in value:
                             if not isinstance(i, item_types):
                                 return False
                         return True
                 case _:
-                    raise AssertionError('Unmatched runtime generic type.')
+                    raise TypeError("Unmatched runtime generic type.")
         return False
 
-    def _check_text_without_recursion(self, template: Template, content_ref: TemplateRef) -> Sequence[InterpolationErrorItem]:
+    def _check_text_without_recursion(
+        self, template: Template, content_ref: TemplateRef
+    ) -> Sequence[InterpolationErrorItem]:
         if content_ref.is_singleton:
-            value = format_interpolation(template.interpolations[content_ref.i_indexes[0]])
+            value = format_interpolation(
+                template.interpolations[content_ref.i_indexes[0]]
+            )
             if not self._check_value(value, RawTextExactInterpolationValue):
-                return [(content_ref.i_indexes[0], ValueError('Invalid raw text exact interpolation value.')),]
+                return [
+                    (
+                        content_ref.i_indexes[0],
+                        ValueError("Invalid raw text exact interpolation value."),
+                    ),
+                ]
             else:
                 return []
         else:
@@ -185,7 +226,12 @@ class LintingTemplateProcessor(TemplateProcessor):
                     continue
                 value = format_interpolation(template.interpolations[part])
                 if not self._check_value(value, RawTextInexactInterpolationValue):
-                    errors.append((part, ValueError('Invalid raw text inexact interpolation value.')))
+                    errors.append(
+                        (
+                            part,
+                            ValueError("Invalid raw text inexact interpolation value."),
+                        )
+                    )
             return errors
 
     def _check_comment(
@@ -202,7 +248,11 @@ class LintingTemplateProcessor(TemplateProcessor):
         last_ctx: ProcessContext,
         children: Iterable[TNode],
     ) -> Sequence[InterpolationErrorItem]:
-        return sum((self._check_tnode(tn) for tn in children), [])
+        return list(
+            chain.from_iterable(
+                self._check_tnode(template, last_ctx, tn) for tn in children
+            )
+        )
 
     def _check_component(
         self,
@@ -216,10 +266,23 @@ class LintingTemplateProcessor(TemplateProcessor):
         # @TODO: Does it really make sense to interpret the attributes
         # without a known tag ?
         errors.extend(self._check_attrs(template, last_ctx, attrs))
-        if not self._check_value(template.interpolations[start_i_index], ComponentCallable):
-            errors.append((start_i_index, ValueError('Invalid component callable.')))
-        if end_i_index is not None and template.interpolations[start_i_index].value != template.interpolations[end_i_index].value:
-            errors.append((start_i_index, ValueError('Start component callable does not match end component callable.')))
+        if not self._check_value(
+            template.interpolations[start_i_index].value, ComponentInterpolationValue
+        ):
+            errors.append((start_i_index, ValueError("Invalid component callable.")))
+        if (
+            end_i_index is not None
+            and template.interpolations[start_i_index].value
+            != template.interpolations[end_i_index].value
+        ):
+            errors.append(
+                (
+                    start_i_index,
+                    ValueError(
+                        "Start component callable does not match end component callable."
+                    ),
+                )
+            )
         return errors
 
     def _check_attr(
@@ -227,19 +290,25 @@ class LintingTemplateProcessor(TemplateProcessor):
         name: str,
         i_index: int,
         attr_value: object,
-        mode: t.Literal['interpolated'] | t.Literal['spread'] #str #interpolated/spread
+        mode: t.Literal["interpolated", "spread"],
     ) -> Sequence[InterpolationErrorItem]:
         errors = []
-        if name == 'class' and not self._check_value(attr_value, ClassAttributeValue):
-            errors.append((i_index, ValueError(f'Invalid {mode} class attribute value')))
-        elif name == 'style' and not self._check_value(attr_value, StyleAttributeValue):
-            errors.append((i_index, ValueError(f'Invalid {mode} style attribute value')))
-        elif name == 'data' and not self._check_value(attr_value, DataAttributeValue):
-            errors.append((i_index, ValueError(f'Invalid {mode} data attribute value')))
-        elif name == 'aria' and not self._check_value(attr_value, AriaAttributeValue):
-            errors.append((i_index, ValueError(f'Invalid {mode} aria attribute value')))
-        elif name not in ('class', 'style', 'data', 'aria') and not self._check_value(attr_value, InterpolatedAttributeValue): # @NOTE: (Should this be/Is this) the same as spread??
-            errors.append((i_index, ValueError(f'Invalid {mode} attribute value')))
+        if name == "class" and not self._check_value(attr_value, ClassAttributeValue):
+            errors.append(
+                (i_index, ValueError(f"Invalid {mode} class attribute value"))
+            )
+        elif name == "style" and not self._check_value(attr_value, StyleAttributeValue):
+            errors.append(
+                (i_index, ValueError(f"Invalid {mode} style attribute value"))
+            )
+        elif name == "data" and not self._check_value(attr_value, DataAttributeValue):
+            errors.append((i_index, ValueError(f"Invalid {mode} data attribute value")))
+        elif name == "aria" and not self._check_value(attr_value, AriaAttributeValue):
+            errors.append((i_index, ValueError(f"Invalid {mode} aria attribute value")))
+        elif name not in ("class", "style", "data", "aria") and not self._check_value(
+            attr_value, InterpolatedAttributeValue
+        ):  # @NOTE: (Should this be/Is this) the same as spread??
+            errors.append((i_index, ValueError(f"Invalid {mode} attribute value")))
         return errors
 
     def _check_attrs(
@@ -265,25 +334,45 @@ class LintingTemplateProcessor(TemplateProcessor):
                 case TInterpolatedAttribute(name=name, value_i_index=i_index):
                     interpolation = template.interpolations[i_index]
                     attr_value = format_interpolation(interpolation)
-                    errors.extend(self._check_attr(name, i_index, attr_value, mode='interpolated'))
+                    errors.extend(
+                        self._check_attr(name, i_index, attr_value, mode="interpolated")
+                    )
                 case TTemplatedAttribute(name=name, value_ref=ref):
                     # All attributes should go through the same resolution here.
                     for i_index in ref.i_indexes:
                         value = format_interpolation(template.interpolations[i_index])
                         if not self._check_value(value, TemplatedAttributeValueItem):
-                            errors.append((i_index, ValueError('Invalid templated attribute value item')))
+                            errors.append(
+                                (
+                                    i_index,
+                                    ValueError(
+                                        "Invalid templated attribute value item"
+                                    ),
+                                )
+                            )
                 case TSpreadAttribute(i_index=i_index):
                     interpolation = template.interpolations[i_index]
                     spread_value = format_interpolation(interpolation)
                     if spread_value is None:
                         continue
                     elif not isinstance(spread_value, dict):
-                        errors.append((i_index, ValueError('Invalid spread attribute value')))
+                        errors.append(
+                            (i_index, ValueError("Invalid spread attribute value"))
+                        )
                     else:
                         for sub_k, sub_v in _substitute_spread_attrs(spread_value):
-                            errors.extend(self._check_attr(sub_k, i_index, sub_v, mode='spread'))
+                            errors.extend(
+                                self._check_attr(sub_k, i_index, sub_v, mode="spread")
+                            )
                 case _:
-                    errors.append((None, ValueError(f"Unknown TAttribute type: {type(attr).__name__}")))
+                    errors.append(
+                        (
+                            None,
+                            ValueError(
+                                f"Unknown TAttribute type: {type(attr).__name__}"
+                            ),
+                        )
+                    )
         return errors
 
     def _check_element(
@@ -300,7 +389,12 @@ class LintingTemplateProcessor(TemplateProcessor):
         errors.extend(self._check_attrs(template, our_ctx, attrs))
         # @TODO: This sort of interaction might not really be maintainable.
         child_ctx = self._make_child_ctx(our_ctx, tag)
-        return sum((self._check_tnode(template, child_ctx, tn) for tn in children), errors)
+        errors.extend(
+            chain.from_iterable(
+                self._check_tnode(template, child_ctx, tn) for tn in children
+            )
+        )
+        return errors
 
     def _check_texts(
         self,
@@ -308,7 +402,7 @@ class LintingTemplateProcessor(TemplateProcessor):
         last_ctx: ProcessContext,
         ref: TemplateRef,
     ) -> Sequence[InterpolationErrorItem]:
-        if last_ctx.parent_tag in ('script', 'style', 'title', 'textarea'):
+        if last_ctx.parent_tag in ("script", "style", "title", "textarea"):
             return self._check_text_without_recursion(template, ref)
         else:
             return self._check_normal_texts(template, last_ctx, ref)
@@ -322,34 +416,50 @@ class LintingTemplateProcessor(TemplateProcessor):
         errors = []
         for i_index in ref.i_indexes:
             ip = template.interpolations[i_index]
-            if not self._check_value(format_interpolation(ip), NormalTextInterpolationValue):
-                errors.append((i_index, ValueError('Invalid normal text interpolation value')))
+            if not self._check_value(
+                format_interpolation(ip), NormalTextInterpolationValue
+            ):
+                errors.append(
+                    (i_index, ValueError("Invalid normal text interpolation value"))
+                )
         return errors
 
-    def _make_check_errors_message(self, template: Template, errors: Sequence[InterpolationErrorItem]) -> str:
+    def _make_check_errors_message(
+        self, template: Template, errors: Sequence[InterpolationErrorItem]
+    ) -> str:
         assert errors
         parts = []
         for part_i, part_s in enumerate(template.strings[:3]):
             if part_i > 0:
-                parts.append(f'{{{part_i - 1}}}')
+                parts.append(f"{{{part_i - 1}}}")
             parts.append(part_s[:10])
-        template_label = ''.join(parts)
-        check_errors_str = ', '.join([f'{ip_i}: {e}' for ip_i, e in errors])
-        return f'Template {template_label} contains check errors: {check_errors_str}'
+        template_label = "".join(parts)
+        check_errors_str = ", ".join([f"{ip_i}: {e}" for ip_i, e in errors])
+        return f"Template {template_label} contains check errors: {check_errors_str}"
 
-    def _raise_check_errors(self, template: Template, last_ctx: ProcessContext, tnode: TNode, errors: Sequence[InterpolationErrorItem]) -> None:
+    def _raise_check_errors(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        tnode: TNode,
+        errors: Sequence[InterpolationErrorItem],
+    ) -> None:
         assert errors
         check_errors_message = self._make_check_errors_message(template, errors)
         raise ValueError(check_errors_message)
 
-    def _warn_check_errors(self, template: Template, last_ctx: ProcessContext, tnode: TNode, errors: Sequence[InterpolationErrorItem]) -> None:
+    def _warn_check_errors(
+        self,
+        template: Template,
+        last_ctx: ProcessContext,
+        tnode: TNode,
+        errors: Sequence[InterpolationErrorItem],
+    ) -> None:
         assert errors
         check_errors_message = self._make_check_errors_message(template, errors)
         warnings.warn(check_errors_message)
 
-    def _process_template(
-        self, template: Template, last_ctx: ProcessContext
-    ) -> str:
+    def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
         root = self.parser_api.to_tnode(template)
         errors = self._check_tnode(template, last_ctx, root)
         if errors and self.on_errors:
@@ -358,42 +468,3 @@ class LintingTemplateProcessor(TemplateProcessor):
             elif self.on_errors == OnErrors.WARN:
                 self._warn_check_errors(template, last_ctx, root, errors)
         return super()._process_tnode(template, last_ctx, root)
-
-
-import pytest
-from .protocols import HasHTMLDunder
-class HTML(HasHTMLDunder):
-
-    text: str = ""
-
-    def __html__(self) -> str:
-        return self.text
-
-
-class TestLinterWithStrictTypes:
-
-    def _make_html(self) -> Callable[[Template], str]:
-        tp = LintingTemplateProcessor(on_errors=OnErrors.RAISE, checked_types_map=strict_checked_types_map.copy())
-        ctx = ProcessContext()
-        def _html(t: Template):
-            return tp.process(t, assume_ctx=ctx)
-        return _html
-
-    def test_comment_inexact(self):
-        html = self._make_html()
-        assert html(t"<!-- {'works'} -->") == '<!-- works -->'
-        with pytest.raises(ValueError, match="Invalid raw text inexact interpolation value."):
-            _ = html(t"<!-- {Template} -->")
-
-    def test_comment_exact(self):
-        html = self._make_html()
-        assert html(t"<!--{'works'}-->") == '<!--works-->'
-        with pytest.raises(ValueError, match="Invalid raw text exact interpolation value."):
-            _ = html(t"<!--{Template}-->")
-
-    def test_element(self):
-        html = self._make_html()
-        #from datetime import datetime
-        #content = datetime.now()
-        content = 'PRESS'
-        assert html(t'<div class="theme-default" id="thediv" aria={dict(button=True, label="divbutton")} data={dict(active=True, id="thediv")} class={dict(red=True)} class={["blue"]} style="background-color: yellow; z-index: 100" style={dict(color="purple")}>{content}</div>') == '<div id="thediv" aria-button="true" aria-label="divbutton" data-active data-id="thediv" class="theme-default red blue" style="background-color: yellow; z-index: 100; color: purple">PRESS</div>'

@@ -764,7 +764,6 @@ class TemplateProcessor(ITemplateProcessor):
             child_ctx = last_ctx
         return child_ctx
 
-
     def _process_element(
         self,
         template: Template,
