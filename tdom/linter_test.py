@@ -1,6 +1,6 @@
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from string.templatelib import Template
 
 import pytest
@@ -67,13 +67,13 @@ class TestLinterWithStrictTypes:
         )
 
     def test_interpolated_general_attr(self, html):
-        a = datetime.now(tz=timezone.utc)
+        a = datetime.now(tz=UTC)
         with pytest.raises(ValueError, match="Invalid interpolated attribute value"):
             _ = html(t"<div title={a}></div>")
         _ = html(t"<div title={100}></div>")  # OK
 
     def test_interpolated_class_attr(self, html):
-        a = datetime.now(tz=timezone.utc)
+        a = datetime.now(tz=UTC)
         with pytest.raises(
             ValueError, match="Invalid interpolated class attribute value"
         ):
@@ -85,7 +85,7 @@ class TestLinterWithStrictTypes:
         _ = html(t"<div class={('red',)}></div>")  # OK
 
     def test_spread_class_attr(self, html):
-        a = datetime.now(tz=timezone.utc)
+        a = datetime.now(tz=UTC)
         with pytest.raises(ValueError, match="Invalid spread class attribute value"):
             _ = html(t"<div { {'class': a} }></div>")
         with pytest.raises(ValueError, match="Invalid spread class attribute value"):
@@ -109,7 +109,8 @@ class TestLinterWithStrictTypes:
         )
 
     def test_bad_component(self, html):
-        def bad_call() -> str:
-            return ""
-
-        _ = html(t"<{bad_call} color=red><span>OK</span></{bad_call}>")
+        bad_call = "red"
+        # @TODO: This seems very limited to only checking if something is
+        # callable at all.
+        with pytest.raises(ValueError, match="Invalid component callable"):
+            _ = html(t"<{bad_call} color=red><span>OK</span></{bad_call}>")
