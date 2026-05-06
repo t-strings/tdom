@@ -3,7 +3,8 @@ from string.templatelib import Interpolation, Template
 import pytest
 
 from .parser import TemplateParser
-from .placeholders import TemplateRef, make_placeholder_config
+from .placeholders import make_placeholder_config
+from .template_utils import TemplateRef
 from .tnodes import (
     TComment,
     TComponent,
@@ -404,6 +405,7 @@ def test_component_element_with_children():
     assert node == TComponent(
         start_i_index=0,
         end_i_index=1,
+        children_ref=TemplateRef(strings=("<div>Hello, World!</div>",), i_indexes=()),
     )
 
 
