@@ -138,7 +138,7 @@ strict_checked_types_map = checked_types_map | {
 class LintingTemplateProcessor(TemplateProcessor):
     on_errors: OnErrors = OnErrors.IGNORE
 
-    checked_types_map: dict[t.TypeAliasType, tuple[type]] = field(
+    checked_types_map: t.Mapping[tuple, tuple] = field(
         default_factory=lambda: strict_checked_types_map.copy()
     )
 
