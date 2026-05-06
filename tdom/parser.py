@@ -5,7 +5,7 @@ from string.templatelib import Interpolation, Template
 
 from .htmlspec import VOID_ELEMENTS
 from .placeholders import PlaceholderState
-from .template_utils import combine_template_refs
+from .template_utils import TemplateRef, combine_template_refs
 from .tnodes import (
     TAttribute,
     TComment,
@@ -40,7 +40,13 @@ class OpenTFragment:
 @dataclass
 class OpenTComponent:
     start_i_index: int
+    children_start_s_index: int
+    """The strings index where the component's children template starts."""
     attrs: tuple[TAttribute, ...]
+    # @NOTE: The `children` are discarded after parsing and are just used to
+    # track template consistency.  If the component is processed and
+    # returns its children template then that template will be
+    # re-parsed (or pulled from the cache).
     children: list[TNode] = field(default_factory=list)
 
 
@@ -55,7 +61,10 @@ class SourceTracker:
     # template itself in context and the relevant line/column underlined/etc.
 
     template: Template
+    # if i_index >= s_index, feeding an interpolation;
+    # otherwise, when i_index < s_index, feeding a string.
     i_index: int = -1  # The current interpolation index.
+    s_index: int = -1  # The current string index.
 
     @property
     def interpolations(self) -> tuple[Interpolation, ...]:
@@ -65,6 +74,10 @@ class SourceTracker:
         """Call before processing an interpolation to move to the next one."""
         self.i_index += 1
         return self.i_index
+
+    def advance_string(self) -> int:
+        self.s_index += 1
+        return self.s_index
 
     def get_expression(
         self, i_index: int, fallback_prefix: str = "interpolation"
@@ -160,8 +173,15 @@ class TemplateParser(HTMLParser):
         # component callable. We do not check this in the parser, instead
         # relying on higher layers to validate types and render correctly.
         i_index = tag_ref.i_indexes[0]
+        # The starting s_index of the component's children template. Note that
+        # this string either contains ">" or " />".  It might not be
+        # i_index + 1 because attributes WITHIN the component's tag might
+        # contain interpolations causing the i_index (and s_index) to advance
+        # arbitrarily.
+        children_start_s_index = self.get_source().s_index
         return OpenTComponent(
             start_i_index=i_index,
+            children_start_s_index=children_start_s_index,
             attrs=self.make_tattrs(attrs),
         )
 
@@ -176,14 +196,45 @@ class TemplateParser(HTMLParser):
                 return TFragment(children=tuple(children))
             case OpenTComponent(
                 start_i_index=start_i_index,
+                children_start_s_index=children_start_s_index,
                 attrs=attrs,
-                children=children,
             ):
+                # Only go looking for a template if there is an actual endtag.
+                if start_i_index != endtag_i_index and endtag_i_index is not None:
+                    source = self.get_source()
+                    # @NOTE: This is an assumption that no interpolations
+                    # exist between the end tag interpolation itself and the
+                    # "</", ie. "</{end_i}>".
+                    children_end_s_index = endtag_i_index
+                    leading = source.template.strings[children_start_s_index]
+                    leading = leading[leading.find(">") + 1 :]
+                    if (
+                        children_start_s_index == children_end_s_index
+                    ):  # Entire children template is a string.
+                        leading = leading[: leading.rfind("</")]
+                        children_ref = TemplateRef(strings=(leading,), i_indexes=())
+                    else:
+                        trailing = source.template.strings[children_end_s_index]
+                        trailing = trailing[: trailing.rfind("</")]
+                        children_ref = TemplateRef(
+                            strings=(
+                                leading,
+                                *source.template.strings[
+                                    children_start_s_index + 1 : children_end_s_index
+                                ],
+                                trailing,
+                            ),
+                            i_indexes=tuple(
+                                range(children_start_s_index, children_end_s_index)
+                            ),
+                        )
+                else:
+                    children_ref = TemplateRef(strings=("",), i_indexes=())
                 return TComponent(
                     start_i_index=start_i_index,
                     end_i_index=endtag_i_index,
+                    children_ref=children_ref,
                     attrs=attrs,
-                    children=tuple(children),
                 )
 
     def validate_end_tag(self, tag: str, open_tag: OpenTag) -> int | None:
@@ -318,6 +369,11 @@ class TemplateParser(HTMLParser):
     # Feeding and parsing
     # ------------------------------------------
 
+    def get_source(self) -> SourceTracker:
+        if self.source is None:
+            raise AssertionError("Source has not been initialized.")
+        return self.source
+
     def feed_str(self, s: str) -> None:
         """Feed a string part of a Template to the parser."""
         self.feed(s)
@@ -331,9 +387,11 @@ class TemplateParser(HTMLParser):
         assert self.source is None, "Did you forget to call reset?"
         self.source = SourceTracker(template)
         for i_index in range(len(template.interpolations)):
+            self.source.advance_string()
             self.feed_str(template.strings[i_index])
             self.source.advance_interpolation()
             self.feed_interpolation(i_index)
+        self.source.advance_string()
         self.feed_str(template.strings[-1])
 
     @staticmethod

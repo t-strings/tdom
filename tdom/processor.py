@@ -669,9 +669,14 @@ class TemplateProcessor(ITemplateProcessor):
                 return self._process_comment(template, last_ctx, ref)
             case TFragment(children):
                 return self._process_fragment(template, last_ctx, children)
-            case TComponent(start_i_index, end_i_index, attrs, children):
+            case TComponent(start_i_index, end_i_index, children_ref, attrs):
                 return self._process_component(
-                    template, last_ctx, attrs, start_i_index, end_i_index
+                    template,
+                    last_ctx,
+                    attrs,
+                    start_i_index,
+                    end_i_index,
+                    children_ref,
                 )
             case TElement(tag, attrs, children):
                 return self._process_element(template, last_ctx, tag, attrs, children)
@@ -793,33 +798,6 @@ class TemplateProcessor(ITemplateProcessor):
             return attrs_str
         return ""
 
-    def _extract_component_template(
-        self,
-        template: Template,
-        attrs: tuple[TAttribute, ...],
-        start_i_index: int,
-        end_i_index: int | None,
-        check_callables: bool = True,
-    ) -> Template:
-        body_start_s_index = (
-            start_i_index
-            + 1
-            + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
-        )
-        if start_i_index != end_i_index and end_i_index is not None:
-            # @TODO: We should do this during parsing.
-            if (
-                check_callables
-                and template.interpolations[start_i_index].value
-                != template.interpolations[end_i_index].value
-            ):
-                raise TypeError(
-                    "Component callable in start tag must match component callable in end tag."
-                )
-            return extract_embedded_template(template, body_start_s_index, end_i_index)
-        else:
-            return t""
-
     def _process_component(
         self,
         template: Template,
@@ -827,13 +805,21 @@ class TemplateProcessor(ITemplateProcessor):
         attrs: tuple[TAttribute, ...],
         start_i_index: int,
         end_i_index: int | None,
+        children_ref: TemplateRef,
     ) -> str:
         """
         Invoke a component and process the result into a string.
         """
-        children_template = self._extract_component_template(
-            template, attrs, start_i_index, end_i_index, check_callables=True
-        )
+        children_template = children_ref.resolve(template.interpolations)
+        if (
+            start_i_index != end_i_index
+            and end_i_index is not None
+            and template.interpolations[start_i_index].value
+            != template.interpolations[end_i_index].value
+        ):
+            raise TypeError(
+                "Component callable in start tag must match component callable in end tag."
+            )
         component_callable = template.interpolations[start_i_index].value
         result_t = self.component_processor_api.process(
             template, last_ctx, component_callable, attrs, children_template
@@ -1007,47 +993,6 @@ def resolve_text_without_recursion(
                 if value_str:
                     text.append(value_str)
         return "".join(text)
-
-
-def extract_embedded_template(
-    template: Template, body_start_s_index: int, end_i_index: int
-) -> Template:
-    """
-    Extract the template parts exclusively from start tag to end tag.
-
-    Note that interpolations INSIDE the start tag make this more complex
-    than just "the `s_index` after the component callable's `i_index`".
-
-    Example:
-    ```python
-    template = (
-        t'<{comp} attr={attr}>'
-            t'<div>{content} <span>{footer}</span></div>'
-        t'</{comp}>'
-    )
-    assert extract_children_template(template, 2, 4) == (
-        t'<div>{content} <span>{footer}</span></div>'
-    )
-    starttag = t'<{comp} attr={attr}>'
-    endtag = t'</{comp}>'
-    assert template == starttag + extract_children_template(template, 2, 4) + endtag
-    ```
-    @DESIGN: "There must be a better way."
-    """
-    # Copy the parts out of the containing template.
-    index = body_start_s_index
-    last_s_index = end_i_index
-    parts = []
-    while index <= last_s_index:
-        parts.append(template.strings[index])
-        if index != last_s_index:
-            parts.append(template.interpolations[index])
-        index += 1
-    # Now trim the first part to the end of the opening tag.
-    parts[0] = parts[0][parts[0].find(">") + 1 :]
-    # Now trim the last part (could also be the first) to the start of the closing tag.
-    parts[-1] = parts[-1][: parts[-1].rfind("<")]
-    return Template(*parts)
 
 
 def _make_default_template_processor(
