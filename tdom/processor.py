@@ -669,7 +669,7 @@ class TemplateProcessor(ITemplateProcessor):
                 return self._process_comment(template, last_ctx, ref)
             case TFragment(children):
                 return self._process_fragment(template, last_ctx, children)
-            case TComponent(start_i_index, end_i_index, attrs, children):
+            case TComponent(start_i_index, end_i_index, attrs):
                 return self._process_component(
                     template, last_ctx, attrs, start_i_index, end_i_index
                 )

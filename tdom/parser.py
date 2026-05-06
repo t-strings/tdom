@@ -177,13 +177,11 @@ class TemplateParser(HTMLParser):
             case OpenTComponent(
                 start_i_index=start_i_index,
                 attrs=attrs,
-                children=children,
             ):
                 return TComponent(
                     start_i_index=start_i_index,
                     end_i_index=endtag_i_index,
                     attrs=attrs,
-                    children=tuple(children),
                 )
 
     def validate_end_tag(self, tag: str, open_tag: OpenTag) -> int | None:

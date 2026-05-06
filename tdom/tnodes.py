@@ -91,7 +91,6 @@ class TComponent(TNode):
     # TODO: hold on to _s_indexes too, when we start to need them.
 
     attrs: tuple[TAttribute, ...] = field(default_factory=tuple)
-    children: tuple[TNode, ...] = field(default_factory=tuple)
 
 
 type TTag = TElement | TComponent | TFragment
