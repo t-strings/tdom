@@ -733,6 +733,37 @@ class TemplateProcessor(ITemplateProcessor):
         escaped_comment_str = self.escape_html_comment(content_str, allow_markup=True)
         return f"<!--{escaped_comment_str}-->"
 
+    def _make_element_ctx(self, last_ctx: ProcessContext, tag: str) -> ProcessContext:
+        """
+        Update the context as an element is "entered" but before the children are processed.
+
+        @NOTE: The names here are still pretty wonky because parent_tag becomes "this" tag
+        and might be referenced during attribute resolution but before the children are
+        actually processed.  This probably needs to be moved around right and renamed
+        for the boundaries to make more sense.  We might need a "current_tag"
+        """
+        if tag == "svg":
+            our_ctx = last_ctx.copy(parent_tag=tag, ns="svg")
+        elif tag == "math":
+            our_ctx = last_ctx.copy(parent_tag=tag, ns="math")
+        else:
+            our_ctx = last_ctx.copy(parent_tag=tag)
+        return our_ctx
+
+    def _make_child_ctx(self, last_ctx: ProcessContext, tag: str):
+        """
+        Update the context when an element itself is "finished" and the
+        children are about to be processed.
+
+        @NOTE: parent_tag is updated when entering the element.
+        """
+        # We were still in SVG but now we default back into HTML
+        if tag == "foreignobject":
+            child_ctx = last_ctx.copy(ns="html")
+        else:
+            child_ctx = last_ctx
+        return child_ctx
+
     def _process_element(
         self,
         template: Template,
@@ -742,12 +773,7 @@ class TemplateProcessor(ITemplateProcessor):
         children: tuple[TNode, ...],
     ) -> str:
         out: list[str] = []
-        if tag == "svg":
-            our_ctx = last_ctx.copy(parent_tag=tag, ns="svg")
-        elif tag == "math":
-            our_ctx = last_ctx.copy(parent_tag=tag, ns="math")
-        else:
-            our_ctx = last_ctx.copy(parent_tag=tag)
+        our_ctx = self._make_element_ctx(last_ctx, tag)
         if our_ctx.ns == "svg":
             starttag = endtag = SVG_TAG_FIX.get(tag, tag)
         else:
@@ -762,11 +788,7 @@ class TemplateProcessor(ITemplateProcessor):
         else:
             out.append(">")
         if tag not in VOID_ELEMENTS:
-            # We were still in SVG but now we default back into HTML
-            if tag == "foreignobject":
-                child_ctx = our_ctx.copy(ns="html")
-            else:
-                child_ctx = our_ctx
+            child_ctx = self._make_child_ctx(our_ctx, tag)
             out.extend(
                 self._process_tnode(template, child_ctx, child) for child in children
             )
