@@ -7,7 +7,7 @@ A 🤘 rockin' t-string HTML templating system for Python 3.14.
 ```{include} ../README.md
 ---
 start-after: "## Installation"
-end-before: "## Supporters"
+end-before: "## Contributing"
 ---
 ```
 
