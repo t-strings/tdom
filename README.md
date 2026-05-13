@@ -365,12 +365,8 @@ assert result == '<a href="https://example.com" target="_blank">Example: 42</a>'
 Note that attributes with hyphens (like `data-value`) are converted to
 underscores (`data_value`) in the function signature.
 
-Component functions build children and can return _any_ type of value; the
-returned value will be treated exactly as if it were placed directly in a child
-position in the template.
-
-Among other things, this means you can return a `Template` directly from a
-component function:
+Component functions build and return a `Template` that will be processed as if
+it were interpolated exactly where the component was invoked.
 
 <!-- invisible-code-block: python
 from string.templatelib import Template
@@ -378,10 +374,10 @@ from string.templatelib import Template
 
 ```python
 def Greeting(name: str) -> Template:
-    return t"<h1>Hello, {name}!</h1>"
+    return t"<span>Hello, {name}!</span>"
 
-result = html(t"<{Greeting} name='Alice' />")
-assert result == "<h1>Hello, Alice!</h1>"
+result = html(t"Your greeting is <{Greeting} name='Alice' />.")
+assert result == "Your greeting is <span>Hello, Alice!</span>."
 ```
 
 #### Class-based components
