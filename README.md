@@ -51,7 +51,7 @@ Import the `html` function and start creating templates:
 ```python
 from tdom import html
 greeting = html(t"<h1>Hello, World!</h1>")
-print(greeting)  # <h1>Hello, World!</h1>
+assert greeting == "<h1>Hello, World!</h1>"
 ```
 
 ### Variable Interpolation
@@ -63,7 +63,7 @@ your templates:
 name = "Alice"
 age = 30
 user_info = html(t"<p>Hello, {name}! You are {age} years old.</p>")
-print(user_info)  # <p>Hello, Alice! You are 30 years old.</p>
+assert user_info == "<p>Hello, Alice! You are 30 years old.</p>"
 ```
 
 The `html()` function ensures that interpolated values are automatically escaped
@@ -72,7 +72,7 @@ to prevent XSS attacks:
 ```python
 user_name = "<script>alert('owned')</script>"
 safe_output = html(t"<p>Hello, {user_name}!</p>")
-print(safe_output)  # <p>Hello, &lt;script&gt;alert('owned')&lt;/script&gt;!</p>
+assert safe_output == "<p>Hello, &lt;script&gt;alert(&#39;owned&#39;)&lt;/script&gt;!</p>"
 ```
 
 ### Attribute Substitution
@@ -87,7 +87,7 @@ You can place values directly in attribute positions:
 ```python
 url = "https://example.com"
 link = html(t'<a href="{url}">Visit our site</a>')
-# <a href="https://example.com">Visit our site</a>
+assert link == '<a href="https://example.com">Visit our site</a>'
 ```
 
 You don't _have_ to wrap your attribute values in quotes:
@@ -95,7 +95,7 @@ You don't _have_ to wrap your attribute values in quotes:
 ```python
 element_id = "my-button"
 button = html(t"<button id={element_id}>Click me</button>")
-# <button id="my-button">Click me</button>
+assert button == '<button id="my-button">Click me</button>'
 ```
 
 Multiple substitutions in a single attribute are supported too:
@@ -104,7 +104,7 @@ Multiple substitutions in a single attribute are supported too:
 first = "Alice"
 last = "Smith"
 button = html(t'<button data-name="{first} {last}">Click me</button>')
-# <button data-name="Alice Smith">Click me</button>
+assert button == '<button data-name="Alice Smith">Click me</button>'
 ```
 
 Boolean attributes are supported too. Just use a boolean value in the attribute
@@ -112,7 +112,7 @@ position:
 
 ```python
 form_button = html(t"<button disabled={True} hidden={False}>Submit</button>")
-# <button disabled>Submit</button>
+assert form_button == "<button disabled>Submit</button>"
 ```
 
 #### The `class` Attribute
@@ -124,15 +124,15 @@ names:
 ```python
 classes = ["btn", "btn-primary", "active"]
 button = html(t'<button class="{classes}">Click me</button>')
-# <button class="btn btn-primary active">Click me</button>
+assert button == '<button class="btn btn-primary active">Click me</button>'
 ```
 
 The `class` attribute can also be a dictionary to toggle classes on or off:
 
 ```python
-classes = {"active": True, "btn-primary": True}
+classes = {"active": True, "btn": True}
 button = html(t'<button class={classes}>Click me</button>')
-# <button class="btn btn-primary active">Click me</button>
+assert button == '<button class="active btn">Click me</button>'
 ```
 
 The `class` attribute can be specified more than once. The values are merged
@@ -155,7 +155,7 @@ CSS properties and values for the `style` attribute:
 # Style attributes from dictionaries
 styles = {"color": "red", "font-weight": "bold", "margin": "10px"}
 styled = html(t"<p style={styles}>Important text</p>")
-# <p style="color: red; font-weight: bold; margin: 10px">Important text</p>
+assert styled == '<p style="color: red; font-weight: bold; margin: 10px">Important text</p>'
 ```
 
 Style attributes can also be merged to extend a base style:
@@ -175,8 +175,7 @@ dictionary keys to the appropriate attribute names:
 data_attrs = {"user-id": 123, "role": "admin"}
 aria_attrs = {"label": "Close dialog", "hidden": True}
 element = html(t"<div data={data_attrs} aria={aria_attrs}>Content</div>")
-# <div data-user-id="123" data-role="admin" aria-label="Close dialog"
-# aria-hidden="true">Content</div>
+assert element == '<div data-user-id="123" data-role="admin" aria-label="Close dialog" aria-hidden="true">Content</div>'
 ```
 
 Note that boolean values in `aria` attributes are converted to `"true"` or
@@ -190,7 +189,7 @@ spreading it into an element using curly braces:
 ```python
 attrs = {"href": "https://example.com", "target": "_blank"}
 link = html(t"<a {attrs}>External link</a>")
-# <a href="https://example.com" target="_blank">External link</a>
+assert link == '<a href="https://example.com" target="_blank">External link</a>'
 ```
 
 You can also combine spreading with individual attributes:
@@ -199,7 +198,7 @@ You can also combine spreading with individual attributes:
 base_attrs = {"id": "my-link"}
 target = "_blank"
 link = html(t'<a {base_attrs} target="{target}">Link</a>')
-# <a id="my-link" target="_blank">Link</a>
+assert link == '<a id="my-link" target="_blank">Link</a>'
 ```
 
 Special attributes likes `class` behave as expected when combined with
@@ -221,7 +220,7 @@ is_logged_in = True
 user_content = t"<span>Welcome back!</span>"
 guest_content = t"<a href='/login'>Please log in</a>"
 header = html(t"<div>{user_content if is_logged_in else guest_content}</div>")
-# <div><span>Welcome back!</span></div>
+assert header == '<div><span>Welcome back!</span></div>'
 ```
 
 Short-circuit evaluation is also supported for conditionally including elements:
@@ -230,7 +229,7 @@ Short-circuit evaluation is also supported for conditionally including elements:
 show_warning = False
 warning = t'<div class="alert">Warning message</div>'
 page = html(t"<main>{show_warning and warning}</main>")
-# <main></main>
+assert page == "<main></main>"
 ```
 
 ### Lists and Iteration
@@ -240,7 +239,7 @@ Generate repeated elements using list comprehensions:
 ```python
 fruits = ["Apple", "Banana", "Cherry"]
 fruit_list = html(t"<ul>{[t'<li>{fruit}</li>' for fruit in fruits]}</ul>")
-# <ul><li>Apple</li><li>Banana</li><li>Cherry</li></ul>
+assert fruit_list == "<ul><li>Apple</li><li>Banana</li><li>Cherry</li></ul>"
 ```
 
 ### Raw HTML Injection
@@ -261,7 +260,7 @@ from tdom import html, Markup
 
 trusted_html = Markup("<strong>This is safe HTML</strong>")
 content = html(t"<div>{trusted_html}</div>")
-# <div><strong>This is safe HTML</strong></div>
+assert content == '<div><strong>This is safe HTML</strong></div>'
 ```
 
 As a convenience, `tdom` also supports a `:safe` format specifier that marks a
@@ -270,7 +269,7 @@ string as safe HTML:
 ```python
 trusted_html = "<em>Emphasized text</em>"
 page = html(t"<p>Here is some {trusted_html:safe} content.</p>")
-# <p>Here is some <em>Emphasized text</em> content.</p>
+assert page == "<p>Here is some <em>Emphasized text</em> content.</p>"
 ```
 
 For interoperability with other templating libraries, any object that implements
@@ -283,7 +282,7 @@ class SafeWidget:
         return "<button>Custom Widget</button>"
 
 page = html(t"<div>My widget: {SafeWidget()}</div>")
-# <div>My widget: <button>Custom Widget</button></div>
+assert page == "<div>My widget: <button>Custom Widget</button></div>"
 ```
 
 You can also explicitly mark a string as "unsafe" using the `:unsafe` format
@@ -294,7 +293,7 @@ treated as safe:
 from tdom import html, Markup
 trusted_html = Markup("<strong>This is safe HTML</strong>")
 page = html(t"<div>{trusted_html:unsafe}</div>")
-# <div>&lt;strong&gt;This is safe HTML&lt;/strong&gt;</div>
+assert page == "<div>&lt;strong&gt;This is safe HTML&lt;/strong&gt;</div>"
 ```
 
 ### Template Composition
@@ -306,7 +305,7 @@ Template nesting is straightforward:
 ```python
 content = t"<h1>My Site</h1>"
 page = html(t"<div>{content}</div>")
-# <div><h1>My Site</h1></div>
+assert page == "<div><h1>My Site</h1></div>"
 ```
 
 In the example above, `content` is a `Template` object that gets correctly
@@ -314,9 +313,9 @@ parsed and embedded within the outer template. You can also explicitly call
 `html()` on nested templates if you prefer:
 
 ```python
-content = html(t"<h1>My Site</h1>")
+content = t"<h1>My Site</h1>"
 page = html(t"<div>{content}</div>")
-# <div><h1>My Site</h1></div>
+assert page == "<div><h1>My Site</h1></div>"
 ```
 
 The result is the same either way.
@@ -343,7 +342,7 @@ To _invoke_ your component within an HTML template, use the special
 
 ```python
 result = html(t"<{MyComponent} id='comp1'>Hello, Component!</{MyComponent}>")
-# <div id="comp1">Cool: Hello, Component!</div>
+assert result == '<div id="comp1">Cool: Hello, Component!</div>'
 ```
 
 Because attributes are passed as keyword arguments, you can explicitly provide
@@ -359,7 +358,7 @@ def Link(*, href: str, text: str, data_value: int, **attrs: Any) -> Template:
     return t'<a href="{href}" {attrs}>{text}: {data_value}</a>'
 
 result = html(t'<{Link} href="https://example.com" text="Example" data-value={42} target="_blank" />')
-# <a href="https://example.com" target="_blank">Example: 42</a>
+assert result == '<a href="https://example.com" target="_blank">Example: 42</a>'
 ```
 
 Note that attributes with hyphens (like `data-value`) are converted to
@@ -399,6 +398,7 @@ from string.templatelib import Template
 from dataclasses import dataclass, field
 from typing import Any, Iterable
 from tdom import html
+from textwrap import dedent
 
 @dataclass
 class Card:
@@ -416,11 +416,13 @@ class Card:
         """
 
 result = html(t"<{Card} title='My Card' subtitle='A subtitle'><p>Card content</p></{Card}>")
-# <div class='card'>
-#     <h2>My Card</h2>
-#     <h3>A subtitle</h3>
-#     <div class="content"><p>Card content</p></div>
-# </div>
+assert dedent(result) == """
+<div class="card">
+    <h2>My Card</h2>
+    <h3>A subtitle</h3>
+    <div class="content"><p>Card content</p></div>
+</div>
+"""
 ```
 
 This approach allows you to encapsulate component logic and state within a
