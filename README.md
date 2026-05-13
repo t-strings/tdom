@@ -208,7 +208,7 @@ spreading:
 classes = {"btn": True, "active": True}
 attrs = {"class": classes, "id": "act_now", "data": {"wow": "such-attr"}}
 button = html(t'<button {attrs}>Click me</button>')
-# <button class="btn active" id="act_now" data-wow="such-attr">Click me</button>
+assert button == '<button class="btn active" id="act_now" data-wow="such-attr">Click me</button>'
 ```
 
 ### Conditional Rendering

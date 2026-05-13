@@ -1859,7 +1859,7 @@ def test_integration_basic():
 <span attr="literal">literal</span>
 <!-- comment is not literal -->
 <span>text is not literal</span>
-<span attr="literal" title="is not literal" data-on class="red">text is not literal</span>
+<span attr="literal" class="red" title="is not literal" data-on>text is not literal</span>
 <div><span>comp body</span></div>
 <div>safe</div>
 </body>
@@ -2135,7 +2135,7 @@ class TestPagerComponentExample:
         print(res)
         assert (
             res
-            == '<div class="footer"><div class="cb tc w-100"><a href="/pages?page=1" class="dib pa1">1</a><a href="/pages?page=2" class="dib pa1">2</a><span class="dib pa1">3</span><a href="/pages?page=4" class="dib pa1">4</a><a href="/pages?page=5" class="dib pa1">5</a><a href="/pages?page=6" class="dib pa1">Next</a></div></div>'
+            == '<div class="footer"><div class="cb tc w-100"><a class="dib pa1" href="/pages?page=1">1</a><a class="dib pa1" href="/pages?page=2">2</a><span class="dib pa1">3</span><a class="dib pa1" href="/pages?page=4">4</a><a class="dib pa1" href="/pages?page=5">5</a><a class="dib pa1" href="/pages?page=6">Next</a></div></div>'
         )
 
 
