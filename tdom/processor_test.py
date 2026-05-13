@@ -1454,6 +1454,28 @@ class TestSpecialStyleAttribute:
         assert res == "<p></p>"
 
 
+class TestSpecialAttrMerging:
+    """
+    Attributes should be merged left to right and displayed at the last
+    location they were updated.
+    """
+
+    def test_accumulator_order(self):
+        # Accumlated attrs are flattened to a value at the end of the attribute
+        # resolution process which caused them to jump but this asserts that fix.
+        attrs = {
+            "class": {"btn": True, "active": True}, # Accumulated
+            "id": "act_now", # static
+            "data": {"wow": "such-attr"}, # Expanded
+            "title": "mega", # static
+        }
+        button = html(t"<button {attrs}>Click me</button>")
+        assert (
+            button
+            == '<button class="btn active" id="act_now" data-wow="such-attr" title="mega">Click me</button>'
+        )
+
+
 class TestPrepComponentKwargs:
     def test_named(self):
         def InputElement(size=10, type="text"):
