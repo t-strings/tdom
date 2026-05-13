@@ -1464,10 +1464,10 @@ class TestSpecialAttrMerging:
         # Accumlated attrs are flattened to a value at the end of the attribute
         # resolution process which caused them to jump but this asserts that fix.
         attrs = {
-            "class": {"btn": True, "active": True}, # Accumulated
-            "id": "act_now", # static
-            "data": {"wow": "such-attr"}, # Expanded
-            "title": "mega", # static
+            "class": {"btn": True, "active": True},  # Accumulated
+            "id": "act_now",  # static
+            "data": {"wow": "such-attr"},  # Expanded
+            "title": "mega",  # static
         }
         button = html(t"<button {attrs}>Click me</button>")
         assert (
