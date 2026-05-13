@@ -389,7 +389,10 @@ assert result == "<h1>Hello, Alice!</h1>"
 Component functions are great for simple use cases, but for more complex
 components you may want to use a class-based approach. Remember that the
 component invocation syntax (`<{ComponentName} ... />`) works with any callable.
-That includes the `__init__` method or `__call__` method of a class.
+That includes the `__init__` method of a class.  If a callable does not return
+a `Template` then it must return another callable that takes no arguments and
+returns a `Template`.  That can be done by defining a `__call__` method on
+the class.
 
 One particularly useful pattern is to build class-based components with
 dataclasses:
@@ -431,8 +434,9 @@ class, making it easier to manage complex components.
 
 As a note, `children` are optional in component signatures. If a component
 requests children, it will receive them if provided. If no children are
-provided, the value of children is an empty tuple. If the component does _not_
-ask for children, but they are provided, then they are silently ignored.
+provided, the value of children is an empty `Template`, ie. `t""`. If the
+component does _not_ ask for children, but they are provided, then they
+are silently ignored.
 
 #### SVG Support
 
