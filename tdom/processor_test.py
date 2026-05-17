@@ -1454,6 +1454,28 @@ class TestSpecialStyleAttribute:
         assert res == "<p></p>"
 
 
+class TestSpecialAttrMerging:
+    """
+    Attributes should be merged left to right and displayed at the last
+    location they were updated.
+    """
+
+    def test_accumulator_order(self):
+        # Accumlated attrs are flattened to a value at the end of the attribute
+        # resolution process which caused them to jump but this asserts that fix.
+        attrs = {
+            "class": {"btn": True, "active": True},  # Accumulated
+            "id": "act_now",  # static
+            "data": {"wow": "such-attr"},  # Expanded
+            "title": "mega",  # static
+        }
+        button = html(t"<button {attrs}>Click me</button>")
+        assert (
+            button
+            == '<button class="btn active" id="act_now" data-wow="such-attr" title="mega">Click me</button>'
+        )
+
+
 class TestPrepComponentKwargs:
     def test_named(self):
         def InputElement(size=10, type="text"):
@@ -1859,7 +1881,7 @@ def test_integration_basic():
 <span attr="literal">literal</span>
 <!-- comment is not literal -->
 <span>text is not literal</span>
-<span attr="literal" title="is not literal" data-on class="red">text is not literal</span>
+<span attr="literal" class="red" title="is not literal" data-on>text is not literal</span>
 <div><span>comp body</span></div>
 <div>safe</div>
 </body>
@@ -2135,7 +2157,7 @@ class TestPagerComponentExample:
         print(res)
         assert (
             res
-            == '<div class="footer"><div class="cb tc w-100"><a href="/pages?page=1" class="dib pa1">1</a><a href="/pages?page=2" class="dib pa1">2</a><span class="dib pa1">3</span><a href="/pages?page=4" class="dib pa1">4</a><a href="/pages?page=5" class="dib pa1">5</a><a href="/pages?page=6" class="dib pa1">Next</a></div></div>'
+            == '<div class="footer"><div class="cb tc w-100"><a class="dib pa1" href="/pages?page=1">1</a><a class="dib pa1" href="/pages?page=2">2</a><span class="dib pa1">3</span><a class="dib pa1" href="/pages?page=4">4</a><a class="dib pa1" href="/pages?page=5">5</a><a class="dib pa1" href="/pages?page=6">Next</a></div></div>'
         )
 
 
