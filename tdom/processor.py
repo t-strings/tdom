@@ -403,8 +403,6 @@ def _prep_component_kwargs(
         attrs even if they are not specified in the component's `attrs` in
         the template. If an attribute with the same name is provided in
         `attrs` then it takes priority over entries in `provided_attrs`.
-        @NOTE: These will be injected into any component with `**kwargs`
-        in their signature unless provided already by `attrs`.
 
     `raise_on_requires_positional`:
         Optionally check and raise `TypeError` if the `callable_info` requires
@@ -434,14 +432,12 @@ def _prep_component_kwargs(
         if snake_name in callable_info.named_params or callable_info.kwargs:
             kwargs[snake_name] = attr_value
 
-    if "children" in callable_info.named_params or callable_info.kwargs:
+    if "children" in callable_info.named_params:
         kwargs["children"] = children
 
     # Add in provided attrs if they haven't been set already and are wanted.
     for pattr_name, pattr_value in provided_attrs:
-        if pattr_name not in kwargs and (
-            pattr_name in callable_info.named_params or callable_info.kwargs
-        ):
+        if pattr_name not in kwargs and pattr_name in callable_info.named_params:
             kwargs[pattr_name] = pattr_value
 
     # Check to make sure we've fully satisfied the callable's requirements

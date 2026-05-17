@@ -1608,27 +1608,22 @@ class TestFunctionComponentKeywordArgs:
     def FunctionComponentKeywordArgs(first: str, **attrs: t.Any) -> Template:
         # Ensure type correctness of props at runtime for testing purposes
         assert isinstance(first, str)
-        assert "children" in attrs
-        children = attrs.pop("children")
+        if "children" in attrs:
+            raise ValueError("Children not expected in attrs.")
         new_attrs = {"data-first": first, **attrs}
-        return t"<div {new_attrs}>Component with kwargs: {children}</div>"
+        return t"<div {new_attrs}>No children in kwargs</div>"
 
-    def test_children_always_passed_via_kwargs(self):
+    def test_children_not_passed_via_kwargs(self):
         res = html(
             t'<{self.FunctionComponentKeywordArgs} first="value" extra="info">Child content</{self.FunctionComponentKeywordArgs}>'
         )
-        assert (
-            res
-            == '<div data-first="value" extra="info">Component with kwargs: Child content</div>'
-        )
+        assert res == '<div data-first="value" extra="info">No children in kwargs</div>'
 
-    def test_children_always_passed_via_kwargs_even_when_empty(self):
+    def test_children_not_passed_via_kwargs_even_when_empty(self):
         res = html(
             t'<{self.FunctionComponentKeywordArgs} first="value" extra="info" />'
         )
-        assert (
-            res == '<div data-first="value" extra="info">Component with kwargs: </div>'
-        )
+        assert res == '<div data-first="value" extra="info">No children in kwargs</div>'
 
 
 class TestComponentSpecialUsage:
