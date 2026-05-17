@@ -1490,7 +1490,6 @@ class TestPrepComponentKwargs:
         ) == {"type": "email"}
         assert prep_component_kwargs(callable_info, {}, children=t"") == {}
 
-    @pytest.mark.skip("Should we just ignore unused user-specified kwargs?")
     def test_unused_kwargs(self):
         def InputElement(size=10, type="text"):
             pass

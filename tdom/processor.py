@@ -431,6 +431,8 @@ def _prep_component_kwargs(
         snake_name = _kebab_to_snake(attr_name)
         if snake_name in callable_info.named_params or callable_info.kwargs:
             kwargs[snake_name] = attr_value
+        else:
+            raise ValueError(f"Unexpected attribute {snake_name}.")
 
     if "children" in callable_info.named_params:
         kwargs["children"] = children
