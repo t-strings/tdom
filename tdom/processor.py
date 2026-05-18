@@ -434,6 +434,9 @@ def _prep_component_kwargs(
         else:
             raise ValueError(f"Unexpected attribute {snake_name}.")
 
+    if "children" in kwargs:
+        raise ValueError("The children attribute is reserved for component children.")
+
     if "children" in callable_info.named_params:
         kwargs["children"] = children
 
