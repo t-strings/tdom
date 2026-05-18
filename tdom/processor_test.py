@@ -1534,6 +1534,16 @@ class TestPrepComponentKwargs:
         )
         assert kwargs == {"content_text": content_text}  # no children
 
+    def test_children_attr_error(self):
+        def Comp(children: Template) -> Template:
+            return t"<div>{children}</div>"
+
+        callable_info = get_callable_info(Comp)
+        with pytest.raises(ValueError, match="The children attribute is reserved"):
+            _ = prep_component_kwargs(
+                callable_info, {"children": t""}, children=t"<span></span>"
+            )
+
 
 class TestFunctionComponent:
     @staticmethod
