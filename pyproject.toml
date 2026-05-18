@@ -11,6 +11,7 @@ requires-python = ">=3.14"
 dependencies = ["markupsafe>=3.0.3"]
 authors = [
   { name = "Dave Peck", email = "davepeck@davepeck.org" },
+  { name = "Ian Wilson", email = "ian@gardentheory.org" },
   { name = "Andrea Giammarchi", email = "andrea.giammarchi@gmail.com" },
   { name = "Paul Everitt", email = "pauleveritt@me.com" },
 ]
