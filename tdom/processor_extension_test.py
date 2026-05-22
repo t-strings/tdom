@@ -2,6 +2,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from string.templatelib import Template
 
+from .context import ScopedTemplate
 from .processor import (
     Attribute,
     ComponentProcessor,
@@ -54,7 +55,7 @@ class TestComponentProcessor:
             attrs: tuple[TAttribute, ...],
             component_template: Template,
             provided_attrs: tuple[Attribute, ...] = (),
-        ) -> Template:
+        ) -> Template | ScopedTemplate:
             # For now we just make the app state available to EVERY component
             # a smarter strategy would be to only include it if asked via
             # the callable's signature or even the callable's typehints.

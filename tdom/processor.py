@@ -7,6 +7,7 @@ from string.templatelib import Interpolation, Template
 from markupsafe import Markup
 
 from .callables import CallableInfo, get_callable_info
+from .context import ScopedTemplate
 from .escaping import (
     escape_html_comment as default_escape_html_comment,
 )
@@ -551,9 +552,10 @@ class IComponentProcessor(t.Protocol):
         attrs: tuple[TAttribute, ...],
         component_template: Template,
         provided_attrs: tuple[Attribute, ...] = (),
-    ) -> Template:
+    ) -> Template | ScopedTemplate:
         """
-        Process available component details into a Template.
+        Process available component details into a `Template` (or a
+        `ScopedTemplate`, for context-provider components).
         """
         ...
 
@@ -571,11 +573,11 @@ class ComponentProcessor(IComponentProcessor):
         attrs: tuple[TAttribute, ...],
         component_template: Template,
         provided_attrs: tuple[Attribute, ...] = (),
-    ) -> Template:
+    ) -> Template | ScopedTemplate:
         """
         Process available component details into a Template.
 
-        There are two general "styles" supported:
+        There are three general "styles" supported:
 
         1. FunctionComponent
 
@@ -594,6 +596,13 @@ class ComponentProcessor(IComponentProcessor):
         The primary purpose of this style is to support
         using a `dataclass` with `def __call__(self) -> Template` as a
         component.
+
+        3. Context-provider component
+
+        Calling `component_callable` returns a `ScopedTemplate`. The
+        template processor recognizes it, activates the scope, processes
+        the inner template, and resets. Created via
+        `tdom.make_provider(cv)` / `tdom.create_context(...)`.
         """
         if not callable(component_callable):
             raise TypeError(
@@ -608,7 +617,7 @@ class ComponentProcessor(IComponentProcessor):
             raise_on_missing=True,
         )
         res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
-        if isinstance(res1, Template):
+        if isinstance(res1, (Template, ScopedTemplate)):
             return res1
         elif callable(res1):
             res2 = res1()  # ty: ignore[call-top-callable]
@@ -844,6 +853,9 @@ class TemplateProcessor(ITemplateProcessor):
         result_t = self.component_processor_api.process(
             template, last_ctx, component_callable, attrs, children_template
         )
+        if isinstance(result_t, ScopedTemplate):
+            with result_t.scope.activate():
+                return self._process_template(result_t.template, last_ctx)
         return self._process_template(result_t, last_ctx)
 
     def _process_raw_texts(
