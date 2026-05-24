@@ -35,10 +35,10 @@ whatever another outer Provider set. Providers nest as you'd expect: the
 innermost one wins inside its own children, and everything resets
 cleanly on the way out (even if an exception is raised).
 
-One important caveat: both `make_provider` and `create_context` must be
-called at module level, never inside a function that runs repeatedly.
-This isn't a `tdom` rule; it comes straight from `ContextVar` itself.
-The Python docs put it this way:
+One important caveat: `create_context` must be called at module level,
+never inside a function that runs repeatedly. This isn't a `tdom`
+rule; it comes straight from `ContextVar` itself. The Python docs put
+it this way:
 
     Important: Context Variables should be created at the top module
     level and never in closures. Context objects hold strong references
@@ -117,6 +117,7 @@ def make_provider[T](cv: ContextVar[T]) -> t.Callable[..., ScopedTemplate]:
         return ScopedTemplate(template=children, scope=Scope(cv=cv, value=value))
 
     Provider.__name__ = f"{cv.name}Provider"
+    # Set this to make tracebacks/debugging nicer:
     Provider.__qualname__ = Provider.__name__
     return Provider
 
@@ -129,9 +130,11 @@ class Context[T]:
 
       - `.get()`  -- read the current value (per-async/thread-context
         isolation, courtesy of the underlying `ContextVar`).
-      - `.Provider`  -- a tdom component scoping the value to a subtree.
+      - `.Provider`  -- a tdom component scoping the value to a subtree
+        of a template (composable, in-template scoping).
       - `.provide(value)`  -- a context manager scoping the value to a
-        `with` block (the imperative counterpart to `.Provider`).
+        `with` block (for imperative scoping at a render-call boundary
+        -- route handlers, middleware, tests).
 
     Note: there's deliberately no `.set(value)` method. Contexts are
     *scoped* values, not mutable state -- use `Provider` or `provide()`
@@ -151,15 +154,15 @@ class Context[T]:
 
     def provide(self, value: T) -> t.ContextManager[None]:
         """
-        Scope `value` to a `with` block -- the imperative counterpart
-        to `.Provider`.
+        Scope `value` to a `with` block. For imperative scoping at the
+        boundary between Python code and a render.
 
-        Inside the block, `.get()` returns `value`; on exit (even via
-        exception), the previous value is restored:
+        The typical use case: imperative code (a route handler,
+        middleware, a test) needs to bind a context value before
+        calling `html()`:
 
-            with theme.provide("dark"):
-                assert theme.get() == "dark"
-            # theme.get() returns whatever it was before
+            with current_user.provide(request.user):
+                return html(t'<{Page}/>')
         """
         return Scope(cv=self._cv, value=value).activate()
 
@@ -193,8 +196,10 @@ def create_context[T](
             return t"<h1 class={theme.get()}>...</h1>"
 
         def App() -> Template:
-            with theme.provide("dark"):
-                return t"<{Banner} />"
+            return t"<{Banner} />"
+
+        with theme.provide("dark"):
+            return html(t"<{App} />")
     """
     cv: ContextVar[T] = ContextVar(name, default=default)
     return Context(cv)

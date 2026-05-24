@@ -577,7 +577,7 @@ class ComponentProcessor(IComponentProcessor):
         """
         Process available component details into a Template.
 
-        There are three general "styles" supported:
+        Two general "styles" are supported:
 
         1. FunctionComponent
 
@@ -597,12 +597,11 @@ class ComponentProcessor(IComponentProcessor):
         using a `dataclass` with `def __call__(self) -> Template` as a
         component.
 
-        3. Context-provider component
-
-        Calling `component_callable` returns a `ScopedTemplate`. The
-        template processor recognizes it, activates the scope, processes
-        the inner template, and resets. Created via
-        `tdom.make_provider(cv)` / `tdom.create_context(...)`.
+        Either style may instead return a `ScopedTemplate` -- a
+        `Template` bundled with a `Scope` to activate around its render.
+        Context providers (`tdom.make_provider(cv)` /
+        `tdom.create_context(...)`) use this shape; user code generally
+        won't construct one directly.
         """
         if not callable(component_callable):
             raise TypeError(
@@ -621,7 +620,7 @@ class ComponentProcessor(IComponentProcessor):
             return res1
         elif callable(res1):
             res2 = res1()  # ty: ignore[call-top-callable]
-            if isinstance(res2, Template):
+            if isinstance(res2, (Template, ScopedTemplate)):
                 return res2
             else:
                 raise TypeError(

@@ -6,6 +6,7 @@ decorator) so `.set()` calls in one test cannot leak into another.
 
 import functools
 from contextvars import ContextVar, copy_context
+from dataclasses import dataclass
 from string.templatelib import Template
 
 import pytest
@@ -257,3 +258,32 @@ def test_provider_returns_scoped_template():
     assert isinstance(result.scope, Scope)
     assert result.scope.cv is theme
     assert result.scope.value == "dark"
+
+
+# ---------------------------------------------------------------------------
+# Factory-style providers: dataclass components returning ScopedTemplate
+# ---------------------------------------------------------------------------
+
+
+@isolated
+def test_factory_component_returning_scoped_template_directly():
+    """A factory component whose `__call__` returns a `ScopedTemplate` directly."""
+
+    @dataclass
+    class ThemeProvider:
+        children: Template
+        value: str
+
+        def __call__(self) -> ScopedTemplate:
+            return ScopedTemplate(
+                template=self.children,
+                scope=Scope(cv=theme, value=self.value),
+            )
+
+    def Banner() -> Template:
+        return t"<span class={theme.get()}>x</span>"
+
+    body = html(t'<{ThemeProvider} value="dark"><{Banner}/></{ThemeProvider}>')
+    assert 'class="dark"' in body
+    # Scope resets after the subtree, same as the function-style provider.
+    assert theme.get() == "auto"
