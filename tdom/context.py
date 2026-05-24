@@ -15,7 +15,7 @@ concurrency. We just wrap it in three flavors:
   children subtree.
 
 - `Context(cv)`: mid-level. You bring your own `ContextVar`; we hand you
-  back our high-level `Context` instance; see below for details.
+  back our `Context` abstraction; see below for details.
 
 - `create_context(default=...)`: high-level. We create a fresh
   `ContextVar`, a matching Provider component, a `.get()` accessor, and
