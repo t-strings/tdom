@@ -291,7 +291,16 @@ class TemplateParser(HTMLParser):
             raise ValueError("Invalid HTML structure: unclosed tags remain.")
         if not self.placeholders.is_empty:
             raise ValueError("Some placeholders were never resolved.")
+        if self.waiting_for_data():
+            # We apply heuristics here to try to guess why the parser didn't finish.
+            if self.rawdata.count('"') % 2 == 1 or self.rawdata.count("'") % 2 == 1:
+                raise ValueError("Parser expects more data, maybe you left an attribute quote unclosed?")
+            else:
+                raise ValueError("Parser expects more data, maybe Template content is malformed?")
         super().close()
+
+    def waiting_for_data(self):
+        return len(self.rawdata) > 0
 
     # ------------------------------------------
     # Getting the parsed node tree
