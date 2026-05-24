@@ -8,11 +8,14 @@ you'll feel right at home.
 Under the hood, this module builds on Python's `contextvars`, the
 standard-library machinery that already handles the hard parts:
 per-async-task isolation, save and restore, well-defined behavior under
-concurrency. We just wrap it in two flavors:
+concurrency. We just wrap it in three flavors:
 
 - `make_provider(cv)`: low-level. You bring your own `ContextVar`; we
   hand you back a tdom component that scopes the variable's value to a
   children subtree.
+
+- `Context(cv)`: mid-level. You bring your own `ContextVar`; we hand you
+  back our high-level `Context` instance; see below for details.
 
 - `create_context(default=...)`: high-level. We create a fresh
   `ContextVar`, a matching Provider component, a `.get()` accessor, and
