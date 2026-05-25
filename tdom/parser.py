@@ -4,7 +4,7 @@ from html.parser import HTMLParser
 from string.templatelib import Interpolation, Template
 
 from .htmlspec import VOID_ELEMENTS
-from .placeholders import PlaceholderState
+from .placeholders import PlaceholderConfig, PlaceholderState
 from .template_utils import TemplateRef, combine_template_refs
 from .tnodes import (
     TAttribute,
@@ -42,6 +42,8 @@ class OpenTComponent:
     start_i_index: int
     children_start_s_index: int
     """The strings index where the component's children template starts."""
+    offset_into_children_start_s: int
+    """The offset INTO the starting string where the component's children template starts."""
     attrs: tuple[TAttribute, ...]
     # @NOTE: The `children` are discarded after parsing and are just used to
     # track template consistency.  If the component is processed and
@@ -179,11 +181,69 @@ class TemplateParser(HTMLParser):
         # contain interpolations causing the i_index (and s_index) to advance
         # arbitrarily.
         children_start_s_index = self.get_source().s_index
+
+        # @NOTE: This must be called when the tag is handled since it is
+        # populated based on the most recently finished start tag. Otherwise
+        # the value will be out of sync.
+        starttag_text = self.get_starttag_text()
+        if starttag_text is None:
+            raise AssertionError(
+                f"Expected startag_text to be set when parsing component at {i_index}."
+            )
+
+        tattrs = self.make_tattrs(attrs)
+
+        offset_into_children_start_s = self.compute_offset_into_children_start_s(
+            start_i_index=i_index,
+            tattrs=tattrs,
+            config=self.placeholders.config,
+            starttag_text=starttag_text,
+        )
+
         return OpenTComponent(
             start_i_index=i_index,
             children_start_s_index=children_start_s_index,
-            attrs=self.make_tattrs(attrs),
+            offset_into_children_start_s=offset_into_children_start_s,
+            attrs=tattrs,
         )
+
+    def compute_offset_into_children_start_s(
+        self,
+        start_i_index: int,
+        tattrs: tuple[TAttribute, ...],
+        config: PlaceholderConfig,
+        starttag_text: str,
+    ) -> int:
+        """
+        Compute offset into "string" containing the start of children template.
+
+        This "string" also contains the trailing "string" portion of the
+        component's starttag.  Sometimes this is just ">" but other times this
+        contains literal attributes as well, ie. 'title="Title">...'.  Or in even
+        weirder cases the literal attribute can actually contain a ">" as well
+        such as 'title="1 > 0">...'. We want to determine how far INTO this string
+        from the beginning to skip over to get to the true start of the children's
+        template.
+
+        Examples:
+
+        <{Comp}></{Comp}> -- len(">")
+        <{Comp}>children</{Comp}> -- len(">")
+        <{Comp} title="1>0">children</{Comp}> -- len(' title="1>0">')
+        <{Comp} title="{'1>0'}">children</{Comp}> -- len('">')
+        """
+        # Collect indexes of each interpolation in the starttag text.
+        known: set[int] = {start_i_index}
+        for attr in tattrs:
+            if isinstance(attr, TInterpolatedAttribute):
+                known.add(attr.value_i_index)
+            elif isinstance(attr, TSpreadAttribute):
+                known.add(attr.i_index)
+            elif isinstance(attr, TTemplatedAttribute):
+                known.update(attr.value_ref.i_indexes)
+        temp_placeholders = PlaceholderState(known=known, config=config)
+        tag_ref = temp_placeholders.remove_placeholders(starttag_text)
+        return len(tag_ref.strings[-1])
 
     def finalize_tag(
         self, open_tag: OpenTag, endtag_i_index: int | None = None
@@ -197,45 +257,67 @@ class TemplateParser(HTMLParser):
             case OpenTComponent(
                 start_i_index=start_i_index,
                 children_start_s_index=children_start_s_index,
+                offset_into_children_start_s=offset_into_children_start_s,
                 attrs=attrs,
             ):
-                # Only go looking for a template if there is an actual endtag.
-                if start_i_index != endtag_i_index and endtag_i_index is not None:
-                    source = self.get_source()
-                    # @NOTE: This is an assumption that no interpolations
-                    # exist between the end tag interpolation itself and the
-                    # "</", ie. "</{end_i}>".
-                    children_end_s_index = endtag_i_index
-                    leading = source.template.strings[children_start_s_index]
-                    leading = leading[leading.find(">") + 1 :]
-                    if (
-                        children_start_s_index == children_end_s_index
-                    ):  # Entire children template is a string.
-                        leading = leading[: leading.rfind("</")]
-                        children_ref = TemplateRef(strings=(leading,), i_indexes=())
-                    else:
-                        trailing = source.template.strings[children_end_s_index]
-                        trailing = trailing[: trailing.rfind("</")]
-                        children_ref = TemplateRef(
-                            strings=(
-                                leading,
-                                *source.template.strings[
-                                    children_start_s_index + 1 : children_end_s_index
-                                ],
-                                trailing,
-                            ),
-                            i_indexes=tuple(
-                                range(children_start_s_index, children_end_s_index)
-                            ),
-                        )
-                else:
-                    children_ref = TemplateRef(strings=("",), i_indexes=())
+                children_ref = self.extract_component_children_ref(
+                    start_i_index=start_i_index,
+                    endtag_i_index=endtag_i_index,
+                    children_start_s_index=children_start_s_index,
+                    offset_into_children_start_s=offset_into_children_start_s,
+                    template=self.get_source().template,
+                )
                 return TComponent(
                     start_i_index=start_i_index,
                     end_i_index=endtag_i_index,
                     children_ref=children_ref,
                     attrs=attrs,
                 )
+
+    def extract_component_children_ref(
+        self,
+        start_i_index: int,
+        endtag_i_index: int | None,
+        children_start_s_index: int,
+        offset_into_children_start_s: int,
+        template: Template,
+    ) -> TemplateRef:
+        """
+        Extract the component children template from the entire template.
+
+        We use this template as a "key" into the cache to get the TNode tree.
+        """
+        # Only go looking for a template if there is an actual endtag.
+        if start_i_index != endtag_i_index and endtag_i_index is not None:
+            # @NOTE: This is an assumption that no interpolations
+            # exist between the end tag interpolation itself and the
+            # "</", ie. "</{end_i}>".
+            children_end_s_index = endtag_i_index
+            leading = template.strings[children_start_s_index]
+            leading = leading[offset_into_children_start_s:]
+            if (
+                children_start_s_index == children_end_s_index
+            ):  # Entire children template is a string.
+                leading = leading[: leading.rfind("</")]
+                children_ref = TemplateRef(strings=(leading,), i_indexes=())
+            else:
+                trailing = template.strings[children_end_s_index]
+                trailing = trailing[: trailing.rfind("</")]
+                children_ref = TemplateRef(
+                    strings=(
+                        leading,
+                        *template.strings[
+                            children_start_s_index + 1 : children_end_s_index
+                        ],
+                        trailing,
+                    ),
+                    i_indexes=tuple(
+                        range(children_start_s_index, children_end_s_index)
+                    ),
+                )
+        else:
+            children_ref = TemplateRef(strings=("",), i_indexes=())
+        return children_ref
 
     def validate_end_tag(self, tag: str, open_tag: OpenTag) -> int | None:
         """Validate that closing tag matches open tag. Return component end index if applicable."""
