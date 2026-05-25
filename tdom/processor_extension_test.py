@@ -9,6 +9,7 @@ from .processor import (
     ProcessContext,
     TemplateProcessor,
 )
+from .scope import ScopedTemplate
 from .tnodes import TAttribute
 
 
@@ -54,7 +55,7 @@ class TestComponentProcessor:
             attrs: tuple[TAttribute, ...],
             component_template: Template,
             provided_attrs: tuple[Attribute, ...] = (),
-        ) -> Template:
+        ) -> Template | ScopedTemplate:
             # For now we just make the app state available to EVERY component
             # a smarter strategy would be to only include it if asked via
             # the callable's signature or even the callable's typehints.
