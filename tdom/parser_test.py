@@ -482,3 +482,19 @@ def test_placeholder_collision_avoidance():
     assert tnode == TElement(
         "div", attrs=(TTemplatedAttribute(name="data-tricky", value_ref=value_ref),)
     )
+
+
+class TestIncompleteParsing:
+    def test_dangling_quotes(self):
+        with pytest.raises(ValueError, match="Parser expects more data"):
+            _ = TemplateParser.parse(t"<div a='")
+        with pytest.raises(ValueError, match="Parser expects more data"):
+            _ = TemplateParser.parse(t'<div a="')
+
+    def test_unfinished_attribute(self):
+        with pytest.raises(ValueError, match="Parser expects more data"):
+            _ = TemplateParser.parse(t"<div a=")
+
+    def test_placeholder_missing_from_dangling_quote(self):
+        with pytest.raises(ValueError, match="Parser expects more data"):
+            _ = TemplateParser.parse(t'<div a="{None}')
