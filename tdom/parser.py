@@ -175,6 +175,10 @@ class TemplateParser(HTMLParser):
         # component callable. We do not check this in the parser, instead
         # relying on higher layers to validate types and render correctly.
         i_index = tag_ref.i_indexes[0]
+
+        # @NOTE: This must be stored when the tag is handled since it is
+        # set based on when the template parts are fed in and otherwise
+        # might be out of sync.
         # The starting s_index of the component's children template. Note that
         # this string either contains ">" or " />".  It might not be
         # i_index + 1 because attributes WITHIN the component's tag might
@@ -217,13 +221,12 @@ class TemplateParser(HTMLParser):
         """
         Compute offset into "string" containing the start of children template.
 
-        This "string" also contains the trailing "string" portion of the
-        component's starttag.  Sometimes this is just ">" but other times this
-        contains literal attributes as well, ie. 'title="Title">...'.  Or in even
-        weirder cases the literal attribute can actually contain a ">" as well
-        such as 'title="1 > 0">...'. We want to determine how far INTO this string
-        from the beginning to skip over to get to the true start of the children's
-        template.
+        @NOTE: This is to actually OFFLOAD work to the parser itself.  If we try
+        to "rebuild" the tag from the parse result we are bound to fail in some
+        way(s). We essentially re-run the placeholder process but with content
+        we KNOWN ends at the end of the starttag, ie. ">", because the parser
+        told us that is where it ends (rather than trying to scan for ">"
+        because ">" might be in literal tags).
 
         Examples:
 
@@ -232,8 +235,8 @@ class TemplateParser(HTMLParser):
         <{Comp} title="1>0">children</{Comp}> -- len(' title="1>0">')
         <{Comp} title="{'1>0'}">children</{Comp}> -- len('">')
         """
-        # Collect indexes of each interpolation in the starttag text.
-        known: set[int] = {start_i_index}
+        # Rebuild known interpolations in the starttag.
+        known: set[int] = {start_i_index}  # The component callable itself.
         for attr in tattrs:
             if isinstance(attr, TInterpolatedAttribute):
                 known.add(attr.value_i_index)
@@ -241,8 +244,17 @@ class TemplateParser(HTMLParser):
                 known.add(attr.i_index)
             elif isinstance(attr, TTemplatedAttribute):
                 known.update(attr.value_ref.i_indexes)
+        # Now re-remove those placeholders using the same config we used to
+        # make them.
         temp_placeholders = PlaceholderState(known=known, config=config)
         tag_ref = temp_placeholders.remove_placeholders(starttag_text)
+        if not temp_placeholders.is_empty:
+            raise AssertionError(
+                "There are extra placeholders still in the starttag_text."
+            )
+        # Now the last string should terminate the starttag and end with ">"
+        # So this length is the offset from the last interpolation to the start
+        # of the children's leading string.
         return len(tag_ref.strings[-1])
 
     def finalize_tag(
@@ -287,20 +299,25 @@ class TemplateParser(HTMLParser):
 
         We use this template as a "key" into the cache to get the TNode tree.
         """
-        # Only go looking for a template if there is an actual endtag.
         if start_i_index != endtag_i_index and endtag_i_index is not None:
-            # @NOTE: This is an assumption that no interpolations
-            # exist between the end tag interpolation itself and the
-            # "</", ie. "</{end_i}>".
+            # CASE: <{Comp}>...</{Comp}> or <{Comp}></{Comp}>
+
+            # Use the interpolation index of the callable in the closing tag
+            # preceding "string" index is always the same as an interpolation index
+            # The "string" should look like this: "...</"
             children_end_s_index = endtag_i_index
-            leading = template.strings[children_start_s_index]
-            leading = leading[offset_into_children_start_s:]
-            if (
-                children_start_s_index == children_end_s_index
-            ):  # Entire children template is a string.
+            # Offset past the trailing part of the component's start tag to get to
+            # where the first "string" of the children's template starts.
+            leading = template.strings[children_start_s_index][
+                offset_into_children_start_s:
+            ]
+            if children_start_s_index == children_end_s_index:
+                # CASE: Entire children template is a string, leading == trailing.
                 leading = leading[: leading.rfind("</")]
                 children_ref = TemplateRef(strings=(leading,), i_indexes=())
             else:
+                # CASE: Children template contains interpolations so the trailing
+                # "string" will not be the same as the leading "string".
                 trailing = template.strings[children_end_s_index]
                 trailing = trailing[: trailing.rfind("</")]
                 children_ref = TemplateRef(
@@ -316,6 +333,7 @@ class TemplateParser(HTMLParser):
                     ),
                 )
         else:
+            # CASE: <{Comp} /> -- no children template
             children_ref = TemplateRef(strings=("",), i_indexes=())
         return children_ref
 
