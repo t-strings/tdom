@@ -4,7 +4,7 @@ to offer context-like functionality, allowing values to flow into nested
 children without requiring prop drilling.
 
 Under the hood, we build on top of Python's contextvars, because they are
-async context and thread safe: valuable for integrations with just about
+async and thread safe: valuable for integrations with just about
 any web framework out there.
 
 Example use:
@@ -14,7 +14,6 @@ from contextvars import ContextVar
 
 type Theme = Literal["auto", "light", "dark"]
 theme: ContextVar[Theme] = ContextVar("theme", default="auto")
-
 
 def ThemeProvider(children: Template, value: Theme) -> ScopedTemplate:
     retrun ScopedTemplate(children, Scope(theme, value))

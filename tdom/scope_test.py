@@ -56,7 +56,7 @@ def test_provider_style_component():
         return ScopedTemplate(Scope(theme, value), children)
 
     def SubComponent() -> Template:
-        return t"<h1 data-sub-theme={theme.get()}>test</h1>"
+        return t'<h1 data-sub-theme="{theme.get()}">test</h1>'
 
     def Component() -> Template:
         return t'''
