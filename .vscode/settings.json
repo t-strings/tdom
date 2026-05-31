@@ -10,6 +10,7 @@
     }
   },
   "python.terminal.activateEnvironment": false,
+  "python.terminal.activateEnvInCurrentTerminal": false,
   "python.testing.pytestArgs": ["tdom"],
   "esbonio.server.enabled": false
 }

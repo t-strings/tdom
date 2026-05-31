@@ -46,6 +46,7 @@ from .parser import (
     TText,
 )
 from .protocols import HasHTMLDunder
+from .scope import ScopedTemplate
 from .template_utils import TemplateRef
 from .utils import CachableTemplate, LastUpdatedOrderedDict
 
@@ -303,6 +304,10 @@ def _resolve_t_attrs(
 
     The values returned are not yet processed for HTML output; that is handled
     in a later step.
+
+    @NOTE: We "touch" the key when accumulating values so that we can predict
+    what order that attribute will be ordered.  We skip this step when setting
+    the final value so that the order is not disturbed.
     """
     new_attrs: AttributesDict = LastUpdatedOrderedDict()
     attr_accs: dict[str, AttributeValueAccumulator] = {}
@@ -361,7 +366,8 @@ def _resolve_t_attrs(
             case _:
                 raise ValueError(f"Unknown TAttribute type: {type(attr).__name__}")
     for acc_name, acc in attr_accs.items():
-        new_attrs[acc_name] = acc.to_value()
+        # Skip "touching" the key here so that the order remains intact.
+        super(type(new_attrs), new_attrs).__setitem__(acc_name, acc.to_value())
     return new_attrs
 
 
@@ -398,8 +404,6 @@ def _prep_component_kwargs(
         attrs even if they are not specified in the component's `attrs` in
         the template. If an attribute with the same name is provided in
         `attrs` then it takes priority over entries in `provided_attrs`.
-        @NOTE: These will be injected into any component with `**kwargs`
-        in their signature unless provided already by `attrs`.
 
     `raise_on_requires_positional`:
         Optionally check and raise `TypeError` if the `callable_info` requires
@@ -428,15 +432,18 @@ def _prep_component_kwargs(
         snake_name = _kebab_to_snake(attr_name)
         if snake_name in callable_info.named_params or callable_info.kwargs:
             kwargs[snake_name] = attr_value
+        else:
+            raise ValueError(f"Unexpected attribute {snake_name}.")
 
-    if "children" in callable_info.named_params or callable_info.kwargs:
+    if "children" in kwargs:
+        raise ValueError("The children attribute is reserved for component children.")
+
+    if "children" in callable_info.named_params:
         kwargs["children"] = children
 
     # Add in provided attrs if they haven't been set already and are wanted.
     for pattr_name, pattr_value in provided_attrs:
-        if pattr_name not in kwargs and (
-            pattr_name in callable_info.named_params or callable_info.kwargs
-        ):
+        if pattr_name not in kwargs and pattr_name in callable_info.named_params:
             kwargs[pattr_name] = pattr_value
 
     # Check to make sure we've fully satisfied the callable's requirements
@@ -545,9 +552,10 @@ class IComponentProcessor(t.Protocol):
         attrs: tuple[TAttribute, ...],
         component_template: Template,
         provided_attrs: tuple[Attribute, ...] = (),
-    ) -> Template:
+    ) -> Template | ScopedTemplate:
         """
-        Process available component details into a Template.
+        Process available component details into a `Template` (or a
+        `ScopedTemplate`, for context-provider components).
         """
         ...
 
@@ -565,11 +573,11 @@ class ComponentProcessor(IComponentProcessor):
         attrs: tuple[TAttribute, ...],
         component_template: Template,
         provided_attrs: tuple[Attribute, ...] = (),
-    ) -> Template:
+    ) -> Template | ScopedTemplate:
         """
         Process available component details into a Template.
 
-        There are two general "styles" supported:
+        Two general "styles" are supported:
 
         1. FunctionComponent
 
@@ -588,6 +596,12 @@ class ComponentProcessor(IComponentProcessor):
         The primary purpose of this style is to support
         using a `dataclass` with `def __call__(self) -> Template` as a
         component.
+
+        Either style may instead return a `ScopedTemplate` -- a
+        `Template` bundled with a `Scope` to activate around its render.
+        Context providers (`tdom.make_provider(cv)` /
+        `tdom.create_context(...)`) use this shape; user code generally
+        won't construct one directly.
         """
         if not callable(component_callable):
             raise TypeError(
@@ -602,11 +616,11 @@ class ComponentProcessor(IComponentProcessor):
             raise_on_missing=True,
         )
         res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
-        if isinstance(res1, Template):
+        if isinstance(res1, (Template, ScopedTemplate)):
             return res1
         elif callable(res1):
             res2 = res1()  # ty: ignore[call-top-callable]
-            if isinstance(res2, Template):
+            if isinstance(res2, (Template, ScopedTemplate)):
                 return res2
             else:
                 raise TypeError(
@@ -669,9 +683,14 @@ class TemplateProcessor(ITemplateProcessor):
                 return self._process_comment(template, last_ctx, ref)
             case TFragment(children):
                 return self._process_fragment(template, last_ctx, children)
-            case TComponent(start_i_index, end_i_index, attrs, children):
+            case TComponent(start_i_index, end_i_index, children_ref, attrs):
                 return self._process_component(
-                    template, last_ctx, attrs, start_i_index, end_i_index
+                    template,
+                    last_ctx,
+                    attrs,
+                    start_i_index,
+                    end_i_index,
+                    children_ref,
                 )
             case TElement(tag, attrs, children):
                 return self._process_element(template, last_ctx, tag, attrs, children)
@@ -815,33 +834,6 @@ class TemplateProcessor(ITemplateProcessor):
             return attrs_str
         return ""
 
-    def _extract_component_template(
-        self,
-        template: Template,
-        attrs: tuple[TAttribute, ...],
-        start_i_index: int,
-        end_i_index: int | None,
-        check_callables: bool = True,
-    ) -> Template:
-        body_start_s_index = (
-            start_i_index
-            + 1
-            + len([1 for attr in attrs if not isinstance(attr, TLiteralAttribute)])
-        )
-        if start_i_index != end_i_index and end_i_index is not None:
-            # @TODO: We should do this during parsing.
-            if (
-                check_callables
-                and template.interpolations[start_i_index].value
-                != template.interpolations[end_i_index].value
-            ):
-                raise TypeError(
-                    "Component callable in start tag must match component callable in end tag."
-                )
-            return extract_embedded_template(template, body_start_s_index, end_i_index)
-        else:
-            return t""
-
     def _process_component(
         self,
         template: Template,
@@ -849,17 +841,28 @@ class TemplateProcessor(ITemplateProcessor):
         attrs: tuple[TAttribute, ...],
         start_i_index: int,
         end_i_index: int | None,
+        children_ref: TemplateRef,
     ) -> str:
         """
         Invoke a component and process the result into a string.
         """
-        children_template = self._extract_component_template(
-            template, attrs, start_i_index, end_i_index, check_callables=True
-        )
+        children_template = children_ref.resolve(template.interpolations)
+        if (
+            start_i_index != end_i_index
+            and end_i_index is not None
+            and template.interpolations[start_i_index].value
+            != template.interpolations[end_i_index].value
+        ):
+            raise TypeError(
+                "Component callable in start tag must match component callable in end tag."
+            )
         component_callable = template.interpolations[start_i_index].value
         result_t = self.component_processor_api.process(
             template, last_ctx, component_callable, attrs, children_template
         )
+        if isinstance(result_t, ScopedTemplate):
+            with result_t.scope.activate():
+                return self._process_template(result_t.template, last_ctx)
         return self._process_template(result_t, last_ctx)
 
     def _process_raw_texts(
@@ -1029,47 +1032,6 @@ def resolve_text_without_recursion(
                 if value_str:
                     text.append(value_str)
         return "".join(text)
-
-
-def extract_embedded_template(
-    template: Template, body_start_s_index: int, end_i_index: int
-) -> Template:
-    """
-    Extract the template parts exclusively from start tag to end tag.
-
-    Note that interpolations INSIDE the start tag make this more complex
-    than just "the `s_index` after the component callable's `i_index`".
-
-    Example:
-    ```python
-    template = (
-        t'<{comp} attr={attr}>'
-            t'<div>{content} <span>{footer}</span></div>'
-        t'</{comp}>'
-    )
-    assert extract_children_template(template, 2, 4) == (
-        t'<div>{content} <span>{footer}</span></div>'
-    )
-    starttag = t'<{comp} attr={attr}>'
-    endtag = t'</{comp}>'
-    assert template == starttag + extract_children_template(template, 2, 4) + endtag
-    ```
-    @DESIGN: "There must be a better way."
-    """
-    # Copy the parts out of the containing template.
-    index = body_start_s_index
-    last_s_index = end_i_index
-    parts = []
-    while index <= last_s_index:
-        parts.append(template.strings[index])
-        if index != last_s_index:
-            parts.append(template.interpolations[index])
-        index += 1
-    # Now trim the first part to the end of the opening tag.
-    parts[0] = parts[0][parts[0].find(">") + 1 :]
-    # Now trim the last part (could also be the first) to the start of the closing tag.
-    parts[-1] = parts[-1][: parts[-1].rfind("<")]
-    return Template(*parts)
 
 
 def _make_default_template_processor(

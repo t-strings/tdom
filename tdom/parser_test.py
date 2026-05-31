@@ -3,7 +3,8 @@ from string.templatelib import Interpolation, Template
 import pytest
 
 from .parser import TemplateParser
-from .placeholders import TemplateRef, make_placeholder_config
+from .placeholders import make_placeholder_config
+from .template_utils import TemplateRef
 from .tnodes import (
     TComment,
     TComponent,
@@ -404,7 +405,7 @@ def test_component_element_with_children():
     assert node == TComponent(
         start_i_index=0,
         end_i_index=1,
-        children=(TElement("div", children=(TText.literal("Hello, World!"),)),),
+        children_ref=TemplateRef(strings=("<div>Hello, World!</div>",), i_indexes=()),
     )
 
 
@@ -482,3 +483,122 @@ def test_placeholder_collision_avoidance():
     assert tnode == TElement(
         "div", attrs=(TTemplatedAttribute(name="data-tricky", value_ref=value_ref),)
     )
+
+
+class TestIncompleteParsing:
+    def test_dangling_quotes(self):
+        with pytest.raises(ValueError, match="Parser expects more data"):
+            _ = TemplateParser.parse(t"<div a='")
+        with pytest.raises(ValueError, match="Parser expects more data"):
+            _ = TemplateParser.parse(t'<div a="')
+
+    def test_unfinished_attribute(self):
+        with pytest.raises(ValueError, match="Parser expects more data"):
+            _ = TemplateParser.parse(t"<div a=")
+
+    def test_placeholder_missing_from_dangling_quote(self):
+        with pytest.raises(ValueError, match="Parser expects more data"):
+            _ = TemplateParser.parse(t'<div a="{None}')
+
+
+class TestComponentExtractChildrenTemplate:
+    @pytest.fixture
+    def Component(self):
+        def Component(children: Template, **attrs: str) -> Template:
+            return t""
+
+        return Component
+
+    def test_extract_no_content(self, Component):
+        node = TemplateParser.parse(t"<{Component}></{Component}>")
+        assert node == TComponent(
+            start_i_index=0,
+            end_i_index=1,
+            children_ref=TemplateRef(strings=("",), i_indexes=()),
+        )
+
+    def test_extract_startend(self, Component):
+        node = TemplateParser.parse(t"<{Component} />")
+        assert node == TComponent(
+            start_i_index=0,
+            end_i_index=None,
+            children_ref=TemplateRef(strings=("",), i_indexes=()),
+        )
+
+    def test_extract(self, Component):
+        node = TemplateParser.parse(
+            t"<{Component}><div>Hello, World!</div></{Component}>"
+        )
+        assert node == TComponent(
+            start_i_index=0,
+            end_i_index=1,
+            children_ref=TemplateRef(
+                strings=("<div>Hello, World!</div>",), i_indexes=()
+            ),
+        )
+
+    def test_extract_with_attr_interpolation(self, Component):
+        # Unquoted ...
+        node = TemplateParser.parse(
+            t"<{Component} title={'Skip over this.'}><div>Hello, World!</div></{Component}>"
+        )
+        assert node == TComponent(
+            start_i_index=0,
+            end_i_index=2,
+            attrs=(TInterpolatedAttribute(name="title", value_i_index=1),),
+            children_ref=TemplateRef(
+                strings=("<div>Hello, World!</div>",), i_indexes=()
+            ),
+        )
+        # Quoted...
+        node2 = TemplateParser.parse(
+            t'<{Component} title="{"Skip over this."}"><div>Hello, World!</div></{Component}>'
+        )
+        assert node2 == node
+
+    def test_extract_with_literal_attr_gt_char(self, Component):
+        node = TemplateParser.parse(
+            t'<{Component} title="1 > 0"><div>Hello, World!</div></{Component}>'
+        )
+        assert node == TComponent(
+            start_i_index=0,
+            end_i_index=1,
+            attrs=(TLiteralAttribute("title", "1 > 0"),),
+            children_ref=TemplateRef(
+                strings=("<div>Hello, World!</div>",), i_indexes=()
+            ),
+        )
+
+    def test_extract_with_interpolated_attr_literal_attr_gt_char(self, Component):
+        node = TemplateParser.parse(
+            t'<{Component} id={"simple"} title="1 > 0"><div>Hello, World!</div></{Component}>'
+        )
+        assert node == TComponent(
+            start_i_index=0,
+            end_i_index=2,
+            attrs=(
+                TInterpolatedAttribute(name="id", value_i_index=1),
+                TLiteralAttribute("title", "1 > 0"),
+            ),
+            children_ref=TemplateRef(
+                strings=("<div>Hello, World!</div>",), i_indexes=()
+            ),
+        )
+
+    def test_extract_with_templated_attr_gt_char(self, Component):
+        node = TemplateParser.parse(
+            t'<{Component} id="{"header"}_{"container"}" title="1 > 0"><div>Hello, World!</div></{Component}>'
+        )
+        assert node == TComponent(
+            start_i_index=0,
+            end_i_index=3,
+            attrs=(
+                TTemplatedAttribute(
+                    "id", TemplateRef(strings=("", "_", ""), i_indexes=(1, 2))
+                ),
+                TLiteralAttribute("title", "1 > 0"),
+            ),
+            children_ref=TemplateRef(
+                strings=("<div>Hello, World!</div>",), i_indexes=()
+            ),
+        )

@@ -9,6 +9,7 @@ from .processor import (
     ProcessContext,
     TemplateProcessor,
 )
+from .scope import ScopedTemplate
 from .tnodes import TAttribute
 
 
@@ -54,7 +55,7 @@ class TestComponentProcessor:
             attrs: tuple[TAttribute, ...],
             component_template: Template,
             provided_attrs: tuple[Attribute, ...] = (),
-        ) -> Template:
+        ) -> Template | ScopedTemplate:
             # For now we just make the app state available to EVERY component
             # a smarter strategy would be to only include it if asked via
             # the callable's signature or even the callable's typehints.
@@ -100,4 +101,23 @@ class TestComponentProcessor:
         assert (
             html(body_t, app_state=None)
             == '<body><div class="hdr theme-default"><h1>App</h1></div></body>'
+        )
+
+    def test_injected_works_with_kwargs(self):
+        """Test that provided attr is not injected into kwargs."""
+
+        def Comp(**kwargs):
+            return t"<div {kwargs}></div>"
+
+        html = self._make_html()
+        assert (
+            html(t"<{Comp}/>", app_state=AppState(theme_class="theme-spring"))
+            == "<div></div>"
+        )
+        assert (
+            html(
+                t'<{Comp} title="{"ok"}"/>',
+                app_state=AppState(theme_class="theme-spring"),
+            )
+            == '<div title="ok"></div>'
         )
