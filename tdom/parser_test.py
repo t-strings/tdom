@@ -624,6 +624,7 @@ class TestAmbiguousSelfCloseCheck:
             t"<{comp} {attrs}/>",  # Still ok because attr name cannot contain /
             t"<{comp} />",
             t"<{comp} title=literal />",
+            t"<{comp} title=literal/ ></{comp}>",  # This is really gross but shouldn't be common.
             t'<{comp} title="literal"/>',
             t"<{comp} title={dynamic} />",
             t'<{comp} title="{dynamic}"/>',
@@ -654,6 +655,7 @@ class TestAmbiguousSelfCloseCheck:
             t"<div {attrs}/>",  # Still ok because attr name cannot contain /
             t"<div />",
             t"<div title=literal />",
+            t"<div title=literal/ ></div>",  # This is really gross but shouldn't be common.
             t'<div title="literal"/>',
             t"<div title={dynamic} />",
             t'<div title="{dynamic}"/>',
