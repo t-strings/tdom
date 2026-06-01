@@ -399,7 +399,9 @@ class TemplateParser(HTMLParser):
             and len(attrs) > 0
             and isinstance(attrs[-1][1], str)  # attr is not boolean
             and attrs[-1][1][-1] == "/"  # attr value ends with /
+            and not self.placeholders.copy().remove_placeholders(tag).is_literal
         ):
+            # Only correct self-closing for components.
             return self.handle_startendtag(
                 tag, (*attrs[:-1], (attrs[-1][0], attrs[-1][1][:-1]))
             )
@@ -412,6 +414,11 @@ class TemplateParser(HTMLParser):
 
     def handle_startendtag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         """Dispatch a self-closing tag, `<tag />` to specialized handlers."""
+        if self.placeholders.copy().remove_placeholders(tag).is_literal:
+            # Don't self-close normal tags.
+            raise ValueError(
+                "Self-closing xhtml style tags are only supported for components."
+            )
         open_tag = self.make_open_tag(tag, attrs)
         final_tag = self.finalize_tag(open_tag)
         self.append_child(final_tag)

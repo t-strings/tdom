@@ -681,7 +681,7 @@ class TestAmbiguousSelfCloseCheck:
             == TemplateRef(strings=("prefix", ""), i_indexes=(1,))
         )
 
-    def test_element_ok(self):
+    def test_element_self_closing_error(self):
         dynamic = "dynamic"
         attrs = {"active": True}
         for template in (
@@ -690,32 +690,14 @@ class TestAmbiguousSelfCloseCheck:
             t"<div {attrs}/>abc",  # Still ok because attr name cannot contain /
             t"<div />abc",
             t"<div title=literal />abc",
-            t"<div title=literal/ ></div>abc",  # This is really gross but shouldn't be common.
             t'<div title="literal"/>abc',
             t"<div title={dynamic} />abc",
             t'<div title="{dynamic}"/>abc',
             t"<div title={dynamic}literal />abc",
             t'<div title="{dynamic}literal"/>abc',
         ):
-            tnode = TemplateParser.parse(template)
-            assert (
-                isinstance(tnode, TFragment)
-                and len(tnode.children) == 2
-                and isinstance(tnode.children[0], TElement)
-            )
-
-    def test_element_ambiguous_corrected(self):
-        dynamic = "dynamic"
-        for template in (
-            t"<div title=literal/>abc",
-            t"<div title={dynamic}/>abc",
-            t"<div title={dynamic}literal/>abc",
-            t"<div title=/>abc",
-            t"<div title=     />abc",  # WS between = and value is ignored, so title=/
-        ):
-            tnode = TemplateParser.parse(template)
-            assert (
-                isinstance(tnode, TFragment)
-                and len(tnode.children) == 2
-                and isinstance(tnode.children[0], TElement)
-            )
+            with pytest.raises(
+                ValueError,
+                match="Self-closing xhtml style tags are only supported for components.",
+            ):
+                _ = TemplateParser.parse(template)
