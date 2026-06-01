@@ -619,60 +619,103 @@ class TestAmbiguousSelfCloseCheck:
         dynamic = "dynamic"
         attrs = {"active": True}
         for template in [
-            t"<{comp}/>",
-            t"<{comp} active/>",  # Still ok because attr name cannot contain /
-            t"<{comp} {attrs}/>",  # Still ok because attr name cannot contain /
-            t"<{comp} />",
-            t"<{comp} title=literal />",
-            t"<{comp} title=literal/ ></{comp}>",  # This is really gross but shouldn't be common.
-            t'<{comp} title="literal"/>',
-            t"<{comp} title={dynamic} />",
-            t'<{comp} title="{dynamic}"/>',
-            t"<{comp} title={dynamic}literal />",
-            t'<{comp} title="{dynamic}literal"/>',
+            t"<{comp}/>abc",
+            t"<{comp} active/>abc",  # Still ok because attr name cannot contain /
+            t"<{comp} {attrs}/>abc",  # Still ok because attr name cannot contain /
+            t"<{comp} />abc",
+            t"<{comp} title=literal />abc",
+            t"<{comp} title=literal/ ></{comp}>abc",  # This is really gross but shouldn't be common.
+            t'<{comp} title="literal"/>abc',
+            t"<{comp} title={dynamic} />abc",
+            t'<{comp} title="{dynamic}"/>abc',
+            t"<{comp} title={dynamic}literal />abc",
+            t'<{comp} title="{dynamic}literal"/>abc',
         ]:
             tnode = TemplateParser.parse(template)
-            assert isinstance(tnode, TComponent) and tnode.start_i_index == 0
+            assert (
+                isinstance(tnode, TFragment)
+                and len(tnode.children) == 2
+                and isinstance(tnode.children[0], TComponent)
+            )
 
-    def test_component_ambiguous_error(self, comp):
+    def test_component_ambiguous_corrected(self, comp):
         dynamic = "dynamic"
         for template in (
-            t"<{comp} title=literal/>",
-            t"<{comp} title={dynamic}/>",
-            t"<{comp} title={dynamic}literal/>",
-            t"<{comp} title=/>",
-            t"<{comp} title=     />",  # WS between = and value is ignored, so title=/
+            t"<{comp} title=literal/>abc",
+            t"<{comp} title={dynamic}/>abc",
+            t"<{comp} title={dynamic}literal/>abc",
+            t"<{comp} title=/>abc",
+            t"<{comp} title=     />abc",  # WS between = and value is ignored, so title=/
         ):
-            with pytest.raises(ValueError, match="Ambiguous self-closing tag"):
-                _ = TemplateParser.parse(template)
+            tnode = TemplateParser.parse(template)
+            assert (
+                isinstance(tnode, TFragment)
+                and len(tnode.children) == 2
+                and isinstance(tnode.children[0], TComponent)
+            )
+
+    def test_component_ambiguous_corrected_attr_value_literal(self, comp):
+        tnode = TemplateParser.parse(t"<{comp} title=literal/>")
+        assert (
+            isinstance(tnode, TComponent)
+            and isinstance(tnode.attrs[-1], TLiteralAttribute)
+            and tnode.attrs[-1].value == "literal"
+        )
+
+    def test_component_ambiguous_corrected_attr_value_interpolated(self, comp):
+        dynamic = "dynamic"
+        tnode = TemplateParser.parse(t"<{comp} title={dynamic}/>")
+        assert (
+            isinstance(tnode, TComponent)
+            and isinstance(tnode.attrs[-1], TInterpolatedAttribute)
+            and tnode.attrs[-1].value_i_index == 1
+        )
+
+    def test_component_ambiguous_corrected_attr_value_templated(self, comp):
+        dynamic = "dynamic"
+        tnode = TemplateParser.parse(t"<{comp} title=prefix{dynamic}/>")
+        assert (
+            isinstance(tnode, TComponent)
+            and isinstance(tnode.attrs[-1], TTemplatedAttribute)
+            and tnode.attrs[-1].value_ref
+            == TemplateRef(strings=("prefix", ""), i_indexes=(1,))
+        )
 
     def test_element_ok(self):
         dynamic = "dynamic"
         attrs = {"active": True}
         for template in (
-            t"<div/>",
-            t"<div active/>",  # Still ok because attr name cannot contain /
-            t"<div {attrs}/>",  # Still ok because attr name cannot contain /
-            t"<div />",
-            t"<div title=literal />",
-            t"<div title=literal/ ></div>",  # This is really gross but shouldn't be common.
-            t'<div title="literal"/>',
-            t"<div title={dynamic} />",
-            t'<div title="{dynamic}"/>',
-            t"<div title={dynamic}literal />",
-            t'<div title="{dynamic}literal"/>',
+            t"<div/>abc",
+            t"<div active/>abc",  # Still ok because attr name cannot contain /
+            t"<div {attrs}/>abc",  # Still ok because attr name cannot contain /
+            t"<div />abc",
+            t"<div title=literal />abc",
+            t"<div title=literal/ ></div>abc",  # This is really gross but shouldn't be common.
+            t'<div title="literal"/>abc',
+            t"<div title={dynamic} />abc",
+            t'<div title="{dynamic}"/>abc',
+            t"<div title={dynamic}literal />abc",
+            t'<div title="{dynamic}literal"/>abc',
         ):
             tnode = TemplateParser.parse(template)
-            assert isinstance(tnode, TElement) and tnode.tag == "div"
+            assert (
+                isinstance(tnode, TFragment)
+                and len(tnode.children) == 2
+                and isinstance(tnode.children[0], TElement)
+            )
 
-    def test_element_ambiguous_error(self):
+    def test_element_ambiguous_corrected(self):
         dynamic = "dynamic"
         for template in (
-            t"<div title=literal/>",
-            t"<div title={dynamic}/>",
-            t"<div title={dynamic}literal/>",
-            t"<div title=/>",
-            t"<div title=     />",  # WS between = and value is ignored, so title=/
+            t"<div title=literal/>abc",
+            t"<div title={dynamic}/>abc",
+            t"<div title={dynamic}literal/>abc",
+            t"<div title=/>abc",
+            t"<div title=     />abc",  # WS between = and value is ignored, so title=/
         ):
-            with pytest.raises(ValueError, match="Ambiguous self-closing tag"):
-                _ = TemplateParser.parse(template)
+            tnode = TemplateParser.parse(template)
+            assert (
+                isinstance(tnode, TFragment)
+                and len(tnode.children) == 2
+                and isinstance(tnode.children[0], TElement)
+            )

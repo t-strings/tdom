@@ -387,22 +387,23 @@ class TemplateParser(HTMLParser):
     # ------------------------------------------
 
     def handle_starttag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
-        open_tag = self.make_open_tag(tag, attrs)
         # An unquoted attribute value within a self-closing tag can consume
         # the "/" as part of the attribute's value if not separated by whitespace.
         # This is the CORRECT behavior but can can be especially confusing if
         # preceded by an interpolation, such as `<{Comp} name={value}/>`.
-        # We explicitly dissallow this usage without preceding ascii whitespace.
+        # We correct this usage by removing the / from the last attr's value
+        # and treating the tag as self-closing.
         # This applies to all tags (components or not).
-        if self.always_get_starttag_text().endswith("/>"):
-            if isinstance(open_tag, OpenTComponent):
-                error_tag = self.get_source().format_starttag(open_tag.start_i_index)
-            else:
-                error_tag = tag
-            raise ValueError(
-                f'Ambiguous self-closing tag, "<{error_tag}.../>", please precede "/>" with whitespace or apply quotes around the last attribute value.'
+        if (
+            self.always_get_starttag_text().endswith("/>")
+            and len(attrs) > 0
+            and isinstance(attrs[-1][1], str)  # attr is not boolean
+            and attrs[-1][1][-1] == "/"  # attr value ends with /
+        ):
+            return self.handle_startendtag(
+                tag, (*attrs[:-1], (attrs[-1][0], attrs[-1][1][:-1]))
             )
-
+        open_tag = self.make_open_tag(tag, attrs)
         if isinstance(open_tag, OpenTElement) and open_tag.tag in VOID_ELEMENTS:
             final_tag = self.finalize_tag(open_tag)
             self.append_child(final_tag)
