@@ -602,3 +602,75 @@ class TestComponentExtractChildrenTemplate:
                 strings=("<div>Hello, World!</div>",), i_indexes=()
             ),
         )
+
+
+class TestAmbiguousSelfCloseCheck:
+    @pytest.fixture
+    def comp(self):
+        def component(
+            active: bool = False, title: str = "Title", children: Template = t""
+        ) -> Template:
+            dataset = {"active": active}
+            return t"<div data={dataset} title={title}>{children}</div>"
+
+        return component
+
+    def test_component_ok(self, comp):
+        dynamic = "dynamic"
+        attrs = {"active": True}
+        for template in [
+            t"<{comp}/>",
+            t"<{comp} active/>",  # Still ok because attr name cannot contain /
+            t"<{comp} {attrs}/>",  # Still ok because attr name cannot contain /
+            t"<{comp} />",
+            t"<{comp} title=literal />",
+            t'<{comp} title="literal"/>',
+            t"<{comp} title={dynamic} />",
+            t'<{comp} title="{dynamic}"/>',
+            t"<{comp} title={dynamic}literal />",
+            t'<{comp} title="{dynamic}literal"/>',
+        ]:
+            tnode = TemplateParser.parse(template)
+            assert isinstance(tnode, TComponent) and tnode.start_i_index == 0
+
+    def test_component_ambiguous_error(self, comp):
+        dynamic = "dynamic"
+        for template in (
+            t"<{comp} title=literal/>",
+            t"<{comp} title={dynamic}/>",
+            t"<{comp} title={dynamic}literal/>",
+            t"<{comp} title=/>",
+            t"<{comp} title=     />",  # WS between = and value is ignored, so title=/
+        ):
+            with pytest.raises(ValueError, match="Ambiguous self-closing tag"):
+                _ = TemplateParser.parse(template)
+
+    def test_element_ok(self):
+        dynamic = "dynamic"
+        attrs = {"active": True}
+        for template in (
+            t"<div/>",
+            t"<div active/>",  # Still ok because attr name cannot contain /
+            t"<div {attrs}/>",  # Still ok because attr name cannot contain /
+            t"<div />",
+            t"<div title=literal />",
+            t'<div title="literal"/>',
+            t"<div title={dynamic} />",
+            t'<div title="{dynamic}"/>',
+            t"<div title={dynamic}literal />",
+            t'<div title="{dynamic}literal"/>',
+        ):
+            tnode = TemplateParser.parse(template)
+            assert isinstance(tnode, TElement) and tnode.tag == "div"
+
+    def test_element_ambiguous_error(self):
+        dynamic = "dynamic"
+        for template in (
+            t"<div title=literal/>",
+            t"<div title={dynamic}/>",
+            t"<div title={dynamic}literal/>",
+            t"<div title=/>",
+            t"<div title=     />",  # WS between = and value is ignored, so title=/
+        ):
+            with pytest.raises(ValueError, match="Ambiguous self-closing tag"):
+                _ = TemplateParser.parse(template)

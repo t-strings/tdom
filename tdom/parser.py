@@ -189,11 +189,9 @@ class TemplateParser(HTMLParser):
         # @NOTE: This must be called when the tag is handled since it is
         # populated based on the most recently finished start tag. Otherwise
         # the value will be out of sync.
-        starttag_text = self.get_starttag_text()
-        if starttag_text is None:
-            raise AssertionError(
-                f"Expected startag_text to be set when parsing component at {i_index}."
-            )
+        starttag_text = self.always_get_starttag_text(
+            f"Expected startag_text to be set when parsing component at {i_index}."
+        )
 
         tattrs = self.make_tattrs(attrs)
 
@@ -371,12 +369,40 @@ class TemplateParser(HTMLParser):
                 # any of this in the parser, instead relying on higher layers.
                 return tag_ref.i_indexes[0]
 
+    def always_get_starttag_text(
+        self, msg: str = "Expecting starttag text to be set."
+    ) -> str:
+        """
+        Wrap get_starttag_text and just raise if None is returned.
+
+        Do this so we don't guard for `None` everywhere.
+        """
+        starttag_text = self.get_starttag_text()
+        if starttag_text is None:
+            raise AssertionError(msg)
+        return starttag_text
+
     # ------------------------------------------
     # HTMLParser tag callbacks
     # ------------------------------------------
 
     def handle_starttag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         open_tag = self.make_open_tag(tag, attrs)
+        # An unquoted attribute value within a self-closing tag can consume
+        # the "/" as part of the attribute's value if not separated by whitespace.
+        # This is the CORRECT behavior but can can be especially confusing if
+        # preceded by an interpolation, such as `<{Comp} name={value}/>`.
+        # We explicitly dissallow this usage without preceding ascii whitespace.
+        # This applies to all tags (components or not).
+        if self.always_get_starttag_text().endswith("/>"):
+            if isinstance(open_tag, OpenTComponent):
+                error_tag = self.get_source().format_starttag(open_tag.start_i_index)
+            else:
+                error_tag = tag
+            raise ValueError(
+                f'Ambiguous self-closing tag, "<{error_tag}.../>", please precede "/>" with whitespace or apply quotes around the last attribute value.'
+            )
+
         if isinstance(open_tag, OpenTElement) and open_tag.tag in VOID_ELEMENTS:
             final_tag = self.finalize_tag(open_tag)
             self.append_child(final_tag)
