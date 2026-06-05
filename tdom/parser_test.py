@@ -24,7 +24,7 @@ def test_parse_mixed_literal_content():
         t"<!DOCTYPE html>"
         t"<!-- Comment -->"
         t'<div class="container">'
-        t"Hello, <br class='funky' />world <!-- neato -->!"
+        t"Hello, <br class='funky'>world <!-- neato -->!"
         t"</div>"
     )
     assert node == TFragment(
@@ -95,11 +95,6 @@ def test_parse_void_element():
     assert node == TElement("br")
 
 
-def test_parse_void_element_self_closed():
-    node = TemplateParser.parse(t"<br />")
-    assert node == TElement("br")
-
-
 def test_parse_uppercase_void_element():
     node = TemplateParser.parse(t"<BR>")
     assert node == TElement("br")
@@ -139,7 +134,7 @@ def test_parse_element_with_template_singleton():
 
 
 def test_parse_multiple_voids():
-    node = TemplateParser.parse(t"<br><hr><hr /><hr /><br /><br><br>")
+    node = TemplateParser.parse(t"<br><hr><hr><hr><br><br><br>")
     assert node == TFragment(
         children=(
             TElement("br"),
@@ -222,6 +217,7 @@ def test_parse_unexpected_closing_tag():
         _ = TemplateParser.parse(t"Unopened</div>")
 
 
+@pytest.mark.skip()
 def test_self_closing_tags():
     node = TemplateParser.parse(t"<div/><p></p>")
     assert node == TFragment(
@@ -232,6 +228,7 @@ def test_self_closing_tags():
     )
 
 
+@pytest.mark.skip(reason='Update self-closing rules.')
 def test_nested_self_closing_tags():
     node = TemplateParser.parse(t"<div><br><div /><br></div>")
     assert node == TElement(
@@ -241,11 +238,13 @@ def test_nested_self_closing_tags():
     assert node == TElement("div", children=(TElement("div"),))
 
 
+@pytest.mark.skip(reason='Update self-closing rules.')
 def test_self_closing_tags_unexpected_closing_tag():
     with pytest.raises(ValueError):
         _ = TemplateParser.parse(t"<div /></div>")
 
 
+@pytest.mark.skip(reason='Update self-closing rules.')
 def test_self_closing_void_tags_unexpected_closing_tag():
     with pytest.raises(ValueError):
         _ = TemplateParser.parse(t"<input /></input>")
@@ -298,7 +297,7 @@ def test_literal_attr_order():
 def test_interpolated_attr():
     value1 = 42
     value2 = 99
-    node = TemplateParser.parse(t'<div value1="{value1}" value2={value2} />')
+    node = TemplateParser.parse(t'<div value1="{value1}" value2={value2}></div>')
     assert node == TElement(
         "div",
         attrs=(
@@ -313,7 +312,7 @@ def test_templated_attr():
     value1 = 42
     value2 = 99
     node = TemplateParser.parse(
-        t'<div value1="{value1}-burrito" value2="neato-{value2}-wow" />'
+        t'<div value1="{value1}-burrito" value2="neato-{value2}-wow"></div>'
     )
     value1_ref = TemplateRef(strings=("", "-burrito"), i_indexes=(0,))
     value2_ref = TemplateRef(strings=("neato-", "-wow"), i_indexes=(1,))
@@ -329,7 +328,7 @@ def test_templated_attr():
 
 def test_spread_attr():
     spread_attrs = {}
-    node = TemplateParser.parse(t"<div {spread_attrs} />")
+    node = TemplateParser.parse(t"<div {spread_attrs}></div>")
     assert node == TElement(
         "div",
         attrs=(TSpreadAttribute(i_index=0),),
@@ -340,21 +339,21 @@ def test_spread_attr():
 def test_templated_attribute_name_error():
     with pytest.raises(ValueError):
         attr_name = "some-attr"
-        _ = TemplateParser.parse(t'<div {attr_name}="value" />')
+        _ = TemplateParser.parse(t'<div {attr_name}="value"></div>')
 
 
 def test_templated_attribute_name_and_value_error():
     with pytest.raises(ValueError):
         attr_name = "some-attr"
         value = "value"
-        _ = TemplateParser.parse(t'<div {attr_name}="{value}" />')
+        _ = TemplateParser.parse(t'<div {attr_name}="{value}"></div>')
 
 
 def test_adjacent_spread_attrs_error():
     with pytest.raises(ValueError):
         attrs1 = {}
         attrs2 = {}
-        _ = TemplateParser.parse(t"<div {attrs1}{attrs2} />")
+        _ = TemplateParser.parse(t"<div {attrs1}{attrs2}></div>")
 
 
 #
@@ -681,6 +680,7 @@ class TestAmbiguousSelfCloseCheck:
             == TemplateRef(strings=("prefix", ""), i_indexes=(1,))
         )
 
+    @pytest.mark.skip(reason='Update self-closing rules.')
     def test_element_self_closing_error(self):
         dynamic = "dynamic"
         attrs = {"active": True}

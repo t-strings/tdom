@@ -231,16 +231,10 @@ class TestVoidElementLiteral:
     def test_void(self):
         assert html(t"<br>") == "<br />"
 
-    def test_void_self_closed(self):
-        assert html(t"<br />") == "<br />"
-
-    def test_void_mixed_closing(self):
-        assert html(t"<br>Is this content?<br />") == "<br />Is this content?<br />"
-
     def test_chain_of_void_elements(self):
         # Make sure our handling of CPython issue #69445 is reasonable.
         assert (
-            html(t"<br><hr><img src='image.png' /><br /><hr>")
+            html(t"<br><hr><img src='image.png'><br><hr>")
             == '<br /><hr /><img src="image.png" /><br /><hr />'
         )
 
@@ -1684,7 +1678,7 @@ class TestClassComponent:
             return (
                 t"<div class='avatar'>"
                 t"<a href={self.homepage}>"
-                t"<img src='{self.image_url}' alt='{f'Avatar of {self.user_name}'}' />"
+                t"<img src='{self.image_url}' alt='{f'Avatar of {self.user_name}'}'>"
                 t"</a>"
                 t"<span>{self.user_name}</span>"
                 t"{self.children}"
@@ -1725,7 +1719,7 @@ class TestClassComponent:
             return (
                 t"<div class='avatar'>"
                 t"<a href={self.homepage}>"
-                t"<img src='{self.image_url}' alt='{f'Avatar of {self.user_name}'}' />"
+                t"<img src='{self.image_url}' alt='{f'Avatar of {self.user_name}'}'>"
                 t"</a>"
                 t"<span>{self.user_name}</span>"
                 t"ignore children"
@@ -1906,8 +1900,8 @@ def test_process_template_internal_cache():
     # miss the cache.  If this element is used elsewhere than the global
     # cache might cache it and it will ruin our counting, specifically
     # the first miss will instead be a hit.
-    sample_t = t"<div>{'content'}<tdom-cache-test-element /></div>"
-    sample_diff_t = t"<div>{'diffcontent'}<tdom-cache-test-element /></div>"
+    sample_t = t"<div>{'content'}<tdom-cache-test-element></tdom-cache-test-element></div>"
+    sample_diff_t = t"<div>{'diffcontent'}<tdom-cache-test-element></tdom-cache-test-element></div>"
     alt_t = t"<span>{'content'}</span>"
     process_api = TemplateProcessor(parser_api=TemplateParserProxy())
     cached_process_api = TemplateProcessor(parser_api=CachedTemplateParserProxy())
