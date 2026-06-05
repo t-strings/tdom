@@ -2,8 +2,9 @@ from collections.abc import Sequence
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from string.templatelib import Interpolation, Template
+from typing import Literal
 
-from .htmlspec import VOID_ELEMENTS
+from .htmlspec import MATH_TAGS, SVG_TAGS, VOID_ELEMENTS
 from .placeholders import PlaceholderConfig, PlaceholderState
 from .template_utils import TemplateRef, combine_template_refs
 from .tnodes import (
@@ -96,11 +97,17 @@ class SourceTracker:
         return self.get_expression(i_index, fallback_prefix="component-starttag")
 
 
+@dataclass
+class ParserPolicy:
+    self_closing_tags: set[str] = field(default_factory=lambda: SVG_TAGS | MATH_TAGS)
+
+
 class TemplateParser(HTMLParser):
     root: OpenTFragment
     stack: list[OpenTag]
     placeholders: PlaceholderState
     source: SourceTracker | None
+    policy: ParserPolicy
 
     def __init__(self, *, convert_charrefs: bool = True):
         # This calls HTMLParser.reset() which we override to set up our state.
@@ -393,18 +400,28 @@ class TemplateParser(HTMLParser):
         # preceded by an interpolation, such as `<{Comp} name={value}/>`.
         # We correct this usage by removing the / from the last attr's value
         # and treating the tag as self-closing.
-        # This applies to all tags (components or not).
+        # This applies to all components and any tags that *could* self close
+        # in the current namespace.
         if (
             self.always_get_starttag_text().endswith("/>")
             and len(attrs) > 0
             and isinstance(attrs[-1][1], str)  # attr is not boolean
             and attrs[-1][1][-1] == "/"  # attr value ends with /
-            and not self.placeholders.copy().remove_placeholders(tag).is_literal
         ):
-            # Only correct self-closing for components.
-            return self.handle_startendtag(
-                tag, (*attrs[:-1], (attrs[-1][0], attrs[-1][1][:-1]))
-            )
+            should_self_close = False
+            if not self.placeholders.copy().remove_placeholders(tag).is_literal:
+                should_self_close = True  # Components
+            else:
+                ns = self.get_current_ns()
+                if (ns is None and tag in self.policy.self_closing_tags) or ns in (
+                    "svg",
+                    "math",
+                ):
+                    should_self_close = True
+            if should_self_close:
+                return self.handle_startendtag(
+                    tag, (*attrs[:-1], (attrs[-1][0], attrs[-1][1][:-1]))
+                )
         open_tag = self.make_open_tag(tag, attrs)
         if isinstance(open_tag, OpenTElement) and open_tag.tag in VOID_ELEMENTS:
             final_tag = self.finalize_tag(open_tag)
@@ -412,13 +429,39 @@ class TemplateParser(HTMLParser):
         else:
             self.stack.append(open_tag)
 
+    def get_current_ns(self) -> None | Literal["html", "math", "svg"]:
+        for container in reversed(self.stack):
+            if isinstance(container, OpenTElement) and container.tag == "svg":
+                return "svg"
+            elif isinstance(container, OpenTElement) and container.tag == "math":
+                return "math"
+            elif (
+                isinstance(container, OpenTElement) and container.tag == "foreignobject"
+            ):
+                return "html"
+            elif isinstance(container, OpenTComponent):
+                return None  # Unknown
+            elif isinstance(container, OpenTFragment):
+                for sib in container.children:
+                    if isinstance(sib, TDocumentType):
+                        return "html"
+                return None  # Unknown
+        return None  # Unknown
+
     def handle_startendtag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         """Dispatch a self-closing tag, `<tag />` to specialized handlers."""
         if self.placeholders.copy().remove_placeholders(tag).is_literal:
-            # Don't self-close normal tags.
-            raise ValueError(
-                "Self-closing xhtml style tags are only supported for components."
-            )
+            ns = self.get_current_ns()
+            if ns is None and tag not in self.policy.self_closing_tags:
+                # Don't self-close normal tags.
+                raise ValueError(
+                    "Self-closing xhtml style tags are only supported for components, svg tags or math tags."
+                )
+            elif ns == "html":
+                raise ValueError(
+                    "Self-closing xhtml style tags are only supported for components in HTML."
+                )
+
         open_tag = self.make_open_tag(tag, attrs)
         final_tag = self.finalize_tag(open_tag)
         self.append_child(final_tag)
@@ -469,6 +512,7 @@ class TemplateParser(HTMLParser):
         self.root = OpenTFragment()
         self.stack = []
         self.placeholders = PlaceholderState()
+        self.policy = ParserPolicy()
         self.source = None
 
     def close(self) -> None:
