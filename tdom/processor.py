@@ -28,6 +28,7 @@ from .htmlspec import (
     SVG_ATTR_FIX,
     SVG_TAG_FIX,
     VOID_ELEMENTS,
+    NamespaceType,
 )
 from .parser import (
     HTMLAttribute,
@@ -476,11 +477,11 @@ def _fix_svg_attrs(html_attrs: Iterable[HTMLAttribute]) -> Iterable[HTMLAttribut
 @dataclass(frozen=True, slots=True)
 class ProcessContext:
     parent_tag: str = DEFAULT_NORMAL_TEXT_ELEMENT
-    ns: str = "html"
+    ns: NamespaceType = "html"
 
     def copy(
         self,
-        ns: str | None = None,
+        ns: NamespaceType | None = None,
         parent_tag: str | None = None,
     ) -> ProcessContext:
         return ProcessContext(
