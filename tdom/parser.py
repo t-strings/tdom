@@ -471,6 +471,33 @@ class TemplateParser(HTMLParser):
         self.placeholders = PlaceholderState()
         self.source = None
 
+    def has_ambiguous_forward_slash(self, open_tag: OpenTag) -> bool:
+        """
+        Detect when an unquoted attribute value consumes a trailing "/" that
+        *might* have been meant to attempt to self-close a tag, ie. "/>".
+
+        This can come up with literal values or values with interpolations.
+
+        Such as "<div title=test/>" or "<{Component} title=test/>".
+
+        Or more often "<{Component} title={title}/>" which should be corrected
+        with "<{Component} title={title} />".
+        """
+        if isinstance(open_tag, (OpenTElement, OpenTComponent)):
+            return (
+                # has attributes
+                len(open_tag.raw_attrs) > 0
+                # last attr not bare attribute
+                and open_tag.raw_attrs[-1][1] is not None
+                # last char of last attr is "/"
+                and open_tag.raw_attrs[-1][1][-1] == "/"
+                # parsed starttag ends with "/>"
+                and open_tag.starttag_text.endswith("/>")
+                # if parsed as startend then its not ambiguous
+                and not open_tag.startend
+            )
+        return False
+
     def close(self) -> None:
         if self.waiting_for_data():
             # We apply heuristics here to try to guess why the parser didn't finish.
@@ -483,7 +510,24 @@ class TemplateParser(HTMLParser):
                     "Parser expects more data, is the template valid html?"
                 )
         if self.stack:
-            raise ValueError("Invalid HTML structure: unclosed tags remain.")
+            e = ValueError("Invalid HTML structure: unclosed tags remain.")
+            # Check for tags that might have meant to self-close but whose
+            # unquoted last attribute value consumed a "/", ie. <div id=app/>.
+            parent = self.stack[-1]
+            if isinstance(parent, (OpenTElement, OpenTComponent)):
+                if isinstance(parent, OpenTElement):
+                    starttag = parent.tag
+                elif isinstance(parent, OpenTComponent):
+                    starttag = (
+                        f"{{{self.get_source().format_starttag(parent.start_i_index)}}}"
+                    )
+                if self.has_ambiguous_forward_slash(parent):
+                    e.add_note(
+                        f'Did you mean to quote the last attribute or put a space before "/>" for "<{starttag} .../>"?'
+                    )
+                else:
+                    e.add_note(f"Most recently unclosed tag is <{starttag} ...>")
+            raise e
         if not self.placeholders.is_empty:
             raise ValueError("Some placeholders were never resolved.")
         super().close()
