@@ -27,6 +27,12 @@ type HTMLAttributesDict = dict[str, str | None]
 
 @dataclass
 class OpenTElement:
+    starttag_text: str
+    " Entire starttag as parsed, includes placeholders, used for debugging. "
+    raw_attrs: Sequence[HTMLAttribute]
+    " Attrs as parsed, includes placeholders, used for debugging. "
+    startend: bool
+    " Was parsed as startend tag, ie. <tag />, used for debugging. "
     tag: str
     attrs: tuple[TAttribute, ...]
     children: list[TNode] = field(default_factory=list)
@@ -39,6 +45,12 @@ class OpenTFragment:
 
 @dataclass
 class OpenTComponent:
+    starttag_text: str
+    " Entire starttag as parsed, includes placeholders, used for debugging. "
+    raw_attrs: Sequence[HTMLAttribute]
+    " Attrs as parsed, includes placeholders, used for debugging. "
+    startend: bool
+    " Was parsed as startend tag, ie. <tag />, used for debugging. "
     start_i_index: int
     children_start_s_index: int
     """The strings index where the component's children template starts."""
@@ -159,12 +171,20 @@ class TemplateParser(HTMLParser):
     # Tag Helpers
     # ------------------------------------------
 
-    def make_open_tag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> OpenTag:
+    def make_open_tag(
+        self, tag: str, attrs: Sequence[HTMLAttribute], startend: bool = False
+    ) -> OpenTag:
         """Build an OpenTag from a raw tag and attribute tuples."""
         tag_ref = self.placeholders.remove_placeholders(tag)
 
         if tag_ref.is_literal:
-            return OpenTElement(tag=tag, attrs=self.make_tattrs(attrs))
+            return OpenTElement(
+                starttag_text=self.always_get_starttag_text(),
+                raw_attrs=attrs,
+                startend=startend,
+                tag=tag,
+                attrs=self.make_tattrs(attrs),
+            )
 
         if not tag_ref.is_singleton:
             raise ValueError(
@@ -203,6 +223,9 @@ class TemplateParser(HTMLParser):
         )
 
         return OpenTComponent(
+            starttag_text=starttag_text,
+            raw_attrs=attrs,
+            startend=startend,
             start_i_index=i_index,
             children_start_s_index=children_start_s_index,
             offset_into_children_start_s=offset_into_children_start_s,
@@ -396,7 +419,7 @@ class TemplateParser(HTMLParser):
 
     def handle_startendtag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         """Dispatch a self-closing tag, `<tag />` to specialized handlers."""
-        open_tag = self.make_open_tag(tag, attrs)
+        open_tag = self.make_open_tag(tag, attrs, startend=True)
         final_tag = self.finalize_tag(open_tag)
         self.append_child(final_tag)
 
