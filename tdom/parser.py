@@ -131,7 +131,9 @@ class SourceTracker:
 XML_SELF_CLOSE_TAGS = frozenset(SVG_TAGS | MATH_TAGS)
 
 
-DEFAULT_NS: NamespaceType = "html" # Namespace to fall back to if we don't know the namespace.
+DEFAULT_NS: NamespaceType = (
+    "html"  # Namespace to fall back to if we don't know the namespace.
+)
 
 
 class TemplateParser(HTMLParser):
@@ -481,7 +483,11 @@ class TemplateParser(HTMLParser):
         open_tag = self.make_open_tag(tag, attrs)
         # @NOTE: We only auto-close void elements when the effective namespace is html.
         # Ie. <svg><input></svg> should fail.
-        if isinstance(open_tag, OpenTElement) and open_tag.tag in VOID_ELEMENTS and self.get_effective_current_ns() == "html":
+        if (
+            isinstance(open_tag, OpenTElement)
+            and open_tag.tag in VOID_ELEMENTS
+            and self.get_effective_current_ns() == "html"
+        ):
             final_tag = self.finalize_tag(open_tag)
             self.append_child(final_tag)
         else:
