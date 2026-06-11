@@ -506,7 +506,7 @@ class TemplateParser(HTMLParser):
                 return None  # Unknown
         return None  # Unknown
 
-    def get_effective_current_ns(self) -> NamepsaceType:
+    def get_effective_current_ns(self) -> NamespaceType:
         ns = self.get_current_ns()
         return ns if ns is not None else DEFAULT_NS
 
