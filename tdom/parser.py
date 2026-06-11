@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from string.templatelib import Interpolation, Template
 
-from .htmlspec import VOID_ELEMENTS
+from .htmlspec import MATH_TAGS, SVG_TAGS, VOID_ELEMENTS, NamespaceType
 from .placeholders import PlaceholderConfig, PlaceholderState
 from .template_utils import TemplateRef, combine_template_refs
 from .tnodes import (
@@ -126,6 +126,12 @@ class SourceTracker:
     def format_starttag(self, i_index: int) -> str:
         """Format a component start tag for error messages."""
         return self.get_expression(i_index, fallback_prefix="component-starttag")
+
+
+XML_SELF_CLOSE_TAGS = frozenset(SVG_TAGS | MATH_TAGS)
+
+
+DEFAULT_NS: NamespaceType = "html" # Namespace to fall back to if we don't know the namespace.
 
 
 class TemplateParser(HTMLParser):
@@ -473,14 +479,69 @@ class TemplateParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         open_tag = self.make_open_tag(tag, attrs)
-        if isinstance(open_tag, OpenTElement) and open_tag.tag in VOID_ELEMENTS:
+        # @NOTE: We only auto-close void elements when the effective namespace is html.
+        # Ie. <svg><input></svg> should fail.
+        if isinstance(open_tag, OpenTElement) and open_tag.tag in VOID_ELEMENTS and self.get_effective_current_ns() == "html":
             final_tag = self.finalize_tag(open_tag)
             self.append_child(final_tag)
         else:
             self.stack.append(open_tag)
 
+    def get_current_ns(self) -> None | NamespaceType:
+        for container in reversed(self.stack):
+            if isinstance(container, OpenTElement) and container.tag == "svg":
+                return "svg"
+            elif isinstance(container, OpenTElement) and container.tag == "math":
+                return "math"
+            elif (
+                isinstance(container, OpenTElement) and container.tag == "foreignobject"
+            ):
+                return "html"
+            elif isinstance(container, OpenTComponent):
+                return None  # Unknown
+            elif isinstance(container, OpenTFragment):
+                for sib in container.children:
+                    if isinstance(sib, TDocumentType):
+                        return "html"
+                return None  # Unknown
+        return None  # Unknown
+
+    def get_effective_current_ns(self) -> NamepsaceType:
+        ns = self.get_current_ns()
+        return ns if ns is not None else DEFAULT_NS
+
+    def is_literal_tag(self, tag: str):
+        return self.placeholders.copy().remove_placeholders(tag).is_literal
+
+    def validate_self_close_attempt(self, ns: NamespaceType | None, tag: str):
+        if (
+            ns is None
+            and tag not in VOID_ELEMENTS
+            # @NOTE: We permit xml tags to close when NS is implicitly html.
+            and tag not in XML_SELF_CLOSE_TAGS
+        ):
+            e = ValueError(
+                "Self-closing tags are only supported for components, void tags, svg tags or math tags in an ambigous namespace."
+            )
+            e.add_note(f"Cannot self-close {tag}.")
+            raise e
+        elif (
+            ns == "html"
+            # @NOTE: Only void tags can be losed when NS is explictly html.
+            and tag not in VOID_ELEMENTS
+        ):
+            e = ValueError(
+                "Self-closing tags are only supported for components and void tags in html."
+            )
+            e.add_note(f"Cannot self-close {tag}.")
+            raise e
+
     def handle_startendtag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         """Dispatch a self-closing tag, `<tag />` to specialized handlers."""
+        if self.is_literal_tag(tag):
+            ns = self.get_current_ns()
+            self.validate_self_close_attempt(ns, tag)
+
         open_tag = self.make_open_tag(tag, attrs, startend=True)
         final_tag = self.finalize_tag(open_tag)
         self.append_child(final_tag)
