@@ -189,11 +189,9 @@ class TemplateParser(HTMLParser):
         # @NOTE: This must be called when the tag is handled since it is
         # populated based on the most recently finished start tag. Otherwise
         # the value will be out of sync.
-        starttag_text = self.get_starttag_text()
-        if starttag_text is None:
-            raise AssertionError(
-                f"Expected startag_text to be set when parsing component at {i_index}."
-            )
+        starttag_text = self.always_get_starttag_text(
+            f"Expected startag_text to be set when parsing component at {i_index}."
+        )
 
         tattrs = self.make_tattrs(attrs)
 
@@ -370,6 +368,19 @@ class TemplateParser(HTMLParser):
                 # component callable that matches the start tag. We do not check
                 # any of this in the parser, instead relying on higher layers.
                 return tag_ref.i_indexes[0]
+
+    def always_get_starttag_text(
+        self, msg: str = "Expecting starttag text to be set."
+    ) -> str:
+        """
+        Wrap get_starttag_text and just raise if None is returned.
+
+        Do this so we don't guard for `None` everywhere.
+        """
+        starttag_text = self.get_starttag_text()
+        if starttag_text is None:
+            raise AssertionError(msg)
+        return starttag_text
 
     # ------------------------------------------
     # HTMLParser tag callbacks
