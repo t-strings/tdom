@@ -140,7 +140,7 @@ def test_parse_element_with_template_singleton():
 
 
 def test_parse_multiple_voids():
-    node = TemplateParser.parse(t"<br><hr><hr><hr><br><br><br>")
+    node = TemplateParser.parse(t"<br><hr><hr /><hr /><br /><br><br>")
     assert node == TFragment(
         children=(
             TElement("br"),
