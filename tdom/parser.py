@@ -448,51 +448,6 @@ class TemplateParser(HTMLParser):
             raise AssertionError(msg)
         return starttag_text
 
-    def has_ambiguous_forward_slash(self, open_tag: OpenTag) -> bool:
-        """
-        Detect when an unquoted attribute value consumes a trailing "/" that
-        *might* have been meant to attempt to self-close a tag, ie. "/>".
-
-        This can come up with literal values or values with interpolations.
-
-        Such as "<div title=test/>" or "<{Component} title=test/>".
-
-        Or more often "<{Component} title={title}/>" which should be corrected
-        with "<{Component} title={title} />".
-        """
-        if isinstance(open_tag, (OpenTElement, OpenTComponent)):
-            return (
-                # has attributes
-                len(open_tag.raw_attrs) > 0
-                # last attr not bare attribute
-                and open_tag.raw_attrs[-1][1] is not None
-                # last char of last attr is "/"
-                and open_tag.raw_attrs[-1][1][-1] == "/"
-                # parsed starttag ends with "/>"
-                and open_tag.starttag_text.endswith("/>")
-                # if parsed as startend then its not ambiguous
-                and not open_tag.startend
-            )
-        return False
-
-    # ------------------------------------------
-    # HTMLParser tag callbacks
-    # ------------------------------------------
-
-    def handle_starttag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
-        open_tag = self.make_open_tag(tag, attrs)
-        # @NOTE: We only auto-close void elements when the effective namespace is html.
-        # Ie. <svg><input></svg> should fail.
-        if (
-            isinstance(open_tag, OpenTElement)
-            and open_tag.tag in VOID_ELEMENTS
-            and self.get_effective_current_ns() == "html"
-        ):
-            final_tag = self.finalize_tag(open_tag)
-            self.append_child(final_tag)
-        else:
-            self.stack.append(open_tag)
-
     def get_current_ns(self) -> None | NamespaceType:
         for container in reversed(self.stack):
             if isinstance(container, OpenTElement) and container.tag == "svg":
@@ -541,6 +496,51 @@ class TemplateParser(HTMLParser):
             )
             e.add_note(f"Cannot self-close {tag}.")
             raise e
+
+    def has_ambiguous_forward_slash(self, open_tag: OpenTag) -> bool:
+        """
+        Detect when an unquoted attribute value consumes a trailing "/" that
+        *might* have been meant to attempt to self-close a tag, ie. "/>".
+
+        This can come up with literal values or values with interpolations.
+
+        Such as "<div title=test/>" or "<{Component} title=test/>".
+
+        Or more often "<{Component} title={title}/>" which should be corrected
+        with "<{Component} title={title} />".
+        """
+        if isinstance(open_tag, (OpenTElement, OpenTComponent)):
+            return (
+                # has attributes
+                len(open_tag.raw_attrs) > 0
+                # last attr not bare attribute
+                and open_tag.raw_attrs[-1][1] is not None
+                # last char of last attr is "/"
+                and open_tag.raw_attrs[-1][1][-1] == "/"
+                # parsed starttag ends with "/>"
+                and open_tag.starttag_text.endswith("/>")
+                # if parsed as startend then its not ambiguous
+                and not open_tag.startend
+            )
+        return False
+
+    # ------------------------------------------
+    # HTMLParser tag callbacks
+    # ------------------------------------------
+
+    def handle_starttag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
+        open_tag = self.make_open_tag(tag, attrs)
+        # @NOTE: We only auto-close void elements when the effective namespace is html.
+        # Ie. <svg><input></svg> should fail.
+        if (
+            isinstance(open_tag, OpenTElement)
+            and open_tag.tag in VOID_ELEMENTS
+            and self.get_effective_current_ns() == "html"
+        ):
+            final_tag = self.finalize_tag(open_tag)
+            self.append_child(final_tag)
+        else:
+            self.stack.append(open_tag)
 
     def handle_startendtag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         """Dispatch a self-closing tag, `<tag />` to specialized handlers."""
