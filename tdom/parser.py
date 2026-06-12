@@ -136,13 +136,53 @@ DEFAULT_NS: NamespaceType = (
 )
 
 
+@dataclass(frozen=True)
+class ParseContext:
+    """
+    This is the context that was used to parse a given template.
+    """
+
+    # @TODO: slots might have issue with weakref, check if caching that
+    # is an issue.
+
+    ns: NamespaceType = "html"
+
+    def copy(self, ns: NamespaceType | None = None) -> ParseContext:
+        return ParseContext(ns=ns if ns is not None else self.ns)
+
+
+@dataclass(frozen=True)
+class InternalParseContext:
+    """
+    This is the context that was used to parse a given template.
+    """
+
+    ns: NamespaceType = "html"
+    in_component: bool = False
+
+    def copy(
+        self, ns: NamespaceType | None = None, in_component: bool | None = None
+    ) -> InternalParseContext:
+        return InternalParseContext(
+            ns=ns if ns is not None else self.ns,
+            in_component=in_component
+            if in_component is not None
+            else self.in_component,
+        )
+
+
 class TemplateParser(HTMLParser):
     root: OpenTFragment
-    stack: list[OpenTag]
+    stack: list[tuple[OpenTag, InternalParseContext]]
     placeholders: PlaceholderState
     source: SourceTracker | None
+    root_ctx: InternalParseContext
+    " Assume that template parsing *starts* in this context. "
 
-    def __init__(self, *, convert_charrefs: bool = True):
+    def __init__(
+        self, *, root_ctx: InternalParseContext, convert_charrefs: bool = True
+    ):
+        self.root_ctx = root_ctx
         # This calls HTMLParser.reset() which we override to set up our state.
         super().__init__(convert_charrefs=convert_charrefs)
 
@@ -152,7 +192,7 @@ class TemplateParser(HTMLParser):
 
     def get_parent(self) -> OpenTag:
         """Return the current parent node to which new children should be added."""
-        return self.stack[-1] if self.stack else self.root
+        return self.stack[-1][0] if self.stack else self.root
 
     def append_child(self, child: TNode) -> None:
         parent = self.get_parent()
@@ -448,46 +488,19 @@ class TemplateParser(HTMLParser):
             raise AssertionError(msg)
         return starttag_text
 
-    def get_current_ns(self) -> None | NamespaceType:
-        for container in reversed(self.stack):
-            if isinstance(container, OpenTElement) and container.tag == "svg":
-                return "svg"
-            elif isinstance(container, OpenTElement) and container.tag == "math":
-                return "math"
-            elif (
-                isinstance(container, OpenTElement) and container.tag == "foreignobject"
-            ):
-                return "html"
-            elif isinstance(container, OpenTComponent):
-                return None  # Unknown
-            elif isinstance(container, OpenTFragment):
-                for sib in container.children:
-                    if isinstance(sib, TDocumentType):
-                        return "html"
-                return None  # Unknown
-        return None  # Unknown
-
-    def get_effective_current_ns(self) -> NamespaceType:
-        ns = self.get_current_ns()
-        return ns if ns is not None else DEFAULT_NS
+    def get_last_ctx(self) -> InternalParseContext:
+        if self.stack:
+            return self.stack[-1][1]
+        else:
+            return self.root_ctx
 
     def is_literal_tag(self, tag: str):
         return self.placeholders.copy().remove_placeholders(tag).is_literal
 
-    def validate_self_close_attempt(self, ns: NamespaceType | None, tag: str):
+    def validate_self_close_attempt(self, last_ctx: InternalParseContext, tag: str):
         if (
-            ns is None
-            and tag not in VOID_ELEMENTS
-            # @NOTE: We permit xml tags to close when NS is implicitly html.
-            and tag not in XML_SELF_CLOSE_TAGS
-        ):
-            e = ValueError(
-                "Self-closing tags are only supported for components, void tags, svg tags or math tags in an ambigous namespace."
-            )
-            e.add_note(f"Cannot self-close {tag}.")
-            raise e
-        elif (
-            ns == "html"
+            not last_ctx.in_component
+            and last_ctx.ns == "html"
             # @NOTE: Only void tags can be losed when NS is explictly html.
             and tag not in VOID_ELEMENTS
         ):
@@ -530,23 +543,47 @@ class TemplateParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         open_tag = self.make_open_tag(tag, attrs)
+        """<svg><{c}><input></{c}></svg> # what namespace is the input in?
+        <svg><{c}><input/></{c}></svg>"""
+        last_ctx = self.get_last_ctx()
         # @NOTE: We only auto-close void elements when the effective namespace is html.
         # Ie. <svg><input></svg> should fail.
         if (
             isinstance(open_tag, OpenTElement)
             and open_tag.tag in VOID_ELEMENTS
-            and self.get_effective_current_ns() == "html"
+            and (
+                last_ctx.ns == "html"
+                # @TODO: Maybe backtracking when it looks like we needed
+                # to close it would be better? We just need this HTML to
+                # get out of the way when parsing a component.
+                or last_ctx.in_component
+            )
         ):
             final_tag = self.finalize_tag(open_tag)
             self.append_child(final_tag)
         else:
-            self.stack.append(open_tag)
+            last_ctx = self.get_last_ctx()
+            if isinstance(open_tag, OpenTElement):
+                if open_tag.tag == "svg":
+                    next_ctx = last_ctx.copy(ns="svg")
+                elif open_tag.tag == "math":
+                    next_ctx = last_ctx.copy(ns="math")
+                elif open_tag.tag == "foreignobject" and last_ctx.ns in ("svg", "math"):
+                    next_ctx = last_ctx.copy(ns="html")
+                else:
+                    next_ctx = last_ctx
+            elif isinstance(open_tag, OpenTComponent):
+                next_ctx = last_ctx.copy(in_component=True)
+            else:
+                next_ctx = last_ctx
+            print(f"push: {(open_tag, next_ctx)=}")
+            self.stack.append((open_tag, next_ctx))
 
     def handle_startendtag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         """Dispatch a self-closing tag, `<tag />` to specialized handlers."""
         if self.is_literal_tag(tag):
-            ns = self.get_current_ns()
-            self.validate_self_close_attempt(ns, tag)
+            last_ctx = self.get_last_ctx()
+            self.validate_self_close_attempt(last_ctx, tag)
 
         open_tag = self.make_open_tag(tag, attrs, startend=True)
         final_tag = self.finalize_tag(open_tag)
@@ -556,7 +593,8 @@ class TemplateParser(HTMLParser):
         if not self.stack:
             raise ValueError(f"Unexpected closing tag </{tag}> with no open tag.")
 
-        open_tag = self.stack.pop()
+        open_tag, last_ctx = self.stack.pop()
+        print(f"pop: {(open_tag, last_ctx)=}")
         endtag_i_index = self.validate_end_tag(tag, open_tag)
         final_tag = self.finalize_tag(open_tag, endtag_i_index)
         self.append_child(final_tag)
@@ -674,6 +712,7 @@ class TemplateParser(HTMLParser):
 
     def feed_template(self, template: Template) -> None:
         """Feed a Template's content to the parser."""
+        print(f"assume: {self.root_ctx=}")
         assert self.source is None, "Did you forget to call reset?"
         self.source = SourceTracker(template)
         for i_index in range(len(template.interpolations)):
@@ -685,13 +724,15 @@ class TemplateParser(HTMLParser):
         self.feed_str(template.strings[-1])
 
     @staticmethod
-    def parse(t: Template) -> TNode:
+    def parse(t: Template, assume_ctx: ParseContext | None = None) -> TNode:
         """
         Parse a Template containing valid HTML and substitutions and return
         a TNode tree representing its structure. This cachable structure can later
         be resolved against actual interpolation values to produce a Node tree.
         """
-        parser = TemplateParser()
+        if assume_ctx is None:
+            assume_ctx = ParseContext()
+        parser = TemplateParser(root_ctx=InternalParseContext(ns=assume_ctx.ns))
         parser.feed_template(t)
         parser.close()
         return parser.get_tnode()
