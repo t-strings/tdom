@@ -425,15 +425,17 @@ def test_component_element_with_closing_tag():
     assert node == TComponent(start_i_index=0, end_i_index=1)
 
 
-def test_component_element_special_case_mismatched_closing_tag_still_parses():
+def test_component_element_special_case_mismatched_closing_tag_error():
     def Component1():
         pass
 
     def Component2():
         pass
 
-    node = TemplateParser.parse(t"<{Component1}></{Component2}>")
-    assert node == TComponent(start_i_index=0, end_i_index=1)
+    with pytest.raises(
+        TypeError, match="Component start and end tags must contain the same callable."
+    ):
+        _ = TemplateParser.parse(t"<{Component1}></{Component2}>")
 
 
 def test_component_element_invalid_closing_tag():
@@ -602,3 +604,35 @@ class TestComponentExtractChildrenTemplate:
                 strings=("<div>Hello, World!</div>",), i_indexes=()
             ),
         )
+
+
+class TestComponentUnquotedAttrValue:
+    @pytest.fixture
+    def Comp(self):
+        def _Comp(children: Template, title: str) -> Template:
+            return children
+
+        return _Comp
+
+    @pytest.fixture
+    def Comp2(self):
+        def _Comp2(children: Template, title: str) -> Template:
+            return children
+
+        return _Comp2
+
+    def test_comp_unquoted_attr_value_error_root(self, Comp):
+        with pytest.raises(
+            ValueError, match="Did you mean to quote the last attribute"
+        ):
+            _ = TemplateParser.parse(t"<{Comp} title=today/>")
+
+    def test_comp_unquoted_attr_value_error_nested_in_el(self, Comp):
+        with pytest.raises(
+            ValueError, match="Did you mean to quote the last attribute"
+        ):
+            _ = TemplateParser.parse(t"<div><{Comp} title=today/></div>")
+
+    def test_comp_unquoted_attr_value_error_nested_in_comp(self, Comp, Comp2):
+        with pytest.raises(TypeError, match="Did you mean to quote the last attribute"):
+            _ = TemplateParser.parse(t"<{Comp2}><{Comp} title=today/></{Comp2}>")

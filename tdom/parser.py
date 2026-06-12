@@ -84,6 +84,26 @@ class SourceTracker:
     def interpolations(self) -> tuple[Interpolation, ...]:
         return self.template.interpolations
 
+    def _check_indices(self, index1: int, index2: int):
+        last_index = len(self.interpolations) - 1
+        if max(index1, index2) > last_index or min(index1, index2) < 0:
+            raise ValueError(
+                f"Interpolation indices exceed bounds: {index1} {index2}: [0...{last_index}]"
+            )
+
+    def expressions_match(self, i_index1: int, i_index2: int) -> bool:
+        self._check_indices(i_index1, i_index2)
+        return (
+            self.interpolations[i_index1].expression
+            == self.interpolations[i_index2].expression
+        )
+
+    def values_match(self, i_index1: int, i_index2: int) -> bool:
+        self._check_indices(i_index1, i_index2)
+        return (
+            self.interpolations[i_index1].value == self.interpolations[i_index2].value
+        )
+
     def advance_interpolation(self) -> int:
         """Call before processing an interpolation to move to the next one."""
         self.i_index += 1
@@ -360,7 +380,7 @@ class TemplateParser(HTMLParser):
 
     def validate_end_tag(self, tag: str, open_tag: OpenTag) -> int | None:
         """Validate that closing tag matches open tag. Return component end index if applicable."""
-        assert self.source, "Parser source tracker not initialized."
+        source = self.get_source()
         tag_ref = self.placeholders.remove_placeholders(tag)
 
         match open_tag:
@@ -380,16 +400,33 @@ class TemplateParser(HTMLParser):
 
             case OpenTComponent(start_i_index=start_i_index):
                 if tag_ref.is_literal:
-                    raise ValueError(
-                        f"Mismatched closing tag </{tag}> for component starting at {self.source.format_starttag(start_i_index)}."
+                    starttag = source.format_starttag(start_i_index)
+                    e = ValueError(
+                        f"Mismatched closing tag </{tag}> for component with tag {{{starttag}}}."
                     )
+                    if self.has_ambiguous_forward_slash(open_tag):
+                        e.add_note(
+                            f'Did you mean to quote the last attribute or put a space before "/>" for "<{{{starttag}}} .../>"?'
+                        )
+                    raise e
                 if not tag_ref.is_singleton:
                     raise ValueError(
                         "Component end tags must have exactly one interpolation."
                     )
-                # HERE BE DRAGONS: the interpolation at end_i_index shuld be a
-                # component callable that matches the start tag. We do not check
-                # any of this in the parser, instead relying on higher layers.
+                if not source.expressions_match(
+                    open_tag.start_i_index, tag_ref.i_indexes[0]
+                ) and not source.values_match(
+                    open_tag.start_i_index, tag_ref.i_indexes[0]
+                ):
+                    e = TypeError(
+                        "Component start and end tags must contain the same callable."
+                    )
+                    if self.has_ambiguous_forward_slash(open_tag):
+                        starttag = source.format_starttag(start_i_index)
+                        e.add_note(
+                            f'Did you mean to quote the last attribute or put a space before "/>" for "<{{{starttag}}} .../>"?'
+                        )
+                    raise e
                 return tag_ref.i_indexes[0]
 
     def always_get_starttag_text(
