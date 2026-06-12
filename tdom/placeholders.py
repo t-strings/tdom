@@ -61,6 +61,9 @@ class PlaceholderState:
     config: PlaceholderConfig = field(default_factory=make_placeholder_config)
     """Collection of currently 'known and active' placeholder indexes."""
 
+    def copy(self):
+        return PlaceholderState(known=self.known.copy(), config=self.config)
+
     @property
     def is_empty(self) -> bool:
         return len(self.known) == 0
