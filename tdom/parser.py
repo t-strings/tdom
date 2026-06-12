@@ -640,7 +640,7 @@ class TemplateParser(HTMLParser):
             e = ValueError("Invalid HTML structure: unclosed tags remain.")
             # Check for tags that might have meant to self-close but whose
             # unquoted last attribute value consumed a "/", ie. <div id=app/>.
-            parent = self.stack[-1]
+            parent, _ = self.stack[-1]
             # @TODO: We need to determine which tags this might apply to, this only applies to components.
             if isinstance(parent, OpenTComponent) and self.has_ambiguous_forward_slash(
                 parent
