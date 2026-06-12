@@ -1,3 +1,5 @@
+from typing import Literal
+
 # See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
 VOID_ELEMENTS = frozenset(
     [
@@ -129,3 +131,5 @@ SVG_ATTR_FIX = {
 # Used for fragments that do not have a tag
 # to assume that text is inside this element.
 DEFAULT_NORMAL_TEXT_ELEMENT = "div"
+
+type NamespaceType = Literal["html", "math", "svg"]

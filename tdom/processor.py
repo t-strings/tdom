@@ -28,9 +28,11 @@ from .htmlspec import (
     SVG_ATTR_FIX,
     SVG_TAG_FIX,
     VOID_ELEMENTS,
+    NamespaceType,
 )
 from .parser import (
     HTMLAttribute,
+    ParseContext,
     TAttribute,
     TComment,
     TComponent,
@@ -476,11 +478,11 @@ def _fix_svg_attrs(html_attrs: Iterable[HTMLAttribute]) -> Iterable[HTMLAttribut
 @dataclass(frozen=True, slots=True)
 class ProcessContext:
     parent_tag: str = DEFAULT_NORMAL_TEXT_ELEMENT
-    ns: str = "html"
+    ns: NamespaceType = "html"
 
     def copy(
         self,
-        ns: str | None = None,
+        ns: NamespaceType | None = None,
         parent_tag: str | None = None,
     ) -> ProcessContext:
         return ProcessContext(
@@ -522,23 +524,23 @@ type RawTextInexactInterpolationValue = (
 
 
 class ITemplateParserProxy(t.Protocol):
-    def to_tnode(self, template: Template) -> TNode: ...
+    def to_tnode(self, template: Template, assume_ctx: ParseContext) -> TNode: ...
 
 
 @dataclass(frozen=True)
 class TemplateParserProxy(ITemplateParserProxy):
-    def to_tnode(self, template: Template) -> TNode:
-        return TemplateParser.parse(template)
+    def to_tnode(self, template: Template, assume_ctx: ParseContext) -> TNode:
+        return TemplateParser.parse(template, assume_ctx)
 
 
 @dataclass(frozen=True)
 class CachedTemplateParserProxy(TemplateParserProxy):
     @lru_cache(512)  # noqa: B019
-    def _to_tnode(self, ct: CachableTemplate) -> TNode:
-        return super().to_tnode(ct.template)
+    def _to_tnode(self, ct: CachableTemplate, assume_ctx: ParseContext) -> TNode:
+        return super().to_tnode(ct.template, assume_ctx)
 
-    def to_tnode(self, template: Template) -> TNode:
-        return self._to_tnode(CachableTemplate(template))
+    def to_tnode(self, template: Template, assume_ctx: ParseContext) -> TNode:
+        return self._to_tnode(CachableTemplate(template), assume_ctx)
 
 
 class IComponentProcessor(t.Protocol):
@@ -667,7 +669,7 @@ class TemplateProcessor(ITemplateProcessor):
         return self._process_template(root_template, assume_ctx)
 
     def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
-        root = self.parser_api.to_tnode(template)
+        root = self.parser_api.to_tnode(template, ParseContext(ns=last_ctx.ns))
         return self._process_tnode(template, last_ctx, root)
 
     def _process_tnode(
