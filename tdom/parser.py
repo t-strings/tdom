@@ -535,19 +535,16 @@ class TemplateParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         open_tag = self.make_open_tag(tag, attrs)
-        """<svg><{c}><input></{c}></svg> # what namespace is the input in?
-        <svg><{c}><input/></{c}></svg>"""
         last_ctx = self.get_last_ctx()
-        # @NOTE: We only auto-close void elements when the effective namespace is html.
-        # Ie. <svg><input></svg> should fail.
         if (
             isinstance(open_tag, OpenTElement)
             and open_tag.tag in VOID_ELEMENTS
             and (
                 last_ctx.ns == "html"
                 # @TODO: Maybe backtracking when it looks like we needed
-                # to close it would be better? We just need this HTML to
-                # get out of the way when parsing a component.
+                # to close it would be better? We just need the component's
+                # children to parse out and get out of the way because that
+                # isn't the template we are trying to parse and cache.
                 or last_ctx.in_component
             )
         ):
@@ -568,7 +565,6 @@ class TemplateParser(HTMLParser):
                 next_ctx = last_ctx.copy(in_component=True)
             else:
                 next_ctx = last_ctx
-            print(f"push: {(open_tag, next_ctx)=}")
             self.stack.append((open_tag, next_ctx))
 
     def handle_startendtag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
@@ -585,8 +581,7 @@ class TemplateParser(HTMLParser):
         if not self.stack:
             raise ValueError(f"Unexpected closing tag </{tag}> with no open tag.")
 
-        open_tag, last_ctx = self.stack.pop()
-        print(f"pop: {(open_tag, last_ctx)=}")
+        open_tag, _ = self.stack.pop()
         endtag_i_index = self.validate_end_tag(tag, open_tag)
         final_tag = self.finalize_tag(open_tag, endtag_i_index)
         self.append_child(final_tag)
