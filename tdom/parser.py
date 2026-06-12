@@ -199,7 +199,7 @@ class TemplateParser(HTMLParser):
 
         if tag_ref.is_literal:
             return OpenTElement(
-                starttag_text=self.always_get_starttag_text(),
+                starttag_text=self.get_starttag_text(),
                 raw_attrs=attrs,
                 startend=startend,
                 tag=tag,
@@ -229,7 +229,7 @@ class TemplateParser(HTMLParser):
         # @NOTE: This must be called when the tag is handled since it is
         # populated based on the most recently finished start tag. Otherwise
         # the value will be out of sync.
-        starttag_text = self.always_get_starttag_text(
+        starttag_text = self.get_starttag_text(
             f"Expected startag_text to be set when parsing component at {i_index}."
         )
 
@@ -429,15 +429,13 @@ class TemplateParser(HTMLParser):
                     raise e
                 return tag_ref.i_indexes[0]
 
-    def always_get_starttag_text(
-        self, msg: str = "Expecting starttag text to be set."
-    ) -> str:
+    def get_starttag_text(self, msg: str = "Expecting starttag text to be set.") -> str:
         """
         Wrap get_starttag_text and just raise if None is returned.
 
         Do this so we don't guard for `None` everywhere.
         """
-        starttag_text = self.get_starttag_text()
+        starttag_text = super().get_starttag_text()
         if starttag_text is None:
             raise AssertionError(msg)
         return starttag_text
