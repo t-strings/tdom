@@ -710,3 +710,39 @@ class TestAmbiguousSelfCloseCheck:
             ):
                 _ = TemplateParser.parse(template)
 
+
+class TestRelaxingComponentChildrenRules:
+    @pytest.fixture
+    def PTC(self):
+        def PassThru(children: Template) -> Template:
+            return children
+
+        return PassThru
+
+    def test_html_wrapped_component_ok(self, PTC):
+        # html rules relaxed during component parsing
+        templates = (
+            t"<div><{PTC}><circle/></{PTC}></div>",
+            t"<div><{PTC}><mspace/></{PTC}></div>",
+            t"<div><{PTC}><div/></{PTC}></div>",
+            t"<div><{PTC}><div><{PTC}/><{PTC}><div/></{PTC}></div></{PTC}></div>",
+        )
+        for tf in templates:
+            node = TemplateParser.parse(tf)
+            assert isinstance(node, TElement) and node.tag == "div"
+            assert len(node.children) == 1 and isinstance(node.children[0], TComponent)
+
+    def test_xml_wrapped_component_ok(self, PTC):
+        # xml (svg/mathml) rules relaxed during component parsing
+        templates = (
+            t"<svg><{PTC}><input></{PTC}></svg>",  # allow void in svg
+            t"<svg><{PTC}><svg><input></svg></{PTC}></svg>",  # allow void in svg IN svg
+            t"<math><{PTC}><input></{PTC}></math>",  # allow void in math
+            t"<svg><{PTC}><math><input></math></{PTC}></svg>",  # its crazy out here!
+            t"<svg><{PTC}><foreignobject><circle/></foreignobject></{PTC}></svg>",
+        )
+        for tf in templates:
+            node = TemplateParser.parse(tf)
+            assert isinstance(node, TElement) and node.tag in ("svg", "math")
+            assert len(node.children) == 1 and isinstance(node.children[0], TComponent)
+
