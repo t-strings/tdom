@@ -515,12 +515,12 @@ class TemplateParser(HTMLParser):
             # unquoted last attribute value consumed a "/", ie. <div id=app/>.
             parent = self.stack[-1]
             if isinstance(parent, (OpenTElement, OpenTComponent)):
-                if isinstance(parent, OpenTElement):
-                    starttag = parent.tag
-                elif isinstance(parent, OpenTComponent):
+                if isinstance(parent, OpenTComponent):
                     starttag = (
                         f"{{{self.get_source().format_starttag(parent.start_i_index)}}}"
                     )
+                else:
+                    starttag = parent.tag
                 if self.has_ambiguous_forward_slash(parent):
                     e.add_note(
                         f'Did you mean to quote the last attribute or put a space before "/>" for "<{starttag} .../>"?'
