@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from string.templatelib import Interpolation, Template
 
-from .htmlspec import MATH_TAGS, SVG_TAGS, VOID_ELEMENTS, NamespaceType
+from .htmlspec import VOID_ELEMENTS, NamespaceType
 from .placeholders import PlaceholderConfig, PlaceholderState
 from .template_utils import TemplateRef, combine_template_refs
 from .tnodes import (
@@ -126,14 +126,6 @@ class SourceTracker:
     def format_starttag(self, i_index: int) -> str:
         """Format a component start tag for error messages."""
         return self.get_expression(i_index, fallback_prefix="component-starttag")
-
-
-XML_SELF_CLOSE_TAGS = frozenset(SVG_TAGS | MATH_TAGS)
-
-
-DEFAULT_NS: NamespaceType = (
-    "html"  # Namespace to fall back to if we don't know the namespace.
-)
 
 
 @dataclass(frozen=True)
