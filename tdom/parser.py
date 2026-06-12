@@ -405,6 +405,33 @@ class TemplateParser(HTMLParser):
             raise AssertionError(msg)
         return starttag_text
 
+    def has_ambiguous_forward_slash(self, open_tag: OpenTag) -> bool:
+        """
+        Detect when an unquoted attribute value consumes a trailing "/" that
+        *might* have been meant to attempt to self-close a tag, ie. "/>".
+
+        This can come up with literal values or values with interpolations.
+
+        Such as "<div title=test/>" or "<{Component} title=test/>".
+
+        Or more often "<{Component} title={title}/>" which should be corrected
+        with "<{Component} title={title} />".
+        """
+        if isinstance(open_tag, (OpenTElement, OpenTComponent)):
+            return (
+                # has attributes
+                len(open_tag.raw_attrs) > 0
+                # last attr not bare attribute
+                and open_tag.raw_attrs[-1][1] is not None
+                # last char of last attr is "/"
+                and open_tag.raw_attrs[-1][1][-1] == "/"
+                # parsed starttag ends with "/>"
+                and open_tag.starttag_text.endswith("/>")
+                # if parsed as startend then its not ambiguous
+                and not open_tag.startend
+            )
+        return False
+
     # ------------------------------------------
     # HTMLParser tag callbacks
     # ------------------------------------------
@@ -470,33 +497,6 @@ class TemplateParser(HTMLParser):
         self.stack = []
         self.placeholders = PlaceholderState()
         self.source = None
-
-    def has_ambiguous_forward_slash(self, open_tag: OpenTag) -> bool:
-        """
-        Detect when an unquoted attribute value consumes a trailing "/" that
-        *might* have been meant to attempt to self-close a tag, ie. "/>".
-
-        This can come up with literal values or values with interpolations.
-
-        Such as "<div title=test/>" or "<{Component} title=test/>".
-
-        Or more often "<{Component} title={title}/>" which should be corrected
-        with "<{Component} title={title} />".
-        """
-        if isinstance(open_tag, (OpenTElement, OpenTComponent)):
-            return (
-                # has attributes
-                len(open_tag.raw_attrs) > 0
-                # last attr not bare attribute
-                and open_tag.raw_attrs[-1][1] is not None
-                # last char of last attr is "/"
-                and open_tag.raw_attrs[-1][1][-1] == "/"
-                # parsed starttag ends with "/>"
-                and open_tag.starttag_text.endswith("/>")
-                # if parsed as startend then its not ambiguous
-                and not open_tag.startend
-            )
-        return False
 
     def close(self) -> None:
         if self.waiting_for_data():
