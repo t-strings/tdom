@@ -699,7 +699,6 @@ class TemplateParser(HTMLParser):
 
     def feed_template(self, template: Template) -> None:
         """Feed a Template's content to the parser."""
-        print(f"assume: {self.root_ctx=}")
         assert self.source is None, "Did you forget to call reset?"
         self.source = SourceTracker(template)
         for i_index in range(len(template.interpolations)):
