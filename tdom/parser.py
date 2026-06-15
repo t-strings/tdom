@@ -26,13 +26,20 @@ type HTMLAttributesDict = dict[str, str | None]
 
 
 @dataclass(frozen=True)
-class OpenTElement:
+class ParseInfo:
+    "Track parse info for error reporting."
+
     starttag_text: str
-    " Entire starttag as parsed, includes placeholders, used for debugging. "
+    " Entire starttag as parsed, includes placeholders, . "
     raw_attrs: Sequence[HTMLAttribute]
-    " Attrs as parsed, includes placeholders, used for debugging. "
+    " Attrs as parsed, includes placeholders. "
     startend: bool
-    " Was parsed as startend tag, ie. <tag />, used for debugging. "
+    " Was parsed as startend tag, ie. <tag />. "
+
+
+@dataclass(frozen=True)
+class OpenTElement:
+    parse_info: ParseInfo
     tag: str
     attrs: tuple[TAttribute, ...]
     children: list[TNode] = field(default_factory=list)
@@ -45,12 +52,7 @@ class OpenTFragment:
 
 @dataclass(frozen=True)
 class OpenTComponent:
-    starttag_text: str
-    " Entire starttag as parsed, includes placeholders, used for debugging. "
-    raw_attrs: Sequence[HTMLAttribute]
-    " Attrs as parsed, includes placeholders, used for debugging. "
-    startend: bool
-    " Was parsed as startend tag, ie. <tag />, used for debugging. "
+    parse_info: ParseInfo
     start_i_index: int
     children_start_s_index: int
     """The strings index where the component's children template starts."""
@@ -204,9 +206,11 @@ class TemplateParser(HTMLParser):
 
         if tag_ref.is_literal:
             return OpenTElement(
-                starttag_text=self.get_starttag_text(),
-                raw_attrs=attrs,
-                startend=startend,
+                parse_info=ParseInfo(
+                    starttag_text=self.get_starttag_text(),
+                    raw_attrs=attrs,
+                    startend=startend,
+                ),
                 tag=tag,
                 attrs=self.make_tattrs(attrs),
             )
@@ -248,9 +252,9 @@ class TemplateParser(HTMLParser):
         )
 
         return OpenTComponent(
-            starttag_text=starttag_text,
-            raw_attrs=attrs,
-            startend=startend,
+            parse_info=ParseInfo(
+                starttag_text=starttag_text, raw_attrs=attrs, startend=startend
+            ),
             start_i_index=i_index,
             children_start_s_index=children_start_s_index,
             offset_into_children_start_s=offset_into_children_start_s,
@@ -450,17 +454,18 @@ class TemplateParser(HTMLParser):
         with "<{Component} title={title} />".
         """
         if isinstance(open_tag, (OpenTElement, OpenTComponent)):
+            parse_info = open_tag.parse_info
             return (
                 # has attributes
-                len(open_tag.raw_attrs) > 0
+                len(parse_info.raw_attrs) > 0
                 # last attr not bare attribute
-                and open_tag.raw_attrs[-1][1] is not None
+                and parse_info.raw_attrs[-1][1] is not None
                 # last char of last attr is "/"
-                and open_tag.raw_attrs[-1][1][-1] == "/"
+                and parse_info.raw_attrs[-1][1][-1] == "/"
                 # parsed starttag ends with "/>"
-                and open_tag.starttag_text.endswith("/>")
+                and parse_info.starttag_text.endswith("/>")
                 # if parsed as startend then its not ambiguous
-                and not open_tag.startend
+                and not parse_info.startend
             )
         return False
 
