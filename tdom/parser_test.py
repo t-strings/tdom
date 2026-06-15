@@ -468,6 +468,14 @@ def test_adjacent_end_component_tag_error():
         _ = TemplateParser.parse(t"<{Component}></{Component}{Component}>")
 
 
+def test_unmatched_end_component_tag_error():
+    def Component():
+        pass
+
+    with pytest.raises(ValueError, match="Unexpected closing component tag"):
+        _ = TemplateParser.parse(t"</{Component}>")
+
+
 def test_placeholder_collision_avoidance():
     config = make_placeholder_config()
     # This test is to ensure that our placeholder detection avoids collisions
@@ -604,7 +612,19 @@ class TestComponentExtractChildrenTemplate:
         )
 
 
-class TestComponentUnquotedAttrValue:
+class TestComponentUnquotedAttrValueWithAmbiguousSlash:
+    @pytest.fixture
+    def comp_maker(self):
+        def maker(suffix=None):
+            def _Comp(children: Template, title: str) -> Template:
+                return children
+
+            if suffix is not None:
+                _Comp.__name__ = f"{_Comp.__name__}__{suffix}"
+            return _Comp
+
+        return maker
+
     @pytest.fixture
     def Comp(self):
         def _Comp(children: Template, title: str) -> Template:
@@ -631,6 +651,19 @@ class TestComponentUnquotedAttrValue:
         ):
             _ = TemplateParser.parse(t"<div><{Comp} title=today/></div>")
 
-    def test_comp_unquoted_attr_value_error_nested_in_comp(self, Comp, Comp2):
-        with pytest.raises(TypeError, match="Did you mean to quote the last attribute"):
+    def test_comp_unquoted_attr_value_error_single_nested_in_comp(self, Comp, Comp2):
+        with pytest.raises(
+            ValueError, match="Did you mean to quote the last attribute"
+        ):
             _ = TemplateParser.parse(t"<{Comp2}><{Comp} title=today/></{Comp2}>")
+
+    @pytest.mark.skip()
+    def test_comp_unquoted_attr_value_error_double_nested_in_comp(self, comp_maker):
+        Comp1, Comp2, Comp3 = comp_maker("1"), comp_maker("2"), comp_maker("3")
+        # @TODO: We should warn about this ambig slash.
+        with pytest.raises(
+            ValueError, match="Did you meant to quote the last attribute"
+        ):
+            _ = TemplateParser.parse(
+                t"<{Comp2}><{Comp1}><{Comp3} title=today/></{Comp1}></{Comp2}>"
+            )

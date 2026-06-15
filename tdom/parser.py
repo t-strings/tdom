@@ -424,20 +424,6 @@ class TemplateParser(HTMLParser):
                     raise ValueError(
                         "Component end tags must have exactly one interpolation."
                     )
-                if not source.expressions_match(
-                    open_tag.start_i_index, tag_ref.i_indexes[0]
-                ) and not source.values_match(
-                    open_tag.start_i_index, tag_ref.i_indexes[0]
-                ):
-                    e = TypeError(
-                        "Component start and end tags must contain the same callable."
-                    )
-                    if self.has_ambiguous_forward_slash(open_tag):
-                        starttag = source.format_starttag(start_i_index)
-                        e.add_note(
-                            f'Did you mean to quote the last attribute or put a space before "/>" for "<{{{starttag}}} .../>"?'
-                        )
-                    raise e
                 return tag_ref.i_indexes[0]
 
     def get_starttag_text(self, msg: str = "Expecting starttag text to be set.") -> str:
@@ -498,12 +484,47 @@ class TemplateParser(HTMLParser):
 
     def handle_endtag(self, tag: str) -> None:
         if not self.stack:
-            raise ValueError(f"Unexpected closing tag </{tag}> with no open tag.")
-
+            tag_ref = self.placeholders.copy().remove_placeholders(tag)
+            if tag_ref.is_literal:
+                raise ValueError(f"Unexpected closing tag </{tag}> with no open tag.")
+            if not tag_ref.is_singleton:
+                # @TODO: Also it doesn't match anything
+                raise ValueError(
+                    "Component end tags must have exactly one interpolation."
+                )
+            # Component tag endtag but no component tag is open...
+            source = self.get_source()
+            unmatched_endtag = source.format_endtag(tag_ref.i_indexes[0])
+            raise ValueError(
+                f"Unexpected closing component tag </{{{unmatched_endtag}}}> with no open tag."
+            )
         open_tag = self.stack.pop()
         endtag_i_index = self.validate_end_tag(tag, open_tag)
         final_tag = self.finalize_tag(open_tag, endtag_i_index)
         self.append_child(final_tag)
+
+    def get_closed_tcomps(self, root: OpenTag | None) -> list[TComponent]:
+        """
+        Get TComponents that were closed during parsing starting from `root`.
+
+        If `root` is None then use the parser's default `root`.
+
+        TComponents should be returned in the order they were closed in:
+        from first closed to last closed.
+
+        @NOTE: That the root is an `OpenTag` but its `children` are actually `TNode`s.
+        """
+        if root is None:
+            root = self.root
+        tcomps = []
+        nodes = list(root.children)
+        while nodes:
+            node = nodes.pop()
+            if isinstance(node, TComponent):
+                tcomps.append(node)
+            elif isinstance(node, (TElement, TFragment)):
+                nodes.extend(node.children)
+        return tcomps
 
     # ------------------------------------------
     # HTMLParser other callbacks
@@ -557,20 +578,41 @@ class TemplateParser(HTMLParser):
                     "Parser expects more data, is the template valid html?"
                 )
         if self.stack:
+            source = self.get_source()
             e = ValueError("Invalid HTML structure: unclosed tags remain.")
-            # Check for tags that might have meant to self-close but whose
-            # unquoted last attribute value consumed a "/", ie. <div id=app/>.
+            # @TODO: We need to determine which tags this might apply to,
+            # this only applies to components.
             parent = self.stack[-1]
-            # @TODO: We need to determine which tags this might apply to, this only applies to components.
             if isinstance(parent, OpenTComponent) and self.has_ambiguous_forward_slash(
                 parent
             ):
-                starttag = (
-                    f"{{{self.get_source().format_starttag(parent.start_i_index)}}}"
-                )
+                # CASE: "<{C1} attr={value}/>" -- meant to self-close
+                # Maybe user meant to self-close?
+                starttag = source.format_starttag(parent.start_i_index)
                 e.add_note(
-                    f'Did you mean to quote the last attribute or put a space before "/>" for "<{starttag} .../>"?'
+                    f'Did you mean to quote the last attribute or put a space before "/>" for "<{{{starttag}}} .../>"?'
                 )
+            else:
+                # CASE: "<{C2}><{C1} attr=/></{C2}>"
+                # Maybe user meant to self-close <{C1} ...>, but closed by </{C2}> leaving <{C2}...> open?
+                for comp in reversed(self.get_closed_tcomps(parent)):
+                    if (
+                        comp.end_i_index is not None
+                        and comp.start_i_index != comp.end_i_index
+                        and not source.values_match(
+                            comp.start_i_index, comp.end_i_index
+                        )
+                    ):
+                        closed_tag = self.tmap[comp]
+                        starttag = source.format_starttag(comp.start_i_index)
+                        endtag = source.format_endtag(comp.end_i_index)
+                        e.add_note(
+                            f"Component start tag, <{{{starttag}}}>, and end tag, </{{{endtag}}}>, have values that do not match."
+                        )
+                        if self.has_ambiguous_forward_slash(closed_tag):
+                            e.add_note(
+                                f'Did you mean to quote the last attribute or put a space before "/>" for "<{{{starttag}}} .../>"?'
+                            )
             raise e
         if not self.placeholders.is_empty:
             raise ValueError("Some placeholders were never resolved.")
