@@ -425,17 +425,15 @@ def test_component_element_with_closing_tag():
     assert node == TComponent(start_i_index=0, end_i_index=1)
 
 
-def test_component_element_special_case_mismatched_closing_tag_error():
+def test_component_element_special_case_mismatched_closing_tag_still_parses():
     def Component1():
         pass
 
     def Component2():
         pass
 
-    with pytest.raises(
-        TypeError, match="Component start and end tags must contain the same callable."
-    ):
-        _ = TemplateParser.parse(t"<{Component1}></{Component2}>")
+    node = TemplateParser.parse(t"<{Component1}></{Component2}>")
+    assert node == TComponent(start_i_index=0, end_i_index=1)
 
 
 def test_component_element_invalid_closing_tag():
