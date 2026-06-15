@@ -93,13 +93,6 @@ class SourceTracker:
                 f"Interpolation indices exceed bounds: {index1} {index2}: [0...{last_index}]"
             )
 
-    def expressions_match(self, i_index1: int, i_index2: int) -> bool:
-        self._check_indices(i_index1, i_index2)
-        return (
-            self.interpolations[i_index1].expression
-            == self.interpolations[i_index2].expression
-        )
-
     def values_match(self, i_index1: int, i_index2: int) -> bool:
         self._check_indices(i_index1, i_index2)
         return (
