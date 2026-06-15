@@ -25,7 +25,7 @@ type HTMLAttribute = tuple[str, str | None]
 type HTMLAttributesDict = dict[str, str | None]
 
 
-@dataclass
+@dataclass(frozen=True)
 class OpenTElement:
     starttag_text: str
     " Entire starttag as parsed, includes placeholders, used for debugging. "
@@ -38,12 +38,12 @@ class OpenTElement:
     children: list[TNode] = field(default_factory=list)
 
 
-@dataclass
+@dataclass(frozen=True)
 class OpenTFragment:
     children: list[TNode] = field(default_factory=list)
 
 
-@dataclass
+@dataclass(frozen=True)
 class OpenTComponent:
     starttag_text: str
     " Entire starttag as parsed, includes placeholders, used for debugging. "
@@ -127,12 +127,17 @@ class SourceTracker:
         """Format a component start tag for error messages."""
         return self.get_expression(i_index, fallback_prefix="component-starttag")
 
+    def format_endtag(self, i_index: int) -> str:
+        return self.get_expression(i_index, fallback_prefix="component-endtag")
+
 
 class TemplateParser(HTMLParser):
     root: OpenTFragment
     stack: list[OpenTag]
     placeholders: PlaceholderState
     source: SourceTracker | None
+    tmap: dict[TComponent | TElement | TFragment, OpenTag]
+    " Map from completed tnodes back to their opentag for error reporting. "
 
     def __init__(self, *, convert_charrefs: bool = True):
         # This calls HTMLParser.reset() which we override to set up our state.
@@ -304,9 +309,13 @@ class TemplateParser(HTMLParser):
         """Finalize an OpenTag into a TNode."""
         match open_tag:
             case OpenTElement(tag=tag, attrs=attrs, children=children):
-                return TElement(tag=tag, attrs=attrs, children=tuple(children))
+                tnode = TElement(tag=tag, attrs=attrs, children=tuple(children))
+                self.tmap[tnode] = open_tag
+                return tnode
             case OpenTFragment(children=children):
-                return TFragment(children=tuple(children))
+                tnode = TFragment(children=tuple(children))
+                self.tmap[tnode] = open_tag
+                return tnode
             case OpenTComponent(
                 start_i_index=start_i_index,
                 children_start_s_index=children_start_s_index,
@@ -320,12 +329,14 @@ class TemplateParser(HTMLParser):
                     offset_into_children_start_s=offset_into_children_start_s,
                     template=self.get_source().template,
                 )
-                return TComponent(
+                tnode = TComponent(
                     start_i_index=start_i_index,
                     end_i_index=endtag_i_index,
                     children_ref=children_ref,
                     attrs=attrs,
                 )
+                self.tmap[tnode] = open_tag
+                return tnode
 
     def extract_component_children_ref(
         self,
@@ -532,6 +543,7 @@ class TemplateParser(HTMLParser):
         self.stack = []
         self.placeholders = PlaceholderState()
         self.source = None
+        self.tmap = {}
 
     def close(self) -> None:
         if self.waiting_for_data():
