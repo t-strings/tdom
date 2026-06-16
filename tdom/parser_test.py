@@ -657,12 +657,10 @@ class TestComponentUnquotedAttrValueWithAmbiguousSlash:
         ):
             _ = TemplateParser.parse(t"<{Comp2}><{Comp} title=today/></{Comp2}>")
 
-    @pytest.mark.skip()
     def test_comp_unquoted_attr_value_error_double_nested_in_comp(self, comp_maker):
         Comp1, Comp2, Comp3 = comp_maker("1"), comp_maker("2"), comp_maker("3")
-        # @TODO: We should warn about this ambig slash.
         with pytest.raises(
-            ValueError, match="Did you meant to quote the last attribute"
+            ValueError, match="Did you mean to quote the last attribute"
         ):
             _ = TemplateParser.parse(
                 t"<{Comp2}><{Comp1}><{Comp3} title=today/></{Comp1}></{Comp2}>"

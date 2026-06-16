@@ -26,8 +26,8 @@ type HTMLAttributesDict = dict[str, str | None]
 
 
 @dataclass(frozen=True)
-class ParseInfo:
-    "Track parse info for error reporting."
+class TagOpening:
+    "Track parse info at the opening of a tag for error reporting."
 
     starttag_text: str
     " Entire starttag as parsed, includes placeholders, . "
@@ -38,21 +38,37 @@ class ParseInfo:
 
 
 @dataclass(frozen=True)
-class OpenTElement:
-    parse_info: ParseInfo
+class TagClosing:
+    "Track info available when a tag is closed."
+
+    original_open_tag: OpenTag
+    " The original open tag that tracked this tag before it was closed. "
+
+
+class OpenTagBase:
+    """Mixin to make open tags hash by id and equal by id."""
+
+    def __hash__(self):
+        return hash(id(self))
+
+    def __eq__(self, other):
+        return id(self) == id(other)
+
+
+@dataclass(frozen=True, eq=False)
+class OpenTElement(OpenTagBase):
     tag: str
     attrs: tuple[TAttribute, ...]
     children: list[TNode] = field(default_factory=list)
 
 
-@dataclass(frozen=True)
-class OpenTFragment:
+@dataclass(frozen=True, eq=False)
+class OpenTFragment(OpenTagBase):
     children: list[TNode] = field(default_factory=list)
 
 
-@dataclass(frozen=True)
-class OpenTComponent:
-    parse_info: ParseInfo
+@dataclass(frozen=True, eq=False)
+class OpenTComponent(OpenTagBase):
     start_i_index: int
     children_start_s_index: int
     """The strings index where the component's children template starts."""
@@ -60,13 +76,17 @@ class OpenTComponent:
     """The offset INTO the starting string where the component's children template starts."""
     attrs: tuple[TAttribute, ...]
     # @NOTE: The `children` are discarded after parsing and are just used to
-    # track template consistency.  If the component is processed and
-    # returns its children template then that template will be
-    # re-parsed (or pulled from the cache).
+    # track template consistency or assist with error reporting.  If the
+    # component is processed and returns its children template then that
+    # template will be re-parsed (or pulled from the cache).
     children: list[TNode] = field(default_factory=list)
 
 
 type OpenTag = OpenTElement | OpenTFragment | OpenTComponent
+
+
+type TNodeContainer = TComponent | TElement | TFragment
+" Alias for union of tnodes that have children. "
 
 
 @dataclass
@@ -82,19 +102,41 @@ class SourceTracker:
     i_index: int = -1  # The current interpolation index.
     s_index: int = -1  # The current string index.
 
+    tag_closings: dict[TNodeContainer, TagClosing] = field(default_factory=dict)
+
+    tag_openings: dict[OpenTag, TagOpening] = field(default_factory=dict)
+
+    def record_tag_opening(
+        self,
+        open_tag: OpenTag,
+        starttag_text: str,
+        raw_attrs: Sequence[HTMLAttribute],
+        startend: bool,
+    ) -> TagOpening:
+        opening = self.tag_openings[open_tag] = TagOpening(
+            starttag_text=starttag_text, raw_attrs=raw_attrs, startend=startend
+        )
+        return opening
+
+    def record_tag_closing(
+        self, tnode: TNodeContainer, open_tag: OpenTag
+    ) -> TagClosing:
+        closing = self.tag_closings[tnode] = TagClosing(original_open_tag=open_tag)
+        return closing
+
+    def get_tag_closing(self, tnode: TNodeContainer) -> TagClosing:
+        """Get available info when `tnode` was created at closing of a tag."""
+        return self.tag_closings[tnode]
+
+    def get_tag_opening(self, open_tag: OpenTag) -> TagOpening:
+        """Get available info when `open_tag` was created at opening of a tag."""
+        return self.tag_openings[open_tag]
+
     @property
     def interpolations(self) -> tuple[Interpolation, ...]:
         return self.template.interpolations
 
-    def _check_indices(self, index1: int, index2: int):
-        last_index = len(self.interpolations) - 1
-        if max(index1, index2) > last_index or min(index1, index2) < 0:
-            raise ValueError(
-                f"Interpolation indices exceed bounds: {index1} {index2}: [0...{last_index}]"
-            )
-
     def values_match(self, i_index1: int, i_index2: int) -> bool:
-        self._check_indices(i_index1, i_index2)
         return (
             self.interpolations[i_index1].value == self.interpolations[i_index2].value
         )
@@ -131,7 +173,6 @@ class TemplateParser(HTMLParser):
     stack: list[OpenTag]
     placeholders: PlaceholderState
     source: SourceTracker | None
-    tmap: dict[TComponent | TElement | TFragment, OpenTag]
     " Map from completed tnodes back to their opentag for error reporting. "
 
     def __init__(self, *, convert_charrefs: bool = True):
@@ -195,18 +236,20 @@ class TemplateParser(HTMLParser):
         self, tag: str, attrs: Sequence[HTMLAttribute], startend: bool = False
     ) -> OpenTag:
         """Build an OpenTag from a raw tag and attribute tuples."""
+        source = self.get_source()
         tag_ref = self.placeholders.remove_placeholders(tag)
-
         if tag_ref.is_literal:
-            return OpenTElement(
-                parse_info=ParseInfo(
-                    starttag_text=self.get_starttag_text(),
-                    raw_attrs=attrs,
-                    startend=startend,
-                ),
+            open_tag = OpenTElement(
                 tag=tag,
                 attrs=self.make_tattrs(attrs),
             )
+            source.record_tag_opening(
+                open_tag,
+                starttag_text=self.get_starttag_text(),
+                raw_attrs=attrs,
+                startend=startend,
+            )
+            return open_tag
 
         if not tag_ref.is_singleton:
             raise ValueError(
@@ -244,15 +287,19 @@ class TemplateParser(HTMLParser):
             starttag_text=starttag_text,
         )
 
-        return OpenTComponent(
-            parse_info=ParseInfo(
-                starttag_text=starttag_text, raw_attrs=attrs, startend=startend
-            ),
+        open_tag = OpenTComponent(
             start_i_index=i_index,
             children_start_s_index=children_start_s_index,
             offset_into_children_start_s=offset_into_children_start_s,
             attrs=tattrs,
         )
+        source.record_tag_opening(
+            open_tag,
+            starttag_text=starttag_text,
+            raw_attrs=attrs,
+            startend=startend,
+        )
+        return open_tag
 
     def compute_offset_into_children_start_s(
         self,
@@ -304,15 +351,12 @@ class TemplateParser(HTMLParser):
         self, open_tag: OpenTag, endtag_i_index: int | None = None
     ) -> TNode:
         """Finalize an OpenTag into a TNode."""
+        source = self.get_source()
         match open_tag:
             case OpenTElement(tag=tag, attrs=attrs, children=children):
                 tnode = TElement(tag=tag, attrs=attrs, children=tuple(children))
-                self.tmap[tnode] = open_tag
-                return tnode
             case OpenTFragment(children=children):
                 tnode = TFragment(children=tuple(children))
-                self.tmap[tnode] = open_tag
-                return tnode
             case OpenTComponent(
                 start_i_index=start_i_index,
                 children_start_s_index=children_start_s_index,
@@ -324,7 +368,7 @@ class TemplateParser(HTMLParser):
                     endtag_i_index=endtag_i_index,
                     children_start_s_index=children_start_s_index,
                     offset_into_children_start_s=offset_into_children_start_s,
-                    template=self.get_source().template,
+                    template=source.template,
                 )
                 tnode = TComponent(
                     start_i_index=start_i_index,
@@ -332,8 +376,8 @@ class TemplateParser(HTMLParser):
                     children_ref=children_ref,
                     attrs=attrs,
                 )
-                self.tmap[tnode] = open_tag
-                return tnode
+        source.record_tag_closing(tnode, open_tag)
+        return tnode
 
     def extract_component_children_ref(
         self,
@@ -447,7 +491,8 @@ class TemplateParser(HTMLParser):
         with "<{Component} title={title} />".
         """
         if isinstance(open_tag, (OpenTElement, OpenTComponent)):
-            parse_info = open_tag.parse_info
+            source = self.get_source()
+            parse_info = source.get_tag_opening(open_tag)
             return (
                 # has attributes
                 len(parse_info.raw_attrs) > 0
@@ -491,8 +536,7 @@ class TemplateParser(HTMLParser):
                     "Component end tags must have exactly one interpolation."
                 )
             # Component tag endtag but no component tag is open...
-            source = self.get_source()
-            unmatched_endtag = source.format_endtag(tag_ref.i_indexes[0])
+            unmatched_endtag = self.get_source().format_endtag(tag_ref.i_indexes[0])
             raise ValueError(
                 f"Unexpected closing component tag </{{{unmatched_endtag}}}> with no open tag."
             )
@@ -501,7 +545,9 @@ class TemplateParser(HTMLParser):
         final_tag = self.finalize_tag(open_tag, endtag_i_index)
         self.append_child(final_tag)
 
-    def get_closed_tcomps(self, root: OpenTag | None) -> list[TComponent]:
+    def get_closed_tcomps(
+        self, root: OpenTag | None, recurse_component_children: bool = False
+    ) -> list[TComponent]:
         """
         Get TComponents that were closed during parsing starting from `root`.
 
@@ -520,6 +566,9 @@ class TemplateParser(HTMLParser):
             node = nodes.pop()
             if isinstance(node, TComponent):
                 tcomps.append(node)
+                if recurse_component_children:
+                    tag_closing = self.get_source().get_tag_closing(node)
+                    nodes.extend(tag_closing.original_open_tag.children)
             elif isinstance(node, (TElement, TFragment)):
                 nodes.extend(node.children)
         return tcomps
@@ -562,7 +611,6 @@ class TemplateParser(HTMLParser):
         self.stack = []
         self.placeholders = PlaceholderState()
         self.source = None
-        self.tmap = {}
 
     def close(self) -> None:
         if self.waiting_for_data():
@@ -591,9 +639,12 @@ class TemplateParser(HTMLParser):
                     f'Did you mean to quote the last attribute or put a space before "/>" for "<{{{starttag}}} .../>"?'
                 )
             else:
-                # CASE: "<{C2}><{C1} attr=/></{C2}>"
+                # CASE: t"<{C2}><{C1} attr=/></{C2}>"
                 # Maybe user meant to self-close <{C1} ...>, but closed by </{C2}> leaving <{C2}...> open?
-                for comp in reversed(self.get_closed_tcomps(parent)):
+                # CASE: t"<{C3}><{C2}><{C1} attr=/></{C2}></{C3}>"
+                for comp in reversed(
+                    self.get_closed_tcomps(parent, recurse_component_children=True)
+                ):
                     if (
                         comp.end_i_index is not None
                         and comp.start_i_index != comp.end_i_index
@@ -601,13 +652,15 @@ class TemplateParser(HTMLParser):
                             comp.start_i_index, comp.end_i_index
                         )
                     ):
-                        closed_tag = self.tmap[comp]
+                        tag_closing_info = source.get_tag_closing(comp)
                         starttag = source.format_starttag(comp.start_i_index)
                         endtag = source.format_endtag(comp.end_i_index)
                         e.add_note(
                             f"Component start tag, <{{{starttag}}}>, and end tag, </{{{endtag}}}>, have values that do not match."
                         )
-                        if self.has_ambiguous_forward_slash(closed_tag):
+                        if self.has_ambiguous_forward_slash(
+                            tag_closing_info.original_open_tag
+                        ):
                             e.add_note(
                                 f'Did you mean to quote the last attribute or put a space before "/>" for "<{{{starttag}}} .../>"?'
                             )
