@@ -4,6 +4,7 @@ import pytest
 
 from .parser import TemplateParser
 from .placeholders import make_placeholder_config
+from .source import FrozenPosition
 from .template_utils import TemplateRef
 from .tnodes import (
     TComment,
@@ -665,3 +666,25 @@ class TestComponentUnquotedAttrValueWithAmbiguousSlash:
             _ = TemplateParser.parse(
                 t"<{Comp2}><{Comp1}><{Comp3} title=today/></{Comp1}></{Comp2}>"
             )
+
+
+def PositionComp() -> Template:
+    return t""
+
+
+@pytest.mark.parametrize(
+    "chunk",
+    (
+        (TElement, t"<span></span>"),
+        (TComment, t"<!--ok-->"),
+        (TDocumentType, t"<!doctype html>"),
+        (TComponent, t"<{PositionComp}></{PositionComp}>"),
+        (TText, t"Just a simple text."),
+    ),
+)
+def test_tnode_parser_position(chunk):
+    tnode = TemplateParser.parse(t"<div>" + chunk[1] + t"</div>")
+    assert tnode.tag == "div" and len(tnode.children) == 1
+    el = tnode.children[0]
+    assert isinstance(el, chunk[0])
+    assert el.parser_pos == FrozenPosition(line=1, offset=len("<div>"))
