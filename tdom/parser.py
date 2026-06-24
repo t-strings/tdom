@@ -28,6 +28,7 @@ from .tnodes import (
     TSpreadAttribute,
     TTemplatedAttribute,
     TText,
+    TTree,
 )
 
 
@@ -733,6 +734,13 @@ class TemplateParser(HTMLParser):
             # CONSIDER: or as an empty text node?
             return self.finalize_tag(self.root)
 
+    def get_ttree(self) -> TTree:
+        return TTree(
+            self.get_tnode(),
+            placeholder_config=self.get_source().placeholders.config,
+            sinfos=tuple(self.sinfo_table.values()),
+        )
+
     # ------------------------------------------
     # Feeding and parsing
     # ------------------------------------------
@@ -754,7 +762,9 @@ class TemplateParser(HTMLParser):
             self.feed(content)
 
     @staticmethod
-    def parse(t: Template, placeholder_config: PlaceholderConfig | None = None) -> TNode:
+    def parse(
+        t: Template, placeholder_config: PlaceholderConfig | None = None
+    ) -> TNode:
         """
         Parse a Template containing valid HTML and substitutions and return
         a cacheable TNode tree representing its structure.
@@ -762,9 +772,15 @@ class TemplateParser(HTMLParser):
         A placeholder config must be passed to keep parser positions consistent
         between calls.
         """
+        return TemplateParser.parse_to_ttree(t, placeholder_config).root
+
+    @staticmethod
+    def parse_to_ttree(
+        t: Template, placeholder_config: PlaceholderConfig | None = None
+    ) -> TTree:
         if placeholder_config is None:
             placeholder_config = make_placeholder_config()
         parser = TemplateParser()
         parser.feed_template(t, placeholder_config=placeholder_config)
         parser.close()
-        return parser.get_tnode()
+        return parser.get_ttree()

@@ -1,7 +1,8 @@
 import typing as t
 from dataclasses import dataclass, field
 
-from .source import FrozenPosition
+from .placeholders import PlaceholderConfig
+from .source import FrozenPosition, TagSourceInfo
 from .template_utils import TemplateRef
 
 
@@ -107,6 +108,15 @@ class TComponent(TNode):
     attrs: tuple[TAttribute, ...] = field(default_factory=tuple)
 
     parser_pos: FrozenPosition | None = field(default=None, compare=False)
+
+
+@dataclass
+class TTree:
+    root: TNode
+
+    placeholder_config: PlaceholderConfig
+
+    sinfos: tuple[TagSourceInfo, ...] = ()
 
 
 type TTag = TElement | TComponent | TFragment
