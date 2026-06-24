@@ -45,6 +45,7 @@ from .parser import (
     TTemplatedAttribute,
     TText,
 )
+from .placeholders import PlaceholderConfig, make_placeholder_config
 from .protocols import HasHTMLDunder
 from .scope import ScopedTemplate
 from .template_utils import TemplateRef
@@ -527,8 +528,11 @@ class ITemplateParserProxy(t.Protocol):
 
 @dataclass(frozen=True)
 class TemplateParserProxy(ITemplateParserProxy):
+
+    placeholder_config: PlaceholderConfig = field(default_factory=make_placeholder_config)
+
     def to_tnode(self, template: Template) -> TNode:
-        return TemplateParser.parse(template)
+        return TemplateParser.parse(template, placeholder_config=self.placeholder_config)
 
 
 @dataclass(frozen=True)

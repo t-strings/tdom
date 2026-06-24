@@ -754,15 +754,17 @@ class TemplateParser(HTMLParser):
             self.feed(content)
 
     @staticmethod
-    def parse(t: Template, config: PlaceholderConfig | None = None) -> TNode:
+    def parse(t: Template, placeholder_config: PlaceholderConfig | None = None) -> TNode:
         """
         Parse a Template containing valid HTML and substitutions and return
-        a TNode tree representing its structure. This cachable structure can later
-        be resolved against actual interpolation values to produce a Node tree.
+        a cacheable TNode tree representing its structure.
+
+        A placeholder config must be passed to keep parser positions consistent
+        between calls.
         """
-        if config is None:
-            config = make_placeholder_config()
+        if placeholder_config is None:
+            placeholder_config = make_placeholder_config()
         parser = TemplateParser()
-        parser.feed_template(t, placeholder_config=config)
+        parser.feed_template(t, placeholder_config=placeholder_config)
         parser.close()
         return parser.get_tnode()
