@@ -672,19 +672,20 @@ def PositionComp() -> Template:
     return t""
 
 
-@pytest.mark.parametrize(
-    "chunk",
-    (
+def test_tnode_parser_position():
+    for tnode_type, fragment in (
         (TElement, t"<span></span>"),
         (TComment, t"<!--ok-->"),
         (TDocumentType, t"<!doctype html>"),
         (TComponent, t"<{PositionComp}></{PositionComp}>"),
         (TText, t"Just a simple text."),
-    ),
-)
-def test_tnode_parser_position(chunk):
-    tnode = TemplateParser.parse(t"<div>" + chunk[1] + t"</div>")
-    assert tnode.tag == "div" and len(tnode.children) == 1
-    el = tnode.children[0]
-    assert isinstance(el, chunk[0])
-    assert el.parser_pos == FrozenPosition(line=1, offset=len("<div>"))
+    ):
+        tnode = TemplateParser.parse(t"<div>" + fragment + t"</div>")
+        assert (
+            isinstance(tnode, TElement)
+            and tnode.tag == "div"
+            and len(tnode.children) == 1
+        )
+        el = tnode.children[0]
+        assert isinstance(el, tnode_type)
+        assert el.parser_pos == FrozenPosition(line=1, offset=len("<div>"))
