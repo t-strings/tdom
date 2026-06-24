@@ -593,15 +593,18 @@ class TemplateParser(HTMLParser):
         ref = self.placeholders.remove_placeholders(data)
         parent = self.get_parent()
         if parent.children and isinstance(parent.children[-1], TText):
+            prior_text = parent.children[-1]
             parent.children[-1] = TText(
-                ref=combine_template_refs(parent.children[-1].ref, ref)
+                ref=combine_template_refs(prior_text.ref, ref),
+                # Keep starting position of the prior text
+                parser_pos=prior_text.parser_pos,
             )
         else:
-            self.append_child(TText(ref=ref))
+            self.append_child(TText(ref=ref, parser_pos=self.get_parser_pos()))
 
     def handle_comment(self, data: str) -> None:
         ref = self.placeholders.remove_placeholders(data)
-        comment = TComment(ref)
+        comment = TComment(ref, parser_pos=self.get_parser_pos())
         self.append_child(comment)
 
     def handle_decl(self, decl: str) -> None:
@@ -610,7 +613,7 @@ class TemplateParser(HTMLParser):
             raise ValueError("Interpolations are not allowed in declarations.")
         elif decl.upper().startswith("DOCTYPE "):
             doctype_content = decl[7:].strip()
-            doctype = TDocumentType(doctype_content)
+            doctype = TDocumentType(doctype_content, parser_pos=self.get_parser_pos())
             self.append_child(doctype)
         else:
             raise NotImplementedError(
