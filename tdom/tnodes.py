@@ -1,6 +1,7 @@
 import typing as t
 from dataclasses import dataclass, field
 
+from .source import FrozenPosition
 from .template_utils import TemplateRef
 
 
@@ -45,6 +46,8 @@ class TNode:
 class TText(TNode):
     ref: TemplateRef
 
+    parser_pos: FrozenPosition | None = field(default=None, compare=False)
+
     @classmethod
     def empty(cls) -> t.Self:
         return cls(TemplateRef.empty())
@@ -58,6 +61,8 @@ class TText(TNode):
 class TComment(TNode):
     ref: TemplateRef
 
+    parser_pos: FrozenPosition | None = field(default=None, compare=False)
+
     @classmethod
     def literal(cls, text: str) -> t.Self:
         return cls(TemplateRef.literal(text))
@@ -67,10 +72,14 @@ class TComment(TNode):
 class TDocumentType(TNode):
     text: str
 
+    parser_pos: FrozenPosition | None = field(default=None, compare=False)
+
 
 @dataclass(slots=True, frozen=True)
 class TFragment(TNode):
     children: tuple[TNode, ...] = field(default_factory=tuple)
+
+    parser_pos: FrozenPosition | None = field(default=None, compare=False)
 
 
 @dataclass(slots=True, frozen=True)
@@ -78,6 +87,8 @@ class TElement(TNode):
     tag: str
     attrs: tuple[TAttribute, ...] = field(default_factory=tuple)
     children: tuple[TNode, ...] = field(default_factory=tuple)
+
+    parser_pos: FrozenPosition | None = field(default=None, compare=False)
 
 
 @dataclass(slots=True, frozen=True)
@@ -94,6 +105,8 @@ class TComponent(TNode):
     """The template ref that describes the component's children template."""
 
     attrs: tuple[TAttribute, ...] = field(default_factory=tuple)
+
+    parser_pos: FrozenPosition | None = field(default=None, compare=False)
 
 
 type TTag = TElement | TComponent | TFragment
