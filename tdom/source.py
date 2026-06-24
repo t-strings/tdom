@@ -34,6 +34,7 @@ class TagSourceInfo:
     @NOTE: These properties DEPEND on the placeholder configuration because
     they can contain embedded placeholders.
     """
+
     starttag_text: str
     " Entire starttag as parsed, includes placeholders, . "
     raw_attrs: tuple[HTMLAttribute, ...]
