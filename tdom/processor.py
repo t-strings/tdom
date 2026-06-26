@@ -29,7 +29,7 @@ from .htmlspec import (
     SVG_TAG_FIX,
     VOID_ELEMENTS,
 )
-from .parser import TemplateParser
+from .parser import ParsingError, TemplateParser
 from .parser_utils import HTMLAttribute
 from .placeholders import PlaceholderConfig, make_placeholder_config
 from .protocols import HasHTMLDunder
@@ -59,6 +59,50 @@ type AttributesDict = dict[str, object]
 # --------------------------------------------------------------------------
 # Custom formatting for the processor
 # --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class TemplateErrorState:
+    template: Template
+    ttree: TTree | None = None
+    tnode: TNode | None = None
+    values_index: int | None = None
+    iter_index: int | None = None
+
+
+class ProcessingError(Exception):
+    """General error when processing a template."""
+
+    last_tnode: TNode | None
+    " Nearest tnode from error if applicable. "
+
+    template_e_states: list[TemplateErrorState]
+    " Stack of processor template error states if applicable. "
+
+    values_index: int | None
+    " Index of the last failed interpolation. "
+
+    iter_index: int | None
+    " Iteration of the last failed iterable value. "
+
+    def __init__(self, msg: str = "") -> None:
+        super().__init__(msg)
+        self.template_e_states = []
+        self.last_tnode = None
+        self.values_index = None
+        self.iter_index = None
+
+
+class AttributeProcessingError(ProcessingError):
+    """Error while processing an element or component attribute."""
+
+
+class TextProcessingError(ProcessingError):
+    """Error while processing an element or component attribute."""
+
+
+class ComponentInvocationError(ProcessingError):
+    """Error while processing an element or component attribute."""
 
 
 def _format_safe(value: object, format_spec: str) -> str:
@@ -113,7 +157,7 @@ def _expand_aria_attr(value: object) -> Iterable[HTMLAttribute]:
             else:
                 yield f"aria-{sub_k}", str(sub_v)
     else:
-        raise TypeError(
+        raise AttributeProcessingError(
             f"Cannot use {type(value).__name__} as value for aria attribute"
         )
 
@@ -129,7 +173,7 @@ def _expand_data_attr(value: object) -> Iterable[Attribute]:
             else:
                 yield f"data-{sub_k}", str(sub_v)
     else:
-        raise TypeError(
+        raise AttributeProcessingError(
             f"Cannot use {type(value).__name__} as value for data attribute"
         )
 
@@ -147,7 +191,7 @@ def _substitute_spread_attrs(value: object) -> Iterable[Attribute]:
     elif isinstance(value, dict):
         yield from value.items()
     else:
-        raise TypeError(
+        raise AttributeProcessingError(
             f"Cannot use {type(value).__name__} as value for spread attributes"
         )
 
@@ -168,7 +212,7 @@ def parse_style_attribute_value(style_str: str) -> list[tuple[str, str | None]]:
         if prop:
             prop_parts = [p.strip() for p in prop.split(":") if p.strip()]
             if len(prop_parts) != 2:
-                raise ValueError(
+                raise AttributeProcessingError(
                     f"Invalid number of parts for style property {prop} in {style_str}"
                 )
             styles.append((prop_parts[0], prop_parts[1]))
@@ -187,7 +231,7 @@ def make_style_accumulator(old_value: object) -> StyleAccumulator:
         case True:  # A bare attribute will just default to {}.
             styles = {}
         case _:
-            raise TypeError(f"Unexpected value: {old_value}")
+            raise AttributeProcessingError(f"Unexpected style value: {old_value}")
     return StyleAccumulator(styles=styles)
 
 
@@ -214,7 +258,7 @@ class StyleAccumulator:
             case None:
                 pass
             case _:
-                raise TypeError(
+                raise AttributeProcessingError(
                     f"Unknown interpolated style value {value}, use '' to omit."
                 )
 
@@ -240,7 +284,7 @@ def make_class_accumulator(old_value: object) -> ClassAccumulator:
         case True:
             toggled_classes = {}
         case _:
-            raise ValueError(f"Unexpected value {old_value}")
+            raise AttributeProcessingError(f"Unexpected class value {old_value}")
     return ClassAccumulator(toggled_classes=toggled_classes)
 
 
@@ -269,11 +313,11 @@ class ClassAccumulator:
                         pass
                     case _:
                         if item == value:
-                            raise TypeError(
+                            raise AttributeProcessingError(
                                 f"Unknown interpolated class value: {value}"
                             )
                         else:
-                            raise TypeError(
+                            raise AttributeProcessingError(
                                 f"Unknown interpolated class item in {value}: {item}"
                             )
 
@@ -347,7 +391,9 @@ def _resolve_t_attrs(
                         )
                     new_attrs[name] = attr_accs[name].merge_value(attr_value)
                 elif expander := ATTR_EXPANDERS.get(name):
-                    raise TypeError(f"{name} attributes cannot be templated")
+                    raise AttributeProcessingError(
+                        f"{name} attributes cannot be templated"
+                    )
                 else:
                     new_attrs[name] = attr_value
             case TSpreadAttribute(i_index=i_index):
@@ -366,7 +412,9 @@ def _resolve_t_attrs(
                     else:
                         new_attrs[sub_k] = sub_v
             case _:
-                raise ValueError(f"Unknown TAttribute type: {type(attr).__name__}")
+                raise AttributeProcessingError(
+                    f"Unknown TAttribute type: {type(attr).__name__}"
+                )
     for acc_name, acc in attr_accs.items():
         # Skip "touching" the key here so that the order remains intact.
         super(type(new_attrs), new_attrs).__setitem__(acc_name, acc.to_value())
@@ -423,7 +471,7 @@ def _prep_component_kwargs(
 
     # We can't know what kwarg to put here...
     if raise_on_requires_positional and callable_info.requires_positional:
-        raise TypeError(
+        raise ComponentInvocationError(
             "Component callables cannot have required positional arguments."
         )
 
@@ -435,10 +483,12 @@ def _prep_component_kwargs(
         if snake_name in callable_info.named_params or callable_info.kwargs:
             kwargs[snake_name] = attr_value
         else:
-            raise ValueError(f"Unexpected attribute {snake_name}.")
+            raise ComponentInvocationError(f"Unexpected attribute {snake_name}.")
 
     if "children" in kwargs:
-        raise ValueError("The children attribute is reserved for component children.")
+        raise ComponentInvocationError(
+            "The children attribute is reserved for component children."
+        )
 
     if "children" in callable_info.named_params:
         kwargs["children"] = children
@@ -452,7 +502,7 @@ def _prep_component_kwargs(
     if raise_on_missing:
         missing = callable_info.required_named_params - kwargs.keys()
         if missing:
-            raise TypeError(
+            raise ComponentInvocationError(
                 f"Missing required parameters for component: {', '.join(missing)}"
             )
 
@@ -625,30 +675,52 @@ class ComponentProcessor(IComponentProcessor):
         won't construct one directly.
         """
         if not callable(component_callable):
-            raise TypeError(
+            raise ComponentInvocationError(
                 f"Component callable must be callable: {type(component_callable)}"
             )
+        try:
+            tattrs = _resolve_t_attrs(attrs, template.interpolations)
+        except ProcessingError:  # @TODO: Is there a native way to guard this?
+            raise
+        except Exception as e:
+            # Causes:
+            # - Could be a failed "callable" formatter
+            # - Could be a failed "__html__()" call -- I think? # @TODO:
+            #
+            raise AttributeProcessingError(
+                "Error occurred processing component attributes"
+            ) from e
         kwargs = _prep_component_kwargs(
             get_callable_info(component_callable),
-            _resolve_t_attrs(attrs, template.interpolations),
+            tattrs,
             children=component_template,
             provided_attrs=provided_attrs,
             raise_on_requires_positional=True,
             raise_on_missing=True,
         )
-        res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
+        try:
+            res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
+        except Exception as e:
+            raise ComponentInvocationError(
+                "Failed when invoking component callable."
+            ) from e
         if isinstance(res1, (Template, ScopedTemplate)):
             return res1
         elif callable(res1):
-            res2 = res1()  # ty: ignore[call-top-callable]
+            try:
+                res2 = res1()  # ty: ignore[call-top-callable]
+            except Exception as e:
+                raise ComponentInvocationError(
+                    "Failed when invoking component callable the second time."
+                ) from e
             if isinstance(res2, (Template, ScopedTemplate)):
                 return res2
             else:
-                raise TypeError(
+                raise ComponentInvocationError(
                     f"Component object must return Template when called: {type(res2)}"
                 )
         else:
-            raise TypeError(
+            raise ComponentInvocationError(
                 f"Component callable must return Template or Callable: {type(res1)}"
             )
 
@@ -685,11 +757,59 @@ class TemplateProcessor(ITemplateProcessor):
         """
         Process a TDOM compatible template into a string.
         """
-        return self._process_template(root_template, assume_ctx)
+        try:
+            return self._process_template(root_template, assume_ctx)
+        except ProcessingError as e:
+            #
+            # @TODO: I think we could optionally consolidate and/or reformat
+            # all the exceptions here if needed and move this entire thing to
+            # a special error formatting tool.
+            #
+            for e_state in reversed(e.template_e_states):
+                if not e_state.ttree:
+                    # Just skip this special case where processing could not
+                    # even get started because the template wouldn't parse.
+                    continue
+                sinfo_table = e_state.ttree.unpack_sinfo_table()
+                sinfo = parser_pos = None
+                if isinstance(
+                    e_state.tnode,
+                    (TElement, TText, TComment, TComponent, TDocumentType),
+                ):
+                    parser_pos = e_state.tnode.parser_pos
+                    if parser_pos:
+                        sinfo = sinfo_table.get(parser_pos, None)
+                if sinfo:
+                    e.add_note(
+                        f"Error occurred at {type(e_state.tnode)} in template {sinfo.starttag_text} at {parser_pos}"
+                    )
+                else:
+                    e.add_note(f"Error occurred at {type(e_state.tnode)} in template")
+            raise
 
     def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
-        ttree = self.parser_api.to_ttree(template)
-        return self._process_tnode(template, last_ctx, ttree.root)
+        try:
+            ttree = self.parser_api.to_ttree(template)
+        except ParsingError as parsing_e:
+            # Chain the parsing error into a processing error.
+            e = ProcessingError("Failed to parse template.")
+            e.template_e_states.append(
+                TemplateErrorState(template)
+            )  # Special case where nothing is set yet.
+            raise e from parsing_e
+        try:
+            return self._process_tnode(template, last_ctx, ttree.root)
+        except ProcessingError as e:
+            e.template_e_states.append(
+                TemplateErrorState(
+                    template, ttree, e.last_tnode, e.values_index, e.iter_index
+                )
+            )
+            # Reset everything.
+            e.last_tnode = None
+            e.values_index = None
+            e.iter_index = None
+            raise
 
     def _process_tnode(
         self, template: Template, last_ctx: ProcessContext, tnode: TNode
@@ -697,28 +817,35 @@ class TemplateProcessor(ITemplateProcessor):
         """
         Process a tnode from a template's "t-tree" into a string.
         """
-        match tnode:
-            case TDocumentType(text):
-                return self._process_document_type(last_ctx, text)
-            case TComment(ref):
-                return self._process_comment(template, last_ctx, ref)
-            case TFragment(children):
-                return self._process_fragment(template, last_ctx, children)
-            case TComponent(start_i_index, end_i_index, children_ref, attrs):
-                return self._process_component(
-                    template,
-                    last_ctx,
-                    attrs,
-                    start_i_index,
-                    end_i_index,
-                    children_ref,
-                )
-            case TElement(tag, attrs, children):
-                return self._process_element(template, last_ctx, tag, attrs, children)
-            case TText(ref):
-                return self._process_texts(template, last_ctx, ref)
-            case _:
-                raise ValueError(f"Unrecognized tnode: {tnode}")
+        try:
+            match tnode:
+                case TDocumentType(text):
+                    return self._process_document_type(last_ctx, text)
+                case TComment(ref):
+                    return self._process_comment(template, last_ctx, ref)
+                case TFragment(children):
+                    return self._process_fragment(template, last_ctx, children)
+                case TComponent(start_i_index, end_i_index, children_ref, attrs):
+                    return self._process_component(
+                        template,
+                        last_ctx,
+                        attrs,
+                        start_i_index,
+                        end_i_index,
+                        children_ref,
+                    )
+                case TElement(tag, attrs, children):
+                    return self._process_element(
+                        template, last_ctx, tag, attrs, children
+                    )
+                case TText(ref):
+                    return self._process_texts(template, last_ctx, ref)
+                case _:
+                    raise ValueError(f"Unrecognized tnode: {tnode}")
+        except ProcessingError as e:
+            if e.last_tnode is None:
+                e.last_tnode = tnode
+            raise
 
     def _process_document_type(
         self,
@@ -727,7 +854,7 @@ class TemplateProcessor(ITemplateProcessor):
     ) -> str:
         if last_ctx.ns != "html":
             # Nit
-            raise ValueError(
+            raise ProcessingError(
                 "Cannot process document type in subtree of a foreign element."
             )
         if self.uppercase_doctype:
@@ -822,7 +949,14 @@ class TemplateProcessor(ITemplateProcessor):
         """
         Process an element's attributes into a string.
         """
-        resolved_attrs = _resolve_t_attrs(attrs, template.interpolations)
+        try:
+            resolved_attrs = _resolve_t_attrs(attrs, template.interpolations)
+        except ProcessingError:  # @TODO: Is there a native way to guard this?
+            raise
+        except Exception as e:
+            raise AttributeProcessingError(
+                "Unexpected error occurred while processing element attrs."
+            ) from e
         if last_ctx.ns == "svg":
             attrs_str = serialize_html_attrs(
                 _fix_svg_attrs(_resolve_html_attrs(resolved_attrs))
@@ -852,7 +986,7 @@ class TemplateProcessor(ITemplateProcessor):
             and template.interpolations[start_i_index].value
             != template.interpolations[end_i_index].value
         ):
-            raise TypeError(
+            raise ComponentInvocationError(
                 "Component callable in start tag must match component callable in end tag."
             )
         component_callable = template.interpolations[start_i_index].value
@@ -888,7 +1022,7 @@ class TemplateProcessor(ITemplateProcessor):
                 allow_markup=True,
             )
         else:
-            raise NotImplementedError(
+            raise TextProcessingError(
                 f"Parent tag {last_ctx.parent_tag} is not supported."
             )
 
@@ -935,13 +1069,17 @@ class TemplateProcessor(ITemplateProcessor):
         """
         value = format_interpolation(template.interpolations[values_index])
         value = t.cast(NormalTextInterpolationValue, value)  # ty: ignore[redundant-cast]
-        return self._process_normal_text_from_value(template, last_ctx, value)
+        return self._process_normal_text_from_value(
+            template, last_ctx, value, values_index=values_index
+        )
 
     def _process_normal_text_from_value(
         self,
         template: Template,
         last_ctx: ProcessContext,
         value: NormalTextInterpolationValue,
+        values_index: int | None = None,
+        iter_index: int | None = None,
     ) -> str:
         """
         Process a single value into a string as "normal text".
@@ -956,18 +1094,36 @@ class TemplateProcessor(ITemplateProcessor):
             # implementing HasHTMLDunder.
             return self.escape_html_text(value)
         elif isinstance(value, Template):
-            return self._process_template(value, last_ctx)
+            try:
+                return self._process_template(value, last_ctx)
+            except ProcessingError as e:
+                assert e.values_index is None and e.iter_index is None
+                e.values_index = values_index
+                e.iter_index = iter_index
+                raise
         elif isinstance(value, Iterable):
             return "".join(
-                self._process_normal_text_from_value(template, last_ctx, v)
-                for v in value
+                self._process_normal_text_from_value(
+                    template,
+                    last_ctx,
+                    v,
+                    iter_index=iter_index,
+                    values_index=values_index,
+                )
+                for iter_index, v in enumerate(value)
             )
         elif isinstance(value, HasHTMLDunder):
             # @NOTE: markupsafe's escape does this for us but we put this in
             # here for completeness.
             # @NOTE: An actual Markup() would actually pass as a str() but a
             # custom object with __html__ might not.
-            return Markup(value.__html__())
+            try:
+                return Markup(value.__html__())
+            except Exception as e:
+                pe = TextProcessingError("Error occurred when processing text.")
+                pe.values_index = values_index
+                pe.iter_index = iter_index
+                raise pe from e
         else:
             # @DESIGN: Everything that isn't an object we recognize is
             # coerced to a str() and emitted.
@@ -997,7 +1153,7 @@ def resolve_text_without_recursion(
             # the interpolation in this special case.
             return Markup(value.__html__())
         elif isinstance(value, (Template, Iterable)):
-            raise ValueError(
+            raise TextProcessingError(
                 f"Recursive includes are not supported within {parent_tag}"
             )
         else:
@@ -1019,11 +1175,11 @@ def resolve_text_without_recursion(
                 if value:
                     text.append(value)
             elif not isinstance(value, str) and isinstance(value, (Template, Iterable)):
-                raise ValueError(
+                raise TextProcessingError(
                     f"Recursive includes are not supported within {parent_tag}"
                 )
             elif isinstance(value, HasHTMLDunder):
-                raise ValueError(
+                raise TextProcessingError(
                     f"Non-exact trusted interpolations are not supported within {parent_tag}"
                 )
             else:
