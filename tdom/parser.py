@@ -32,6 +32,18 @@ from .tnodes import (
 )
 
 
+class ParsingError(Exception):
+    pass
+
+
+class ParsingAssertionError(ParsingError):
+    pass
+
+
+class AttributeParsingError(ParsingError):
+    pass
+
+
 @dataclass(frozen=True, slots=True)
 class OpenTagSourceInfo:
     """
@@ -220,11 +232,11 @@ class TemplateParser(HTMLParser):
             else:
                 return TTemplatedAttribute(name=name, value_ref=value_ref)
         if value_ref is not None:
-            raise ValueError(
+            raise AttributeParsingError(
                 "Attribute names cannot contain interpolations if the value is also interpolated."
             )
         if not name_ref.is_singleton:
-            raise ValueError(
+            raise AttributeParsingError(
                 "Spread attributes must have exactly one interpolation in the name."
             )
         return TSpreadAttribute(i_index=name_ref.i_indexes[0])
@@ -259,7 +271,7 @@ class TemplateParser(HTMLParser):
             return open_tag
 
         if not tag_ref.is_singleton:
-            raise ValueError(
+            raise ParsingError(
                 "Component element tags must have exactly one interpolation."
             )
 
@@ -348,7 +360,7 @@ class TemplateParser(HTMLParser):
         temp_placeholders = PlaceholderState(known=known, config=config)
         tag_ref = temp_placeholders.remove_placeholders(starttag_text)
         if not temp_placeholders.is_empty:
-            raise AssertionError(
+            raise ParsingAssertionError(
                 "There are extra placeholders still in the starttag_text."
             )
         # Now the last string should terminate the starttag and end with ">"
@@ -467,22 +479,22 @@ class TemplateParser(HTMLParser):
         match open_tag:
             case OpenTElement():
                 if not tag_ref.is_literal:
-                    raise ValueError(
+                    raise ParsingError(
                         f"Component closing tag found for element <{open_tag.tag}>."
                     )
                 if tag != open_tag.tag:
-                    raise ValueError(
+                    raise ParsingError(
                         f"Mismatched closing tag </{tag}> for element <{open_tag.tag}>."
                     )
                 return None
 
             case OpenTFragment():
-                raise NotImplementedError("We do not support anonymous fragments.")
+                raise ParsingAssertionError("We do not support anonymous fragments.")
 
             case OpenTComponent(start_i_index=start_i_index):
                 if tag_ref.is_literal:
                     starttag = source.format_starttag(start_i_index)
-                    e = ValueError(
+                    e = ParsingError(
                         f"Mismatched closing tag </{tag}> for component with tag {{{starttag}}}."
                     )
                     if self.has_ambiguous_forward_slash(open_tag.sinfo):
@@ -491,7 +503,7 @@ class TemplateParser(HTMLParser):
                         )
                     raise e
                 if not tag_ref.is_singleton:
-                    raise ValueError(
+                    raise ParsingError(
                         "Component end tags must have exactly one interpolation."
                     )
                 return tag_ref.i_indexes[0]
@@ -504,7 +516,7 @@ class TemplateParser(HTMLParser):
         """
         starttag_text = super().get_starttag_text()
         if starttag_text is None:
-            raise AssertionError(msg)
+            raise ParsingAssertionError(msg)
         return starttag_text
 
     def has_ambiguous_forward_slash(
@@ -559,15 +571,15 @@ class TemplateParser(HTMLParser):
             source = self.get_source()
             tag_ref = source.placeholders.copy().remove_placeholders(tag)
             if tag_ref.is_literal:
-                raise ValueError(f"Unexpected closing tag </{tag}> with no open tag.")
+                raise ParsingError(f"Unexpected closing tag </{tag}> with no open tag.")
             if not tag_ref.is_singleton:
                 # @TODO: Also it doesn't match anything
-                raise ValueError(
+                raise ParsingError(
                     "Component end tags must have exactly one interpolation."
                 )
             # Component tag endtag but no component tag is open...
             unmatched_endtag = self.get_source().format_endtag(tag_ref.i_indexes[0])
-            raise ValueError(
+            raise ParsingError(
                 f"Unexpected closing component tag </{{{unmatched_endtag}}}> with no open tag."
             )
         open_tag = self.stack.pop()
@@ -633,13 +645,13 @@ class TemplateParser(HTMLParser):
         source = self.get_source()
         ref = source.placeholders.remove_placeholders(decl)
         if not ref.is_literal:
-            raise ValueError("Interpolations are not allowed in declarations.")
+            raise ParsingError("Interpolations are not allowed in declarations.")
         elif decl.upper().startswith("DOCTYPE "):
             doctype_content = decl[7:].strip()
             doctype = TDocumentType(doctype_content, parser_pos=self.get_parser_pos())
             self.append_child(doctype)
         else:
-            raise NotImplementedError(
+            raise ParsingError(
                 "Only well formed DOCTYPE declarations are currently supported."
             )
 
@@ -656,15 +668,15 @@ class TemplateParser(HTMLParser):
         if self.waiting_for_data():
             # We apply heuristics here to try to guess why the parser didn't finish.
             if self.rawdata.count('"') % 2 == 1 or self.rawdata.count("'") % 2 == 1:
-                raise ValueError(
+                raise ParsingError(
                     "Parser expects more data, maybe you left an attribute quote unclosed?"
                 )
             else:
-                raise ValueError(
+                raise ParsingError(
                     "Parser expects more data, is the template valid html?"
                 )
         if self.stack:
-            e = ValueError("Invalid HTML structure: unclosed tags remain.")
+            e = ParsingError("Invalid HTML structure: unclosed tags remain.")
             # @TODO: We need to determine which tags this might apply to,
             # this only applies to components.
             parent = self.stack[-1]
@@ -707,7 +719,7 @@ class TemplateParser(HTMLParser):
                             )
             raise e
         if not source.placeholders.is_empty:
-            raise ValueError("Some placeholders were never resolved.")
+            raise ParsingError("Some placeholders were never resolved.")
         super().close()
 
     def waiting_for_data(self):
@@ -747,7 +759,7 @@ class TemplateParser(HTMLParser):
 
     def get_source(self) -> SourceTracker:
         if self.source is None:
-            raise AssertionError("Source has not been initialized.")
+            raise ParsingAssertionError("Source has not been initialized.")
         return self.source
 
     def feed_template(
