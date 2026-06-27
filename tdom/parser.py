@@ -759,7 +759,8 @@ class TemplateParser(HTMLParser):
 
     def get_source(self) -> SourceTracker:
         if self.source is None:
-            raise ParsingAssertionError("Source has not been initialized.")
+            # This would be a bug.
+            raise AssertionError("Source has not been initialized.")
         return self.source
 
     def feed_template(
