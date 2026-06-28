@@ -709,3 +709,41 @@ class TestAmbiguousSelfCloseCheck:
                 ValueError, match="Self-closing tags are only supported"
             ):
                 _ = TemplateParser.parse(template)
+
+
+class TestResetRulesInParser:
+    @pytest.fixture
+    def wrap_in_svg(self):
+        def _wrap_in_svg(children: Template) -> Template:
+            return t"<svg>{children}</svg>"
+
+        return _wrap_in_svg
+
+    @pytest.fixture
+    def wrap_in_fo(self):
+        def _wrap_in_fo(children: Template) -> Template:
+            return t"<foreignObject>{children}</foreignObject>"
+
+        return _wrap_in_fo
+
+    def test_parser_fails_when_processor_might_succeed_svg_in_html(self, wrap_in_svg):
+        with pytest.raises(ValueError, match="void"):
+            _ = TemplateParser.parse(
+                t"<div><{wrap_in_svg}><circle/></{wrap_in_svg}></div>"
+            )
+
+    def test_parser_works_by_accident_html_in_svg(self, wrap_in_fo):
+        node = TemplateParser.parse(t"<svg><{wrap_in_fo}><input></{wrap_in_fo}></svg>")
+        assert isinstance(node, TElement)
+
+    def test_parser_fails_when_it_should_anyways_svg_in_svg(self, wrap_in_fo):
+        with pytest.raises(ValueError, match="void"):
+            _ = TemplateParser.parse(
+                t"<svg><{wrap_in_fo}><circle/></{wrap_in_fo}></svg>"
+            )
+
+    def test_parser_works_when_processor_should_fail(self, wrap_in_svg):
+        node = TemplateParser.parse(
+            t"<div><{wrap_in_svg}><input></{wrap_in_svg}></div>"
+        )
+        assert isinstance(node, TElement)

@@ -143,37 +143,15 @@ class ParseContext:
         return ParseContext(ns=ns if ns is not None else self.ns)
 
 
-@dataclass(frozen=True)
-class InternalParseContext:
-    """
-    This is the context that was used to parse a given template.
-    """
-
-    ns: NamespaceType = "html"
-    in_component: bool = False
-
-    def copy(
-        self, ns: NamespaceType | None = None, in_component: bool | None = None
-    ) -> InternalParseContext:
-        return InternalParseContext(
-            ns=ns if ns is not None else self.ns,
-            in_component=in_component
-            if in_component is not None
-            else self.in_component,
-        )
-
-
 class TemplateParser(HTMLParser):
     root: OpenTFragment
-    stack: list[tuple[OpenTag, InternalParseContext]]
+    stack: list[tuple[OpenTag, ParseContext]]
     placeholders: PlaceholderState
     source: SourceTracker | None
-    root_ctx: InternalParseContext
+    root_ctx: ParseContext
     " Assume that template parsing *starts* in this context. "
 
-    def __init__(
-        self, *, root_ctx: InternalParseContext, convert_charrefs: bool = True
-    ):
+    def __init__(self, *, root_ctx: ParseContext, convert_charrefs: bool = True):
         self.root_ctx = root_ctx
         # This calls HTMLParser.reset() which we override to set up our state.
         super().__init__(convert_charrefs=convert_charrefs)
@@ -482,7 +460,7 @@ class TemplateParser(HTMLParser):
             raise AssertionError(msg)
         return starttag_text
 
-    def get_last_ctx(self) -> InternalParseContext:
+    def get_last_ctx(self) -> ParseContext:
         if self.stack:
             return self.stack[-1][1]
         else:
@@ -491,11 +469,10 @@ class TemplateParser(HTMLParser):
     def is_literal_tag(self, tag: str):
         return self.placeholders.copy().remove_placeholders(tag).is_literal
 
-    def validate_self_close_attempt(self, last_ctx: InternalParseContext, tag: str):
+    def validate_self_close_attempt(self, last_ctx: ParseContext, tag: str):
         if (
-            not last_ctx.in_component
-            and last_ctx.ns == "html"
-            # @NOTE: Only void tags can be losed when NS is explictly html.
+            last_ctx.ns == "html"
+            # @NOTE: Only void tags can be closed when NS is explictly html.
             and tag not in VOID_ELEMENTS
         ):
             e = ValueError(
@@ -542,14 +519,7 @@ class TemplateParser(HTMLParser):
         if (
             isinstance(open_tag, OpenTElement)
             and open_tag.tag in VOID_ELEMENTS
-            and (
-                last_ctx.ns == "html"
-                # @TODO: Maybe backtracking when it looks like we needed
-                # to close it would be better? We just need the component's
-                # children to parse out and get out of the way because that
-                # isn't the template we are trying to parse and cache.
-                or last_ctx.in_component
-            )
+            and last_ctx.ns == "html"
         ):
             final_tag = self.finalize_tag(open_tag)
             self.append_child(final_tag)
@@ -565,7 +535,8 @@ class TemplateParser(HTMLParser):
                 else:
                     next_ctx = last_ctx
             elif isinstance(open_tag, OpenTComponent):
-                next_ctx = last_ctx.copy(in_component=True)
+                # @NOTE: We "reset" the ns to html when parsing component children.
+                next_ctx = last_ctx.copy(ns="html")
             else:
                 next_ctx = last_ctx
             self.stack.append((open_tag, next_ctx))
@@ -721,7 +692,7 @@ class TemplateParser(HTMLParser):
         """
         if assume_ctx is None:
             assume_ctx = ParseContext()
-        parser = TemplateParser(root_ctx=InternalParseContext(ns=assume_ctx.ns))
+        parser = TemplateParser(root_ctx=assume_ctx)
         parser.feed_template(t)
         parser.close()
         return parser.get_tnode()
