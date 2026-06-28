@@ -24,7 +24,7 @@ def test_parse_mixed_literal_content():
         t"<!DOCTYPE html>"
         t"<!-- Comment -->"
         t'<div class="container">'
-        t"Hello, <br class='funky' />world <!-- neato -->!"
+        t"Hello, <br class='funky'>world <!-- neato -->!"
         t"</div>"
     )
     assert node == TFragment(
@@ -95,9 +95,10 @@ def test_parse_void_element():
     assert node == TElement("br")
 
 
-def test_parse_void_element_self_closed():
-    node = TemplateParser.parse(t"<br />")
-    assert node == TElement("br")
+def test_parse_void_element_with_optional_solidus():
+    for el in (t"<br/>", t"<br />"):
+        node = TemplateParser.parse(el)
+        assert node == TElement("br")
 
 
 def test_parse_uppercase_void_element():
@@ -222,32 +223,25 @@ def test_parse_unexpected_closing_tag():
         _ = TemplateParser.parse(t"Unopened</div>")
 
 
-def test_self_closing_tags():
-    node = TemplateParser.parse(t"<div/><p></p>")
-    assert node == TFragment(
-        children=(
-            TElement("div"),
-            TElement("p"),
-        )
-    )
+def test_self_invalid_self_closing_tags():
+    with pytest.raises(ValueError, match="Self-closing tags are only supported for"):
+        _ = TemplateParser.parse(t"<div/><p></p>")
 
 
-def test_nested_self_closing_tags():
-    node = TemplateParser.parse(t"<div><br><div /><br></div>")
-    assert node == TElement(
-        "div", children=(TElement("br"), TElement("div"), TElement("br"))
-    )
-    node = TemplateParser.parse(t"<div><div /></div>")
-    assert node == TElement("div", children=(TElement("div"),))
+def test_nested_invalid_self_closing_tags():
+    with pytest.raises(ValueError, match="Self-closing tags are only supported for"):
+        _ = TemplateParser.parse(t"<div><br><div /><br></div>")
+    with pytest.raises(ValueError, match="Self-closing tags are only supported for"):
+        _ = TemplateParser.parse(t"<div><div /></div>")
 
 
 def test_self_closing_tags_unexpected_closing_tag():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Self-closing tags are only supported for"):
         _ = TemplateParser.parse(t"<div /></div>")
 
 
 def test_self_closing_void_tags_unexpected_closing_tag():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="Unexpected closing tag"):
         _ = TemplateParser.parse(t"<input /></input>")
 
 
@@ -276,6 +270,11 @@ def test_literal_attrs():
     )
 
 
+def test_void_element_with_attr_value_endswith_solidus():
+    node = TemplateParser.parse(t"<img src=/>")
+    assert node == TElement("img", attrs=(TLiteralAttribute("src", "/"),))
+
+
 def test_literal_attr_entities():
     node = TemplateParser.parse(t'<a title="&lt;">Link</a>')
     assert node == TElement(
@@ -298,7 +297,7 @@ def test_literal_attr_order():
 def test_interpolated_attr():
     value1 = 42
     value2 = 99
-    node = TemplateParser.parse(t'<div value1="{value1}" value2={value2} />')
+    node = TemplateParser.parse(t'<div value1="{value1}" value2={value2}></div>')
     assert node == TElement(
         "div",
         attrs=(
@@ -313,7 +312,7 @@ def test_templated_attr():
     value1 = 42
     value2 = 99
     node = TemplateParser.parse(
-        t'<div value1="{value1}-burrito" value2="neato-{value2}-wow" />'
+        t'<div value1="{value1}-burrito" value2="neato-{value2}-wow"></div>'
     )
     value1_ref = TemplateRef(strings=("", "-burrito"), i_indexes=(0,))
     value2_ref = TemplateRef(strings=("neato-", "-wow"), i_indexes=(1,))
@@ -329,7 +328,7 @@ def test_templated_attr():
 
 def test_spread_attr():
     spread_attrs = {}
-    node = TemplateParser.parse(t"<div {spread_attrs} />")
+    node = TemplateParser.parse(t"<div {spread_attrs}></div>")
     assert node == TElement(
         "div",
         attrs=(TSpreadAttribute(i_index=0),),
@@ -340,21 +339,21 @@ def test_spread_attr():
 def test_templated_attribute_name_error():
     with pytest.raises(ValueError):
         attr_name = "some-attr"
-        _ = TemplateParser.parse(t'<div {attr_name}="value" />')
+        _ = TemplateParser.parse(t'<div {attr_name}="value"></div>')
 
 
 def test_templated_attribute_name_and_value_error():
     with pytest.raises(ValueError):
         attr_name = "some-attr"
         value = "value"
-        _ = TemplateParser.parse(t'<div {attr_name}="{value}" />')
+        _ = TemplateParser.parse(t'<div {attr_name}="{value}"></div>')
 
 
 def test_adjacent_spread_attrs_error():
     with pytest.raises(ValueError):
         attrs1 = {}
         attrs2 = {}
-        _ = TemplateParser.parse(t"<div {attrs1}{attrs2} />")
+        _ = TemplateParser.parse(t"<div {attrs1}{attrs2}></div>")
 
 
 #
@@ -425,15 +424,17 @@ def test_component_element_with_closing_tag():
     assert node == TComponent(start_i_index=0, end_i_index=1)
 
 
-def test_component_element_special_case_mismatched_closing_tag_still_parses():
+def test_component_element_special_case_mismatched_closing_tag_error():
     def Component1():
         pass
 
     def Component2():
         pass
 
-    node = TemplateParser.parse(t"<{Component1}></{Component2}>")
-    assert node == TComponent(start_i_index=0, end_i_index=1)
+    with pytest.raises(
+        TypeError, match="Component start and end tags must contain the same callable."
+    ):
+        _ = TemplateParser.parse(t"<{Component1}></{Component2}>")
 
 
 def test_component_element_invalid_closing_tag():
@@ -602,3 +603,147 @@ class TestComponentExtractChildrenTemplate:
                 strings=("<div>Hello, World!</div>",), i_indexes=()
             ),
         )
+
+
+class TestComponentUnquotedAttrValue:
+    @pytest.fixture
+    def Comp(self):
+        def _Comp(children: Template, title: str) -> Template:
+            return children
+
+        return _Comp
+
+    @pytest.fixture
+    def Comp2(self):
+        def _Comp2(children: Template, title: str) -> Template:
+            return children
+
+        return _Comp2
+
+    def test_comp_unquoted_attr_value_error_root(self, Comp):
+        with pytest.raises(
+            ValueError, match="Did you mean to quote the last attribute"
+        ):
+            _ = TemplateParser.parse(t"<{Comp} title=today/>")
+
+    def test_comp_unquoted_attr_value_error_nested_in_el(self, Comp):
+        with pytest.raises(
+            ValueError, match="Did you mean to quote the last attribute"
+        ):
+            _ = TemplateParser.parse(t"<div><{Comp} title=today/></div>")
+
+    def test_comp_unquoted_attr_value_error_nested_in_comp(self, Comp, Comp2):
+        with pytest.raises(TypeError, match="Did you mean to quote the last attribute"):
+            _ = TemplateParser.parse(t"<{Comp2}><{Comp} title=today/></{Comp2}>")
+
+
+class TestAmbiguousSelfCloseCheck:
+    @pytest.fixture
+    def comp(self):
+        def component(
+            active: bool = False, title: str = "Title", children: Template = t""
+        ) -> Template:
+            dataset = {"active": active}
+            return t"<div data={dataset} title={title}>{children}</div>"
+
+        return component
+
+    def test_component_ok(self, comp):
+        dynamic = "dynamic"
+        attrs = {"active": True}
+        for template in [
+            t"<{comp}/>abc",
+            t"<{comp} active/>abc",  # Still ok because attr name cannot contain /
+            t"<{comp} {attrs}/>abc",  # Still ok because attr name cannot contain /
+            t"<{comp} />abc",
+            t"<{comp} title=literal />abc",
+            t"<{comp} title=literal/ ></{comp}>abc",  # This is really gross but shouldn't be common.
+            t'<{comp} title="literal"/>abc',
+            t"<{comp} title={dynamic} />abc",
+            t'<{comp} title="{dynamic}"/>abc',
+            t"<{comp} title={dynamic}literal />abc",
+            t'<{comp} title="{dynamic}literal"/>abc',
+        ]:
+            tnode = TemplateParser.parse(template)
+            assert (
+                isinstance(tnode, TFragment)
+                and len(tnode.children) == 2
+                and isinstance(tnode.children[0], TComponent)
+            )
+
+    def test_component_ambiguous_error(self, comp):
+        dynamic = "dynamic"
+        for template in (
+            t"<{comp} title=literal/>",
+            t"<{comp} title=literal/>abc",
+            t"<{comp} title={dynamic}/>",
+            t"<{comp} title={dynamic}/>abc",
+            t"<{comp} title=prefix{dynamic}/>",
+            t"<{comp} title=prefix{dynamic}/>abc",
+            t"<{comp} title={dynamic}literal/>",
+            t"<{comp} title={dynamic}literal/>abc",
+            t"<{comp} title=/>abc",
+            t"<{comp} title=     />abc",  # WS between = and value is ignored, so title=/
+        ):
+            with pytest.raises(
+                ValueError, match="Invalid HTML structure: unclosed tags remain"
+            ):
+                _ = TemplateParser.parse(template)
+
+    def test_element_self_closing_error(self):
+        dynamic = "dynamic"
+        attrs = {"active": True}
+        for template in (
+            t"<div/>abc",
+            t"<div active/>abc",
+            t"<div {attrs}/>abc",
+            t"<div />abc",
+            t"<div title=literal />abc",
+            t'<div title="literal"/>abc',
+            t"<div title={dynamic} />abc",
+            t'<div title="{dynamic}"/>abc',
+            t"<div title={dynamic}literal />abc",
+            t'<div title="{dynamic}literal"/>abc',
+        ):
+            with pytest.raises(
+                ValueError, match="Self-closing tags are only supported"
+            ):
+                _ = TemplateParser.parse(template)
+
+
+class TestResetRulesInParser:
+    @pytest.fixture
+    def wrap_in_svg(self):
+        def _wrap_in_svg(children: Template) -> Template:
+            return t"<svg>{children}</svg>"
+
+        return _wrap_in_svg
+
+    @pytest.fixture
+    def wrap_in_fo(self):
+        def _wrap_in_fo(children: Template) -> Template:
+            return t"<foreignObject>{children}</foreignObject>"
+
+        return _wrap_in_fo
+
+    def test_parser_fails_when_processor_might_succeed_svg_in_html(self, wrap_in_svg):
+        with pytest.raises(ValueError, match="void"):
+            _ = TemplateParser.parse(
+                t"<div><{wrap_in_svg}><circle/></{wrap_in_svg}></div>"
+            )
+
+    def test_parser_works_by_accident_html_in_svg(self, wrap_in_fo):
+        node = TemplateParser.parse(t"<svg><{wrap_in_fo}><input></{wrap_in_fo}></svg>")
+        assert isinstance(node, TElement)
+
+    def test_parser_fails_when_it_should_anyways_svg_in_svg(self, wrap_in_fo):
+        with pytest.raises(ValueError, match="void"):
+            _ = TemplateParser.parse(
+                t"<svg><{wrap_in_fo}><circle/></{wrap_in_fo}></svg>"
+            )
+
+    def test_parser_works_when_processor_should_fail(self, wrap_in_svg):
+        node = TemplateParser.parse(
+            t"<div><{wrap_in_svg}><input></{wrap_in_svg}></div>"
+        )
+        assert isinstance(node, TElement)

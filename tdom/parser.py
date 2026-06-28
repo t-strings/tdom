@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from string.templatelib import Interpolation, Template
 
-from .htmlspec import VOID_ELEMENTS
+from .htmlspec import VOID_ELEMENTS, NamespaceType
 from .placeholders import PlaceholderConfig, PlaceholderState
 from .template_utils import TemplateRef, combine_template_refs
 from .tnodes import (
@@ -26,7 +26,18 @@ type HTMLAttributesDict = dict[str, str | None]
 
 
 @dataclass
+class ParseInfo:
+    starttag_text: str
+    " Entire starttag as parsed, includes placeholders, used for debugging. "
+    raw_attrs: Sequence[HTMLAttribute]
+    " Attrs as parsed, includes placeholders, used for debugging. "
+    startend: bool
+    " Was parsed as startend tag, ie. <tag />, used for debugging. "
+
+
+@dataclass
 class OpenTElement:
+    parse_info: ParseInfo
     tag: str
     attrs: tuple[TAttribute, ...]
     children: list[TNode] = field(default_factory=list)
@@ -39,6 +50,7 @@ class OpenTFragment:
 
 @dataclass
 class OpenTComponent:
+    parse_info: ParseInfo
     start_i_index: int
     children_start_s_index: int
     """The strings index where the component's children template starts."""
@@ -72,6 +84,26 @@ class SourceTracker:
     def interpolations(self) -> tuple[Interpolation, ...]:
         return self.template.interpolations
 
+    def _check_indices(self, index1: int, index2: int):
+        last_index = len(self.interpolations) - 1
+        if max(index1, index2) > last_index or min(index1, index2) < 0:
+            raise ValueError(
+                f"Interpolation indices exceed bounds: {index1} {index2}: [0...{last_index}]"
+            )
+
+    def expressions_match(self, i_index1: int, i_index2: int) -> bool:
+        self._check_indices(i_index1, i_index2)
+        return (
+            self.interpolations[i_index1].expression
+            == self.interpolations[i_index2].expression
+        )
+
+    def values_match(self, i_index1: int, i_index2: int) -> bool:
+        self._check_indices(i_index1, i_index2)
+        return (
+            self.interpolations[i_index1].value == self.interpolations[i_index2].value
+        )
+
     def advance_interpolation(self) -> int:
         """Call before processing an interpolation to move to the next one."""
         self.i_index += 1
@@ -96,13 +128,31 @@ class SourceTracker:
         return self.get_expression(i_index, fallback_prefix="component-starttag")
 
 
+@dataclass(frozen=True)
+class ParseContext:
+    """
+    This is the context that was used to parse a given template.
+    """
+
+    # @TODO: slots might have issue with weakref, check if caching that
+    # is an issue.
+
+    ns: NamespaceType = "html"
+
+    def copy(self, ns: NamespaceType | None = None) -> ParseContext:
+        return ParseContext(ns=ns if ns is not None else self.ns)
+
+
 class TemplateParser(HTMLParser):
     root: OpenTFragment
-    stack: list[OpenTag]
+    stack: list[tuple[OpenTag, ParseContext]]
     placeholders: PlaceholderState
     source: SourceTracker | None
+    root_ctx: ParseContext
+    " Assume that template parsing *starts* in this context. "
 
-    def __init__(self, *, convert_charrefs: bool = True):
+    def __init__(self, *, root_ctx: ParseContext, convert_charrefs: bool = True):
+        self.root_ctx = root_ctx
         # This calls HTMLParser.reset() which we override to set up our state.
         super().__init__(convert_charrefs=convert_charrefs)
 
@@ -112,7 +162,7 @@ class TemplateParser(HTMLParser):
 
     def get_parent(self) -> OpenTag:
         """Return the current parent node to which new children should be added."""
-        return self.stack[-1] if self.stack else self.root
+        return self.stack[-1][0] if self.stack else self.root
 
     def append_child(self, child: TNode) -> None:
         parent = self.get_parent()
@@ -159,12 +209,22 @@ class TemplateParser(HTMLParser):
     # Tag Helpers
     # ------------------------------------------
 
-    def make_open_tag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> OpenTag:
+    def make_open_tag(
+        self, tag: str, attrs: Sequence[HTMLAttribute], startend: bool = False
+    ) -> OpenTag:
         """Build an OpenTag from a raw tag and attribute tuples."""
         tag_ref = self.placeholders.remove_placeholders(tag)
 
         if tag_ref.is_literal:
-            return OpenTElement(tag=tag, attrs=self.make_tattrs(attrs))
+            return OpenTElement(
+                parse_info=ParseInfo(
+                    starttag_text=self.get_starttag_text(),
+                    raw_attrs=attrs,
+                    startend=startend,
+                ),
+                tag=tag,
+                attrs=self.make_tattrs(attrs),
+            )
 
         if not tag_ref.is_singleton:
             raise ValueError(
@@ -189,11 +249,9 @@ class TemplateParser(HTMLParser):
         # @NOTE: This must be called when the tag is handled since it is
         # populated based on the most recently finished start tag. Otherwise
         # the value will be out of sync.
-        starttag_text = self.get_starttag_text()
-        if starttag_text is None:
-            raise AssertionError(
-                f"Expected startag_text to be set when parsing component at {i_index}."
-            )
+        starttag_text = self.get_starttag_text(
+            f"Expected startag_text to be set when parsing component at {i_index}."
+        )
 
         tattrs = self.make_tattrs(attrs)
 
@@ -205,6 +263,9 @@ class TemplateParser(HTMLParser):
         )
 
         return OpenTComponent(
+            parse_info=ParseInfo(
+                starttag_text=starttag_text, raw_attrs=attrs, startend=startend
+            ),
             start_i_index=i_index,
             children_start_s_index=children_start_s_index,
             offset_into_children_start_s=offset_into_children_start_s,
@@ -339,7 +400,7 @@ class TemplateParser(HTMLParser):
 
     def validate_end_tag(self, tag: str, open_tag: OpenTag) -> int | None:
         """Validate that closing tag matches open tag. Return component end index if applicable."""
-        assert self.source, "Parser source tracker not initialized."
+        source = self.get_source()
         tag_ref = self.placeholders.remove_placeholders(tag)
 
         match open_tag:
@@ -359,17 +420,94 @@ class TemplateParser(HTMLParser):
 
             case OpenTComponent(start_i_index=start_i_index):
                 if tag_ref.is_literal:
-                    raise ValueError(
-                        f"Mismatched closing tag </{tag}> for component starting at {self.source.format_starttag(start_i_index)}."
+                    starttag = source.format_starttag(start_i_index)
+                    e = ValueError(
+                        f"Mismatched closing tag </{tag}> for component with tag {{{starttag}}}."
                     )
+                    if self.has_ambiguous_forward_slash(open_tag):
+                        e.add_note(
+                            f'Did you mean to quote the last attribute or put a space before "/>" for "<{{{starttag}}} .../>"?'
+                        )
+                    raise e
                 if not tag_ref.is_singleton:
                     raise ValueError(
                         "Component end tags must have exactly one interpolation."
                     )
-                # HERE BE DRAGONS: the interpolation at end_i_index shuld be a
-                # component callable that matches the start tag. We do not check
-                # any of this in the parser, instead relying on higher layers.
+                if not source.expressions_match(
+                    open_tag.start_i_index, tag_ref.i_indexes[0]
+                ) and not source.values_match(
+                    open_tag.start_i_index, tag_ref.i_indexes[0]
+                ):
+                    e = TypeError(
+                        "Component start and end tags must contain the same callable."
+                    )
+                    if self.has_ambiguous_forward_slash(open_tag):
+                        starttag = source.format_starttag(start_i_index)
+                        e.add_note(
+                            f'Did you mean to quote the last attribute or put a space before "/>" for "<{{{starttag}}} .../>"?'
+                        )
+                    raise e
                 return tag_ref.i_indexes[0]
+
+    def get_starttag_text(self, msg: str = "Expecting starttag text to be set.") -> str:
+        """
+        Wrap get_starttag_text and just raise if None is returned.
+
+        Do this so we don't guard for `None` everywhere.
+        """
+        starttag_text = super().get_starttag_text()
+        if starttag_text is None:
+            raise AssertionError(msg)
+        return starttag_text
+
+    def get_last_ctx(self) -> ParseContext:
+        if self.stack:
+            return self.stack[-1][1]
+        else:
+            return self.root_ctx
+
+    def is_literal_tag(self, tag: str):
+        return self.placeholders.copy().remove_placeholders(tag).is_literal
+
+    def validate_self_close_attempt(self, last_ctx: ParseContext, tag: str):
+        if (
+            last_ctx.ns == "html"
+            # @NOTE: Only void tags can be closed when NS is explictly html.
+            and tag not in VOID_ELEMENTS
+        ):
+            e = ValueError(
+                "Self-closing tags are only supported for components and void tags in html."
+            )
+            e.add_note(f"Cannot self-close {tag}.")
+            raise e
+
+    def has_ambiguous_forward_slash(self, open_tag: OpenTag) -> bool:
+        """
+        Detect when an unquoted attribute value consumes a trailing "/" that
+        *might* have been meant to attempt to self-close a tag, ie. "/>".
+
+        This can come up with literal values or values with interpolations.
+
+        Such as "<div title=test/>" or "<{Component} title=test/>".
+
+        Or more often "<{Component} title={title}/>" which should be corrected
+        with "<{Component} title={title} />".
+        """
+        if isinstance(open_tag, (OpenTElement, OpenTComponent)):
+            info = open_tag.parse_info
+            return (
+                # has attributes
+                len(info.raw_attrs) > 0
+                # last attr not bare attribute
+                and info.raw_attrs[-1][1] is not None
+                # last char of last attr is "/"
+                and info.raw_attrs[-1][1][-1] == "/"
+                # parsed starttag ends with "/>"
+                and info.starttag_text.endswith("/>")
+                # if parsed as startend then its not ambiguous
+                and not info.startend
+            )
+        return False
 
     # ------------------------------------------
     # HTMLParser tag callbacks
@@ -377,15 +515,39 @@ class TemplateParser(HTMLParser):
 
     def handle_starttag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         open_tag = self.make_open_tag(tag, attrs)
-        if isinstance(open_tag, OpenTElement) and open_tag.tag in VOID_ELEMENTS:
+        last_ctx = self.get_last_ctx()
+        if (
+            isinstance(open_tag, OpenTElement)
+            and open_tag.tag in VOID_ELEMENTS
+            and last_ctx.ns == "html"
+        ):
             final_tag = self.finalize_tag(open_tag)
             self.append_child(final_tag)
         else:
-            self.stack.append(open_tag)
+            last_ctx = self.get_last_ctx()
+            if isinstance(open_tag, OpenTElement):
+                if open_tag.tag == "svg":
+                    next_ctx = last_ctx.copy(ns="svg")
+                elif open_tag.tag == "math":
+                    next_ctx = last_ctx.copy(ns="math")
+                elif open_tag.tag == "foreignobject" and last_ctx.ns in ("svg", "math"):
+                    next_ctx = last_ctx.copy(ns="html")
+                else:
+                    next_ctx = last_ctx
+            elif isinstance(open_tag, OpenTComponent):
+                # @NOTE: We "reset" the ns to html when parsing component children.
+                next_ctx = last_ctx.copy(ns="html")
+            else:
+                next_ctx = last_ctx
+            self.stack.append((open_tag, next_ctx))
 
     def handle_startendtag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         """Dispatch a self-closing tag, `<tag />` to specialized handlers."""
-        open_tag = self.make_open_tag(tag, attrs)
+        if self.is_literal_tag(tag):
+            last_ctx = self.get_last_ctx()
+            self.validate_self_close_attempt(last_ctx, tag)
+
+        open_tag = self.make_open_tag(tag, attrs, startend=True)
         final_tag = self.finalize_tag(open_tag)
         self.append_child(final_tag)
 
@@ -393,7 +555,7 @@ class TemplateParser(HTMLParser):
         if not self.stack:
             raise ValueError(f"Unexpected closing tag </{tag}> with no open tag.")
 
-        open_tag = self.stack.pop()
+        open_tag, _ = self.stack.pop()
         endtag_i_index = self.validate_end_tag(tag, open_tag)
         final_tag = self.finalize_tag(open_tag, endtag_i_index)
         self.append_child(final_tag)
@@ -449,7 +611,21 @@ class TemplateParser(HTMLParser):
                     "Parser expects more data, is the template valid html?"
                 )
         if self.stack:
-            raise ValueError("Invalid HTML structure: unclosed tags remain.")
+            e = ValueError("Invalid HTML structure: unclosed tags remain.")
+            # Check for tags that might have meant to self-close but whose
+            # unquoted last attribute value consumed a "/", ie. <div id=app/>.
+            parent, _ = self.stack[-1]
+            # @TODO: We need to determine which tags this might apply to, this only applies to components.
+            if isinstance(parent, OpenTComponent) and self.has_ambiguous_forward_slash(
+                parent
+            ):
+                starttag = (
+                    f"{{{self.get_source().format_starttag(parent.start_i_index)}}}"
+                )
+                e.add_note(
+                    f'Did you mean to quote the last attribute or put a space before "/>" for "<{starttag} .../>"?'
+                )
+            raise e
         if not self.placeholders.is_empty:
             raise ValueError("Some placeholders were never resolved.")
         super().close()
@@ -508,13 +684,15 @@ class TemplateParser(HTMLParser):
         self.feed_str(template.strings[-1])
 
     @staticmethod
-    def parse(t: Template) -> TNode:
+    def parse(t: Template, assume_ctx: ParseContext | None = None) -> TNode:
         """
         Parse a Template containing valid HTML and substitutions and return
         a TNode tree representing its structure. This cachable structure can later
         be resolved against actual interpolation values to produce a Node tree.
         """
-        parser = TemplateParser()
+        if assume_ctx is None:
+            assume_ctx = ParseContext()
+        parser = TemplateParser(root_ctx=assume_ctx)
         parser.feed_template(t)
         parser.close()
         return parser.get_tnode()
