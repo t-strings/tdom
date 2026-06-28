@@ -34,6 +34,7 @@ from .parser_utils import HTMLAttribute
 from .placeholders import PlaceholderConfig, make_placeholder_config
 from .protocols import HasHTMLDunder
 from .scope import ScopedTemplate
+from .source import SourceReader
 from .template_utils import TemplateRef
 from .tnodes import (
     TAttribute,
@@ -780,10 +781,22 @@ class TemplateProcessor(ITemplateProcessor):
                     if parser_pos:
                         sinfo = sinfo_table.get(parser_pos, None)
                 if sinfo:
+                    #
+                    # Example 4: Getting starttag repr and pos in processor.
+                    #
+                    reader = SourceReader(
+                        e_state.template,
+                        placeholder_config=e_state.ttree.placeholder_config,
+                    )
+                    starttag_repr = reader.ref_to_repr(
+                        reader.placeholder_config.find_placeholders(sinfo.starttag_text)
+                    )
+                    starttag_pos_msg = reader.make_template_pos_msg(sinfo.starttag_pos)
                     e.add_note(
-                        f"Error occurred at {type(e_state.tnode)} in template {sinfo.starttag_text} at {parser_pos}"
+                        f"Error occurred at {starttag_repr} at {starttag_pos_msg}."
                     )
                 else:
+                    # @TODO: Scrape together what we can for a better message.
                     e.add_note(f"Error occurred at {type(e_state.tnode)} in template")
             raise
 
