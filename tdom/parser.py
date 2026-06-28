@@ -12,6 +12,7 @@ from .placeholders import (
 )
 from .source import (
     FrozenPosition,
+    SourceReader,
     TagSourceInfo,
 )
 from .template_utils import TemplateRef, combine_template_refs
@@ -166,6 +167,11 @@ class SourceTracker:
 
     def format_endtag(self, i_index: int) -> str:
         return self.get_expression(i_index, fallback_prefix="component-endtag")
+
+    def get_reader(self) -> SourceReader:
+        return SourceReader(
+            template=self.template, placeholder_config=self.placeholders.config
+        )
 
 
 class TemplateParser(HTMLParser):
@@ -571,7 +577,9 @@ class TemplateParser(HTMLParser):
             source = self.get_source()
             tag_ref = source.placeholders.copy().remove_placeholders(tag)
             if tag_ref.is_literal:
-                raise ParsingError(f"Unexpected closing tag </{tag}> with no open tag.")
+                reader = source.get_reader()
+                pos_msg = reader.make_template_pos_msg(self.get_parser_pos())
+                raise ParsingError(f"Unexpected closing tag </{tag}> with no open tag, {pos_msg}.")
             if not tag_ref.is_singleton:
                 # @TODO: Also it doesn't match anything
                 raise ParsingError(
