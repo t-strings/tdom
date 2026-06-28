@@ -485,8 +485,20 @@ class TemplateParser(HTMLParser):
         match open_tag:
             case OpenTElement():
                 if not tag_ref.is_literal:
+                    #
+                    # EXAMPLE 3: getting earlier source slice and line number AND
+                    # current source slice and current line number
+                    #
+                    reader = source.get_reader()
+                    starttag_ref = reader.placeholder_config.find_placeholders(
+                        open_tag.sinfo.starttag_text
+                    )
+                    starttag_repr = reader.ref_to_repr(starttag_ref)
+                    endtag_repr = reader.ref_to_repr(tag_ref)
+                    endtag_pos_msg = reader.make_template_pos_msg(self.get_parser_pos())
+                    starttag_pos_msg = reader.make_template_pos_msg(open_tag.parser_pos)
                     raise ParsingError(
-                        f"Component closing tag found for element <{open_tag.tag}>."
+                        f"Component closing tag </{endtag_repr}> at {endtag_pos_msg} found for element {starttag_repr} at {starttag_pos_msg}."
                     )
                 if tag != open_tag.tag:
                     raise ParsingError(
@@ -577,18 +589,24 @@ class TemplateParser(HTMLParser):
             source = self.get_source()
             tag_ref = source.placeholders.copy().remove_placeholders(tag)
             if tag_ref.is_literal:
+                # EXAMPLE 1: getting line number, does not slice/extract source
                 reader = source.get_reader()
                 pos_msg = reader.make_template_pos_msg(self.get_parser_pos())
-                raise ParsingError(f"Unexpected closing tag </{tag}> with no open tag, {pos_msg}.")
+                raise ParsingError(
+                    f"Unexpected closing tag </{tag}> with no open tag, {pos_msg}."
+                )
             if not tag_ref.is_singleton:
                 # @TODO: Also it doesn't match anything
                 raise ParsingError(
                     "Component end tags must have exactly one interpolation."
                 )
             # Component tag endtag but no component tag is open...
-            unmatched_endtag = self.get_source().format_endtag(tag_ref.i_indexes[0])
+            # EXAMPLE 2: getting line number AND get source (repr)esentation via ref
+            reader = source.get_reader()
+            pos_msg = reader.make_template_pos_msg(self.get_parser_pos())
+            tag_repr = reader.ref_to_repr(tag_ref)
             raise ParsingError(
-                f"Unexpected closing component tag </{{{unmatched_endtag}}}> with no open tag."
+                f"Unexpected closing component tag </{tag_repr}> with no open tag, {pos_msg}."
             )
         open_tag = self.stack.pop()
         endtag_i_index = self.validate_end_tag(tag, open_tag)
