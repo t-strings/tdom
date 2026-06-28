@@ -91,3 +91,59 @@ class TemplateRef:
         """Use the given interpolations to resolve this reference template into a Template."""
         resolved = [interpolations[i_index] for i_index in self.i_indexes]
         return template_from_parts(self.strings, resolved)
+
+
+def slice_from_template(
+    template: Template, tslice: TemplateSlice
+) -> t.Generator[Interpolation | str]:
+    """
+    Yield the template parts that make up the requested slice.
+    """
+    if tslice.start is None:
+        first = 0
+    else:
+        first = tslice.start
+        assert first >= 0 and first < len(template.strings)
+    if tslice.start_offset is None:
+        offset = None
+    else:
+        offset = tslice.start_offset
+    if tslice.stop is None:
+        last = len(template.strings) - 1
+    else:
+        last = tslice.stop - 1
+        assert last >= 0 and last < len(template.strings)
+    if tslice.stop_limit is None:
+        limit = None
+    else:
+        limit = tslice.stop_limit
+
+    if first == last:
+        yield template.strings[first][offset:limit]
+        return
+    else:
+        yield template.strings[first][offset:]
+        yield template.interpolations[first]
+
+    for index in range(first + 1, last + 1):
+        if index == last:
+            yield template.strings[last][:limit]
+        else:
+            yield template.strings[index]
+            yield template.interpolations[index]
+
+
+@dataclass(frozen=True, slots=True)
+class TemplateSlice:
+    """
+    strings[start][start_offset:]
+    ...
+    strings[stop][:stop_limit]
+
+    @NOTE: Start offset could be len(string[start]) and likewise stop_limit could be 0.
+    """
+
+    start: int | None = None
+    start_offset: int | None = None
+    stop: int | None = None
+    stop_limit: int | None = None
