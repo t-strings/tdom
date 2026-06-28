@@ -463,7 +463,9 @@ def test_component_element_invalid_opening_tag():
     def Component():
         pass
 
-    with pytest.raises(ParsingError, match="Component closing tag found"):
+    with pytest.raises(
+        ParsingError, match="Component closing tag .* found for element"
+    ):
         _ = TemplateParser.parse(t"<div></{Component}>")
 
 
