@@ -39,7 +39,7 @@ class TagSourceInfo:
     they can contain embedded placeholders.
     """
 
-    starttag_text: str
+    starttag_ref: TemplateRef
     " Entire starttag as parsed, includes placeholders, . "
     raw_attrs: tuple[HTMLAttribute, ...]
     " Attrs as parsed, includes placeholders. "

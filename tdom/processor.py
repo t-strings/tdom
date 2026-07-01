@@ -788,9 +788,7 @@ class TemplateProcessor(ITemplateProcessor):
                         e_state.template,
                         placeholder_config=e_state.ttree.placeholder_config,
                     )
-                    starttag_repr = reader.ref_to_repr(
-                        reader.placeholder_config.find_placeholders(sinfo.starttag_text)
-                    )
+                    starttag_repr = reader.ref_to_repr(sinfo.starttag_ref)
                     starttag_pos_msg = reader.make_template_pos_msg(sinfo.starttag_pos)
                     e.add_note(
                         f"Error occurred at {starttag_repr} at {starttag_pos_msg}."

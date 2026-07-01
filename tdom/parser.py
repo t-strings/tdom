@@ -54,7 +54,7 @@ class OpenTagSourceInfo:
     they can contain embedded placeholders.
     """
 
-    starttag_text: str
+    starttag_ref: TemplateRef
     " Entire starttag as parsed, includes placeholders, . "
     raw_attrs: tuple[HTMLAttribute, ...]
     " Attrs as parsed, includes placeholders. "
@@ -65,7 +65,7 @@ class OpenTagSourceInfo:
 
     def close(self, endtag_pos: FrozenPosition | None = None) -> TagSourceInfo:
         return TagSourceInfo(
-            starttag_text=self.starttag_text,
+            starttag_ref=self.starttag_ref,
             raw_attrs=self.raw_attrs,
             startend=self.startend,
             starttag_pos=self.starttag_pos,
@@ -284,7 +284,7 @@ class TemplateParser(HTMLParser):
                 tag=tag,
                 attrs=self.make_tattrs(attrs),
                 sinfo=OpenTagSourceInfo(
-                    starttag_text=self.get_starttag_text(),
+                    starttag_ref=self.get_starttag_ref(),
                     raw_attrs=tuple(attrs),
                     startend=startend,
                     starttag_pos=parser_pos,
@@ -316,12 +316,7 @@ class TemplateParser(HTMLParser):
         # @NOTE: This must be called when the tag is handled since it is
         # populated based on the most recently finished start tag. Otherwise
         # the value will be out of sync.
-        starttag_text = self.get_starttag_text(
-            f"Expected startag_text to be set when parsing component at {i_index}."
-        )
-        # Bypass placeholder tracking and just make ref directly.
-        # Placeholder tracking should be covered by the SourceTracker independently.
-        starttag_ref = source.placeholders.config.find_placeholders(starttag_text)
+        starttag_ref = self.get_starttag_ref()
         # @NOTE: The last string should terminate the starttag and end with ">"
         # So this length is the offset from the last interpolation to the start
         # of the children's leading string.
@@ -336,7 +331,7 @@ class TemplateParser(HTMLParser):
             attrs=self.make_tattrs(attrs),
             parser_pos=parser_pos,
             sinfo=OpenTagSourceInfo(
-                starttag_text=starttag_text,
+                starttag_ref=starttag_ref,
                 raw_attrs=tuple(attrs),
                 startend=startend,
                 starttag_pos=parser_pos,
@@ -460,9 +455,7 @@ class TemplateParser(HTMLParser):
                     # current source slice and current line number
                     #
                     reader = source.get_reader()
-                    starttag_ref = reader.placeholder_config.find_placeholders(
-                        open_tag.sinfo.starttag_text
-                    )
+                    starttag_ref = open_tag.sinfo.starttag_ref
                     starttag_repr = reader.ref_to_repr(starttag_ref)
                     endtag_repr = reader.ref_to_repr(tag_ref)
                     endtag_pos_msg = reader.make_template_pos_msg(self.get_parser_pos())
@@ -496,16 +489,19 @@ class TemplateParser(HTMLParser):
                     )
                 return tag_ref.i_indexes[0]
 
-    def get_starttag_text(self, msg: str = "Expecting starttag text to be set.") -> str:
+    def get_starttag_ref(self) -> TemplateRef:
         """
         Wrap get_starttag_text and just raise if None is returned.
 
         Do this so we don't guard for `None` everywhere.
         """
-        starttag_text = super().get_starttag_text()
+        starttag_text = self.get_starttag_text()
         if starttag_text is None:
-            raise ParsingAssertionError(msg)
-        return starttag_text
+            raise ParsingAssertionError(
+                "Expected the parser to have starttag_text set."
+            )
+        # @NOTE: We assume the source tracker already manages the placeholders.
+        return self.get_source().find_placeholders(starttag_text)
 
     def has_ambiguous_forward_slash(
         self, sinfo: OpenTagSourceInfo | TagSourceInfo | None
@@ -530,7 +526,7 @@ class TemplateParser(HTMLParser):
                 # last char of last attr is "/"
                 and sinfo.raw_attrs[-1][1][-1] == "/"
                 # parsed starttag ends with "/>"
-                and sinfo.starttag_text.endswith("/>")
+                and sinfo.starttag_ref.strings[-1].endswith("/>")
                 # if parsed as startend then its not ambiguous
                 and not sinfo.startend
             )
