@@ -173,6 +173,23 @@ class SourceTracker:
             template=self.template, placeholder_config=self.placeholders.config
         )
 
+    def remove_placeholders(self, text: str) -> TemplateRef:
+        """
+        Find tracked placeholders in text and mark them as found.
+
+        @NOTE: Raises if any untracked placeholders are found.
+
+        If you want to make a TemplateRef without changing state use
+        `self.find_placeholders()`.
+        """
+        return self.placeholders.remove_placeholders(text)
+
+    def find_placeholders(self, text: str) -> TemplateRef:
+        """
+        Find all placeholders without affecting tracking.
+        """
+        return self.placeholders.config.find_placeholders(text)
+
 
 class TemplateParser(HTMLParser):
     root: OpenTFragment
@@ -540,7 +557,7 @@ class TemplateParser(HTMLParser):
     def handle_endtag(self, tag: str) -> None:
         if not self.stack:
             source = self.get_source()
-            tag_ref = source.placeholders.copy().remove_placeholders(tag)
+            tag_ref = source.find_placeholders(tag)
             if tag_ref.is_literal:
                 # EXAMPLE 1: getting line number, does not slice/extract source
                 reader = source.get_reader()
@@ -602,7 +619,7 @@ class TemplateParser(HTMLParser):
 
     def handle_data(self, data: str) -> None:
         source = self.get_source()
-        ref = source.placeholders.remove_placeholders(data)
+        ref = source.remove_placeholders(data)
         parent = self.get_parent()
         if parent.children and isinstance(parent.children[-1], TText):
             prior_text = parent.children[-1]
@@ -616,13 +633,13 @@ class TemplateParser(HTMLParser):
 
     def handle_comment(self, data: str) -> None:
         source = self.get_source()
-        ref = source.placeholders.remove_placeholders(data)
+        ref = source.remove_placeholders(data)
         comment = TComment(ref, parser_pos=self.get_parser_pos())
         self.append_child(comment)
 
     def handle_decl(self, decl: str) -> None:
         source = self.get_source()
-        ref = source.placeholders.remove_placeholders(decl)
+        ref = source.remove_placeholders(decl)
         if not ref.is_literal:
             raise ParsingError("Interpolations are not allowed in declarations.")
         elif decl.upper().startswith("DOCTYPE "):
