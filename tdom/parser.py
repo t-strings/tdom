@@ -302,22 +302,21 @@ class TemplateParser(HTMLParser):
         starttag_text = self.get_starttag_text(
             f"Expected startag_text to be set when parsing component at {i_index}."
         )
-
-        tattrs = self.make_tattrs(attrs)
-
-        offset_into_children_start_s = self.compute_offset_into_children_start_s(
-            start_i_index=i_index,
-            tattrs=tattrs,
-            config=source.placeholders.config,
-            starttag_text=starttag_text,
-        )
+        # Bypass placeholder tracking and just make ref directly.
+        # Placeholder tracking should be covered by the SourceTracker independently.
+        starttag_ref = source.placeholders.config.find_placeholders(starttag_text)
+        # @NOTE: The last string should terminate the starttag and end with ">"
+        # So this length is the offset from the last interpolation to the start
+        # of the children's leading string.
+        offset_into_children_start_s = len(starttag_ref.strings[-1])
 
         parser_pos = self.get_parser_pos()
+
         open_tag = OpenTComponent(
             start_i_index=i_index,
             children_start_s_index=children_start_s_index,
             offset_into_children_start_s=offset_into_children_start_s,
-            attrs=tattrs,
+            attrs=self.make_tattrs(attrs),
             parser_pos=parser_pos,
             sinfo=OpenTagSourceInfo(
                 starttag_text=starttag_text,
@@ -327,52 +326,6 @@ class TemplateParser(HTMLParser):
             ),
         )
         return open_tag
-
-    def compute_offset_into_children_start_s(
-        self,
-        start_i_index: int,
-        tattrs: tuple[TAttribute, ...],
-        config: PlaceholderConfig,
-        starttag_text: str,
-    ) -> int:
-        """
-        Compute offset into "string" containing the start of children template.
-
-        @NOTE: This is to actually OFFLOAD work to the parser itself.  If we try
-        to "rebuild" the tag from the parse result we are bound to fail in some
-        way(s). We essentially re-run the placeholder process but with content
-        we KNOWN ends at the end of the starttag, ie. ">", because the parser
-        told us that is where it ends (rather than trying to scan for ">"
-        because ">" might be in literal tags).
-
-        Examples:
-
-        <{Comp}></{Comp}> -- len(">")
-        <{Comp}>children</{Comp}> -- len(">")
-        <{Comp} title="1>0">children</{Comp}> -- len(' title="1>0">')
-        <{Comp} title="{'1>0'}">children</{Comp}> -- len('">')
-        """
-        # Rebuild known interpolations in the starttag.
-        known: set[int] = {start_i_index}  # The component callable itself.
-        for attr in tattrs:
-            if isinstance(attr, TInterpolatedAttribute):
-                known.add(attr.value_i_index)
-            elif isinstance(attr, TSpreadAttribute):
-                known.add(attr.i_index)
-            elif isinstance(attr, TTemplatedAttribute):
-                known.update(attr.value_ref.i_indexes)
-        # Now re-remove those placeholders using the same config we used to
-        # make them.
-        temp_placeholders = PlaceholderState(known=known, config=config)
-        tag_ref = temp_placeholders.remove_placeholders(starttag_text)
-        if not temp_placeholders.is_empty:
-            raise ParsingAssertionError(
-                "There are extra placeholders still in the starttag_text."
-            )
-        # Now the last string should terminate the starttag and end with ">"
-        # So this length is the offset from the last interpolation to the start
-        # of the children's leading string.
-        return len(tag_ref.strings[-1])
 
     def finalize_tag(
         self,
