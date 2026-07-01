@@ -2,7 +2,6 @@ import typing as t
 from dataclasses import dataclass
 from string.templatelib import Interpolation, Template
 
-from .parser_utils import HTMLAttribute
 from .placeholders import PlaceholderConfig
 from .template_utils import TemplateRef
 
@@ -41,7 +40,7 @@ class TagSourceInfo:
 
     starttag_ref: TemplateRef
     " Entire starttag as parsed, includes placeholders, . "
-    raw_attrs: tuple[HTMLAttribute, ...]
+    ref_attrs: tuple[tuple[TemplateRef, TemplateRef | None], ...]
     " Attrs as parsed, includes placeholders. "
     startend: bool
     " Was parsed as startend tag, ie. <tag />. "

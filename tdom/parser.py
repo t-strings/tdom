@@ -56,7 +56,7 @@ class OpenTagSourceInfo:
 
     starttag_ref: TemplateRef
     " Entire starttag as parsed, includes placeholders, . "
-    raw_attrs: tuple[HTMLAttribute, ...]
+    ref_attrs: tuple[tuple[TemplateRef, TemplateRef | None], ...]
     " Attrs as parsed, includes placeholders. "
     startend: bool
     " Was parsed as startend tag, ie. <tag />. "
@@ -66,7 +66,7 @@ class OpenTagSourceInfo:
     def close(self, endtag_pos: FrozenPosition | None = None) -> TagSourceInfo:
         return TagSourceInfo(
             starttag_ref=self.starttag_ref,
-            raw_attrs=self.raw_attrs,
+            ref_attrs=self.ref_attrs,
             startend=self.startend,
             starttag_pos=self.starttag_pos,
             endtag_pos=endtag_pos,
@@ -268,6 +268,20 @@ class TemplateParser(HTMLParser):
         """Build TAttributes from raw attribute tuples."""
         return tuple(self.make_tattr(attr) for attr in attrs)
 
+    def make_ref_attr(
+        self, source: SourceTracker, attr: HTMLAttribute
+    ) -> tuple[TemplateRef, TemplateRef | None]:
+        return (
+            source.find_placeholders(attr[0]),
+            source.find_placeholders(attr[1]) if attr[1] is not None else None,
+        )
+
+    def make_ref_attrs(
+        self, attrs: Sequence[HTMLAttribute]
+    ) -> tuple[tuple[TemplateRef, TemplateRef | None], ...]:
+        source = self.get_source()
+        return tuple(self.make_ref_attr(source, attr) for attr in attrs)
+
     # ------------------------------------------
     # Tag Helpers
     # ------------------------------------------
@@ -285,7 +299,7 @@ class TemplateParser(HTMLParser):
                 attrs=self.make_tattrs(attrs),
                 sinfo=OpenTagSourceInfo(
                     starttag_ref=self.get_starttag_ref(),
-                    raw_attrs=tuple(attrs),
+                    ref_attrs=self.make_ref_attrs(attrs),
                     startend=startend,
                     starttag_pos=parser_pos,
                 ),
@@ -332,7 +346,7 @@ class TemplateParser(HTMLParser):
             parser_pos=parser_pos,
             sinfo=OpenTagSourceInfo(
                 starttag_ref=starttag_ref,
-                raw_attrs=tuple(attrs),
+                ref_attrs=self.make_ref_attrs(attrs),
                 startend=startend,
                 starttag_pos=parser_pos,
             ),
@@ -520,11 +534,11 @@ class TemplateParser(HTMLParser):
         if sinfo is not None:
             return (
                 # has attributes
-                len(sinfo.raw_attrs) > 0
+                len(sinfo.ref_attrs) > 0
                 # last attr not bare attribute
-                and sinfo.raw_attrs[-1][1] is not None
-                # last char of last attr is "/"
-                and sinfo.raw_attrs[-1][1][-1] == "/"
+                and sinfo.ref_attrs[-1][1] is not None
+                # last char of last string of value of last ref attr is "/"
+                and sinfo.ref_attrs[-1][1].strings[-1][-1] == "/"
                 # parsed starttag ends with "/>"
                 and sinfo.starttag_ref.strings[-1].endswith("/>")
                 # if parsed as startend then its not ambiguous
