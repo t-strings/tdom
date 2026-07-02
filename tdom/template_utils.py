@@ -94,56 +94,69 @@ class TemplateRef:
 
 
 def slice_from_template(
-    template: Template, tslice: TemplateSlice
+    template: Template,
+    start: PartPosition | None = None,
+    stop: PartPosition | None = None,
 ) -> t.Generator[Interpolation | str]:
     """
     Yield the template parts that make up the requested slice.
     """
-    if tslice.start is None:
-        first = 0
-    else:
-        first = tslice.start
-        assert first >= 0 and first < len(template.strings)
-    if tslice.start_offset is None:
-        offset = None
-    else:
-        offset = tslice.start_offset
-    if tslice.stop is None:
-        last = len(template.strings) - 1
-    else:
-        last = tslice.stop - 1
-        assert last >= 0 and last < len(template.strings)
-    if tslice.stop_limit is None:
-        limit = None
-    else:
-        limit = tslice.stop_limit
+    first = start.index if start and start.index is not None else 0
+    offset = start.offset if start else None
+    last = (
+        stop.index if stop and stop.index is not None else 2 * len(template.strings) - 1
+    )
+    limit = stop.offset if stop else None
 
     if first == last:
-        yield template.strings[first][offset:limit]
+        if first % 2 == 0:
+            yield template.strings[first][offset:limit]
+        else:
+            # @NOTE: No offset OR limit applied to interpolations.
+            yield template.interpolations[first]
         return
     else:
-        yield template.strings[first][offset:]
-        yield template.interpolations[first]
+        if first % 2 == 0:
+            yield template.strings[first // 2][offset:]
+        else:
+            # @NOTE: No offset applied to interpolations.
+            yield template.interpolations[(first - 1) // 2]
 
     for index in range(first + 1, last + 1):
-        if index == last:
-            yield template.strings[last][:limit]
+        if index % 2 == 0:
+            if index == last:
+                yield template.strings[index // 2][:limit]
+            else:
+                yield template.strings[index // 2]
         else:
-            yield template.strings[index]
-            yield template.interpolations[index]
+            # @NOTE: No limit applied to interpolations.
+            yield template.interpolations[(index - 1) // 2]
 
 
-@dataclass(frozen=True, slots=True)
-class TemplateSlice:
+@dataclass(slots=True, frozen=True)
+class PartPosition:
     """
-    strings[start][start_offset:]
-    ...
-    strings[stop][:stop_limit]
+    A template part position.
 
-    @NOTE: Start offset could be len(string[start]) and likewise stop_limit could be 0.
+    Translate indexes into strings by multiplying by 2.
+    ie. 0->0, 1->2, 2->4, etc.
+    Reverse by dividing by 2.
+
+    Translate indexes into interpolations by multiplying by 2 and then adding 1.
+    ie. 0->1, 1->3, 2->5, etc.
+    Reverse by subtracting 1 and dividing by 2.
     """
 
-    start: int | None = None
-    start_offset: int | None = None
-    stop: int | None = None
-    stop_limit: int | None = None
+    index: int
+    " Index of the template parts, translate for strings/interpolations. "
+
+    offset: int = 0
+    " Offset from the start of the template part. "
+
+    @classmethod
+    def pack_s_index(cls, s_index: int, offset: int = 0):
+        return cls(index=s_index * 2, offset=offset)
+
+    @classmethod
+    def pack_i_index(cls, i_index: int, offset: int = 0):
+        return cls(index=i_index * 2 + 1, offset=offset)

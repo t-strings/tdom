@@ -1,9 +1,7 @@
 import typing as t
 from dataclasses import dataclass, field
 
-from .placeholders import PlaceholderConfig
-from .source import FrozenPosition, TagSourceInfo
-from .template_utils import TemplateRef
+from .template_utils import PartPosition, TemplateRef
 
 
 @dataclass(slots=True, frozen=True)
@@ -47,7 +45,7 @@ class TNode:
 class TText(TNode):
     ref: TemplateRef
 
-    parser_pos: FrozenPosition | None = field(default=None, compare=False)
+    source_pos: PartPosition | None = field(default=None, compare=False)
 
     @classmethod
     def empty(cls) -> t.Self:
@@ -62,7 +60,7 @@ class TText(TNode):
 class TComment(TNode):
     ref: TemplateRef
 
-    parser_pos: FrozenPosition | None = field(default=None, compare=False)
+    source_pos: PartPosition | None = field(default=None, compare=False)
 
     @classmethod
     def literal(cls, text: str) -> t.Self:
@@ -73,14 +71,14 @@ class TComment(TNode):
 class TDocumentType(TNode):
     text: str
 
-    parser_pos: FrozenPosition | None = field(default=None, compare=False)
+    source_pos: PartPosition | None = field(default=None, compare=False)
 
 
 @dataclass(slots=True, frozen=True)
 class TFragment(TNode):
     children: tuple[TNode, ...] = field(default_factory=tuple)
 
-    parser_pos: FrozenPosition | None = field(default=None, compare=False)
+    source_pos: PartPosition | None = field(default=None, compare=False)
 
 
 @dataclass(slots=True, frozen=True)
@@ -89,7 +87,7 @@ class TElement(TNode):
     attrs: tuple[TAttribute, ...] = field(default_factory=tuple)
     children: tuple[TNode, ...] = field(default_factory=tuple)
 
-    parser_pos: FrozenPosition | None = field(default=None, compare=False)
+    source_pos: PartPosition | None = field(default=None, compare=False)
 
 
 @dataclass(slots=True, frozen=True)
@@ -107,18 +105,37 @@ class TComponent(TNode):
 
     attrs: tuple[TAttribute, ...] = field(default_factory=tuple)
 
-    parser_pos: FrozenPosition | None = field(default=None, compare=False)
+    source_pos: PartPosition | None = field(default=None, compare=False)
+
+
+@dataclass(frozen=True, slots=True)
+class TagSourceInfo:
+    """
+    Retained tag information from the parsed source meant for error reporting.
+
+    @NOTE: This must be cacheable so it should not directly reference a
+    template instance.
+    """
+
+    starttag_ref: TemplateRef
+    " Entire starttag as parsed except placeholders are replaced by references. "
+    ref_attrs: tuple[tuple[TemplateRef, TemplateRef | None], ...]
+    " Attrs as parsed except placeholders are replaced by references. "
+    startend: bool
+    " Was parsed as startend tag, ie. <tag />. "
+    starttag_pos: PartPosition
+    " Template part position of the starttag, ie. <tag> or <tag />. "
+    endtag_pos: PartPosition | None = None
+    " Template part position of the endtag, ie. </tag>. "
 
 
 @dataclass
 class TTree:
     root: TNode
 
-    placeholder_config: PlaceholderConfig
-
     sinfos: tuple[TagSourceInfo, ...] = ()
 
-    def unpack_sinfo_table(self) -> dict[FrozenPosition, TagSourceInfo]:
+    def unpack_sinfo_table(self) -> dict[PartPosition, TagSourceInfo]:
         return {sinfo.starttag_pos: sinfo for sinfo in self.sinfos}
 
 

@@ -31,7 +31,6 @@ from .htmlspec import (
 )
 from .parser import ParsingError, TemplateParser
 from .parser_utils import HTMLAttribute
-from .placeholders import PlaceholderConfig, make_placeholder_config
 from .protocols import HasHTMLDunder
 from .scope import ScopedTemplate
 from .source import SourceReader
@@ -581,19 +580,11 @@ class ITemplateParserProxy(t.Protocol):
 
 @dataclass(frozen=True)
 class TemplateParserProxy(ITemplateParserProxy):
-    placeholder_config: PlaceholderConfig = field(
-        default_factory=make_placeholder_config
-    )
-
     def to_tnode(self, template: Template) -> TNode:  # BWC
-        return TemplateParser.parse(
-            template, placeholder_config=self.placeholder_config
-        )
+        return TemplateParser.parse(template)
 
     def to_ttree(self, template: Template) -> TTree:
-        return TemplateParser.parse_to_ttree(
-            template, placeholder_config=self.placeholder_config
-        )
+        return TemplateParser.parse_to_ttree(template)
 
 
 @dataclass(frozen=True)
@@ -772,21 +763,20 @@ class TemplateProcessor(ITemplateProcessor):
                     # even get started because the template wouldn't parse.
                     continue
                 sinfo_table = e_state.ttree.unpack_sinfo_table()
-                sinfo = parser_pos = None
+                sinfo = source_pos = None
                 if isinstance(
                     e_state.tnode,
                     (TElement, TText, TComment, TComponent, TDocumentType),
                 ):
-                    parser_pos = e_state.tnode.parser_pos
-                    if parser_pos:
-                        sinfo = sinfo_table.get(parser_pos, None)
+                    source_pos = e_state.tnode.source_pos
+                    if source_pos:
+                        sinfo = sinfo_table.get(source_pos, None)
                 if sinfo:
                     #
                     # Example 4: Getting starttag repr and pos in processor.
                     #
                     reader = SourceReader(
                         e_state.template,
-                        placeholder_config=e_state.ttree.placeholder_config,
                     )
                     starttag_repr = reader.ref_to_repr(sinfo.starttag_ref)
                     starttag_pos_msg = reader.make_template_pos_msg(sinfo.starttag_pos)
