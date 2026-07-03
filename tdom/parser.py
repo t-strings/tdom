@@ -4,7 +4,11 @@ from html.parser import HTMLParser
 from string.templatelib import Interpolation, Template
 
 from .htmlspec import VOID_ELEMENTS
-from .parser_utils import HTMLAttribute, parser_pos_to_part_pos
+from .parser_utils import (
+    HTMLAttribute,
+    ParserPositionTranslator,
+    make_parser_pos_translator,
+)
 from .placeholders import (
     PlaceholderState,
 )
@@ -125,6 +129,13 @@ class SourceTracker:
     i_index: int = -1  # The current interpolation index.
     s_index: int = -1  # The current string index.
 
+    parser_pos_translator: ParserPositionTranslator = field(init=False)
+
+    def __post_init__(self):
+        self.parser_pos_translator = make_parser_pos_translator(
+            self.template, self.placeholders.config
+        )
+
     def __iter__(self):
         return self
 
@@ -193,16 +204,14 @@ class SourceTracker:
         """
         Translate the parser position into a part position in the template.
         """
-        return parser_pos_to_part_pos(
-            self.template, self.placeholders.config, parser_pos
-        )
+        return self.parser_pos_translator.translate(parser_pos)
 
 
 class TemplateParser(HTMLParser):
     root: OpenTFragment
     stack: list[OpenTag]
     source: SourceTracker | None
-    " Map from completed tnodes back to their opentag for error reporting. "
+    " Map from completed tnodes to their parsed children for error reporting. "
     tcomponent_children: dict[TComponent, list[TNode]]
     "List of children for each finished tcomponent, stored at closing. "
     sinfo_table: dict[PartPosition, TagSourceInfo]
