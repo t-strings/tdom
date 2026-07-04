@@ -740,4 +740,4 @@ def test_tnode_parser_position():
         )
         el = tnode.children[0]
         assert isinstance(el, tnode_type)
-        assert el.source_pos == PartPosition.pack_s_index(0, offset=len("<div>"))
+        assert el.source_pos == PartPosition(index=0, offset=len("<div>"))

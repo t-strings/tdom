@@ -152,11 +152,3 @@ class PartPosition:
 
     offset: int = 0
     " Offset from the start of the template part. "
-
-    @classmethod
-    def pack_s_index(cls, s_index: int, offset: int = 0):
-        return cls(index=s_index * 2, offset=offset)
-
-    @classmethod
-    def pack_i_index(cls, i_index: int, offset: int = 0):
-        return cls(index=i_index * 2 + 1, offset=offset)
