@@ -80,6 +80,9 @@ class SourceReader:
         template_pos = self.to_template_pos(source_pos)
         return f"line {template_pos.line} offset {template_pos.offset}"
 
+    def make_interpolation_repr(self, i_index: int) -> str:
+        return interpolation_repr(self.template.interpolations[i_index])
+
     def to_template_pos(self, source_pos: PartPosition) -> LinePosition:
         """
         Convert a (template) part position into a line position based on the

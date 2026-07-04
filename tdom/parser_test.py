@@ -455,7 +455,7 @@ def test_component_element_invalid_closing_tag():
     def Component():
         pass
 
-    with pytest.raises(ParsingError, match="Mismatched closing tag"):
+    with pytest.raises(ParsingError, match="Mismatched closing tag </div>"):
         _ = TemplateParser.parse(t"<{Component}></div>")
 
 
@@ -463,9 +463,8 @@ def test_component_element_invalid_opening_tag():
     def Component():
         pass
 
-    with pytest.raises(
-        ParsingError, match="Component closing tag .* found for element"
-    ):
+    # @NOTE: intentional expression
+    with pytest.raises(ParsingError, match="Mismatched closing tag </{Component}>"):
         _ = TemplateParser.parse(t"<div></{Component}>")
 
 
@@ -489,7 +488,7 @@ def test_unmatched_end_component_tag_error():
     def Component():
         pass
 
-    with pytest.raises(ParsingError, match="Unexpected closing component tag"):
+    with pytest.raises(ParsingError, match="Unexpected closing tag </{Component}>"):
         _ = TemplateParser.parse(t"</{Component}>")
 
 
@@ -629,25 +628,52 @@ class TestComponentExtractChildrenTemplate:
         )
 
 
-class TestComponentUnquotedAttrValueWithAmbiguousSlash:
+class TestElementWithAmbiguousSlash:
+    def test_root_unclosed_error(self):
+        with pytest.raises(
+            ParsingError, match="Did you mean to quote the last attribute.*attr[=]root/"
+        ):
+            _ = TemplateParser.parse(t"<div attr=root/>")
+
+    def test_nested_unclosed_error(self):
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*attr[=]nested/",
+        ):
+            _ = TemplateParser.parse(t"<div><div attr=nested/></div>")
+
+    def test_double_nested_unclosed_error(self):
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*attr[=]nested/",
+        ):
+            _ = TemplateParser.parse(t"<div><div/><div><div attr=nested/></div></div>")
+
+    def test_mismatch_with_element_error(self):
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*attr[=]mismatch/",
+        ):
+            _ = TemplateParser.parse(t"<section><div attr=mismatch/></section>")
+
+    def test_mismatch_with_component_error(self):
+        def Comp(children: Template) -> Template:
+            return t""
+
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*attr[=]mismatch/",
+        ):
+            _ = TemplateParser.parse(t"<{Comp}><div attr=mismatch/></{Comp}>")
+
+
+class TestComponentWithAmbiguousSlash:
     @pytest.fixture
-    def comp_maker(self):
-        def maker(suffix=None):
-            def _Comp(children: Template, title: str) -> Template:
-                return children
-
-            if suffix is not None:
-                _Comp.__name__ = f"{_Comp.__name__}__{suffix}"
-            return _Comp
-
-        return maker
-
-    @pytest.fixture
-    def Comp(self):
-        def _Comp(children: Template, title: str) -> Template:
+    def Comp1(self):
+        def _Comp1(children: Template, title: str) -> Template:
             return children
 
-        return _Comp
+        return _Comp1
 
     @pytest.fixture
     def Comp2(self):
@@ -656,28 +682,38 @@ class TestComponentUnquotedAttrValueWithAmbiguousSlash:
 
         return _Comp2
 
-    def test_comp_unquoted_attr_value_error_root(self, Comp):
-        with pytest.raises(
-            ParsingError, match="Did you mean to quote the last attribute"
-        ):
-            _ = TemplateParser.parse(t"<{Comp} title=today/>")
+    @pytest.fixture
+    def Comp3(self):
+        def _Comp3(children: Template, title: str) -> Template:
+            return children
 
-    def test_comp_unquoted_attr_value_error_nested_in_el(self, Comp):
-        with pytest.raises(
-            ParsingError, match="Did you mean to quote the last attribute"
-        ):
-            _ = TemplateParser.parse(t"<div><{Comp} title=today/></div>")
+        return _Comp3
 
-    def test_comp_unquoted_attr_value_error_single_nested_in_comp(self, Comp, Comp2):
+    def test_mismatch_with_element_error(self, Comp1):
         with pytest.raises(
-            ParsingError, match="Did you mean to quote the last attribute"
+            ParsingError,
+            match="Did you mean to quote the last attribute.*title[=]today/",
         ):
-            _ = TemplateParser.parse(t"<{Comp2}><{Comp} title=today/></{Comp2}>")
+            _ = TemplateParser.parse(t"<div><{Comp1} title=today/></div>")
 
-    def test_comp_unquoted_attr_value_error_double_nested_in_comp(self, comp_maker):
-        Comp1, Comp2, Comp3 = comp_maker("1"), comp_maker("2"), comp_maker("3")
+    def test_root_unclosed_error(self, Comp1):
         with pytest.raises(
-            ParsingError, match="Did you mean to quote the last attribute"
+            ParsingError,
+            match="Did you mean to quote the last attribute.*title[=]today/",
+        ):
+            _ = TemplateParser.parse(t"<{Comp1} title=today/>")
+
+    def test_single_nested_unclosed_error(self, Comp1, Comp2):
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*title[=]today/",
+        ):
+            _ = TemplateParser.parse(t"<{Comp2}><{Comp1} title=today/></{Comp2}>")
+
+    def test_double_nested_unclosed_error(self, Comp1, Comp2, Comp3):
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*title[=]today/",
         ):
             _ = TemplateParser.parse(
                 t"<{Comp2}><{Comp1}><{Comp3} title=today/></{Comp1}></{Comp2}>"
