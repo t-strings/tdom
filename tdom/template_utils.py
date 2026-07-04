@@ -1,6 +1,7 @@
 import typing as t
 from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import chain
 from string.templatelib import Interpolation, Template
 
 
@@ -16,9 +17,11 @@ def template_from_parts(
 
 
 def combine_template_refs(*template_refs: TemplateRef) -> TemplateRef:
+    """ Concatenate multiple template refs together into a single ref. """
+    # trefs -> naive templates -> naive template -> tref
     return TemplateRef.from_naive_template(
-        sum((tr.to_naive_template() for tr in template_refs), t"")
-    )
+        Template(*chain.from_iterable(
+            tr.to_naive_template() for tr in template_refs)))
 
 
 @dataclass(slots=True, frozen=True)
