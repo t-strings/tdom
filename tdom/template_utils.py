@@ -17,11 +17,11 @@ def template_from_parts(
 
 
 def combine_template_refs(*template_refs: TemplateRef) -> TemplateRef:
-    """ Concatenate multiple template refs together into a single ref. """
+    """Concatenate multiple template refs together into a single ref."""
     # trefs -> naive templates -> naive template -> tref
     return TemplateRef.from_naive_template(
-        Template(*chain.from_iterable(
-            tr.to_naive_template() for tr in template_refs)))
+        Template(*chain.from_iterable(tr.to_naive_template() for tr in template_refs))
+    )
 
 
 @dataclass(slots=True, frozen=True)
@@ -139,7 +139,7 @@ def slice_from_template(
 @dataclass(slots=True, frozen=True)
 class PartPosition:
     """
-    A template part position.
+    A unified template part position.
 
     Translate indexes into strings by multiplying by 2.
     ie. 0->0, 1->2, 2->4, etc.
@@ -148,6 +148,9 @@ class PartPosition:
     Translate indexes into interpolations by multiplying by 2 and then adding 1.
     ie. 0->1, 1->3, 2->5, etc.
     Reverse by subtracting 1 and dividing by 2.
+
+    Using unified indexes allows for simpler iteration as well as starting
+    or stopping at either type of part more seamlessly.
     """
 
     index: int
