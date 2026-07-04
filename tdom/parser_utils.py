@@ -19,16 +19,11 @@ def make_parser_pos_translator(
         for index in range(2 * len(template.strings) - 1)
     )
     source_text_lines = tuple("".join(source_text_parts).split("\n"))
-    return ParserPositionTranslator(
-        template, config, source_text_parts, source_text_lines
-    )
+    return ParserPositionTranslator(source_text_parts, source_text_lines)
 
 
 @dataclass
 class ParserPositionTranslator:
-    template: Template
-    config: PlaceholderConfig
-
     source_text_parts: tuple[str, ...]
     " The source text of each template part, with placeholders. "
 
@@ -57,9 +52,6 @@ class ParserPositionTranslator:
 
     def translate(self, parser_pos: LinePosition) -> PartPosition:
         self.validate(parser_pos)
-        return self._translate(parser_pos)
-
-    def _translate(self, parser_pos: LinePosition) -> PartPosition:
         return parser_pos_to_part_pos(self.source_text_parts, parser_pos)
 
 
