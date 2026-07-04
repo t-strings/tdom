@@ -741,6 +741,66 @@ class TemplateProcessor(ITemplateProcessor):
 
     uppercase_doctype: bool = False  # DOCTYPE vs doctype
 
+    def _add_process_error_notes(
+        self,
+        e: ProcessingError,
+    ) -> None:
+        for e_state in reversed(e.template_e_states):
+            if not e_state.ttree:
+                # Just skip this special case where processing could not
+                # even get started because the template wouldn't parse.
+                continue
+            elif not (e_state.tnode and e_state.template):
+                raise AssertionError(
+                    "This should not happen if we have properly contained the error."
+                )
+            else:
+                self._add_tnode_error_note(
+                    e, e_state.ttree, e_state.tnode, e_state.template
+                )
+
+    def _add_tnode_error_note(
+        self,
+        e: ProcessingError,
+        ttree: TTree,  # The root metadata for the "current" template
+        tnode: TNode,  # The leafmost tnode where the error was caught for the "current" template
+        template: Template,  # The "current" template that was being processed
+    ) -> None:
+        sinfo_table = ttree.unpack_sinfo_table()
+        sinfo = None
+        source_pos = None
+        if isinstance(
+            tnode,
+            (TElement, TText, TComment, TComponent, TDocumentType),
+        ):
+            source_pos = tnode.source_pos
+            if source_pos:
+                sinfo = sinfo_table.get(source_pos, None)
+        reader = SourceReader(template)
+        if sinfo:
+            #
+            # Example 4: Getting starttag repr and pos in processor.
+            #
+            starttag_repr = reader.ref_to_repr(sinfo.starttag_ref)
+            starttag_pos_msg = reader.make_template_pos_msg(sinfo.starttag_pos)
+        else:
+            # @TODO: Scrape together what we can for a better message.
+            if isinstance(tnode, TElement):
+                starttag_repr = f"<{tnode.tag} ...>"
+            elif isinstance(tnode, TComponent):
+                starttag_repr = f"<{{Comp(i_index={tnode.start_i_index})}} ...>"
+            elif isinstance(tnode, (TText, TComment)):
+                starttag_repr = reader.ref_to_repr(tnode.ref)
+            elif isinstance(tnode, (TDocumentType)):
+                starttag_repr = f"<!DOCTYPE {tnode.text}>"
+            else:
+                starttag_repr = tnode.__class__.__name__.upper()
+            if source_pos:
+                starttag_pos_msg = reader.make_template_pos_msg(source_pos)
+            else:
+                starttag_pos_msg = "unknown location"
+        e.add_note(f"Error occurred at {starttag_repr} at {starttag_pos_msg}.")
+
     def process(
         self,
         root_template: Template,
@@ -752,40 +812,7 @@ class TemplateProcessor(ITemplateProcessor):
         try:
             return self._process_template(root_template, assume_ctx)
         except ProcessingError as e:
-            #
-            # @TODO: I think we could optionally consolidate and/or reformat
-            # all the exceptions here if needed and move this entire thing to
-            # a special error formatting tool.
-            #
-            for e_state in reversed(e.template_e_states):
-                if not e_state.ttree:
-                    # Just skip this special case where processing could not
-                    # even get started because the template wouldn't parse.
-                    continue
-                sinfo_table = e_state.ttree.unpack_sinfo_table()
-                sinfo = source_pos = None
-                if isinstance(
-                    e_state.tnode,
-                    (TElement, TText, TComment, TComponent, TDocumentType),
-                ):
-                    source_pos = e_state.tnode.source_pos
-                    if source_pos:
-                        sinfo = sinfo_table.get(source_pos, None)
-                if sinfo:
-                    #
-                    # Example 4: Getting starttag repr and pos in processor.
-                    #
-                    reader = SourceReader(
-                        e_state.template,
-                    )
-                    starttag_repr = reader.ref_to_repr(sinfo.starttag_ref)
-                    starttag_pos_msg = reader.make_template_pos_msg(sinfo.starttag_pos)
-                    e.add_note(
-                        f"Error occurred at {starttag_repr} at {starttag_pos_msg}."
-                    )
-                else:
-                    # @TODO: Scrape together what we can for a better message.
-                    e.add_note(f"Error occurred at {type(e_state.tnode)} in template")
+            self._add_process_error_notes(e)
             raise
 
     def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
@@ -803,7 +830,11 @@ class TemplateProcessor(ITemplateProcessor):
         except ProcessingError as e:
             e.template_e_states.append(
                 TemplateErrorState(
-                    template, ttree, e.last_tnode, e.values_index, e.iter_index
+                    template=template,
+                    ttree=ttree,
+                    tnode=e.last_tnode,
+                    values_index=e.values_index,
+                    iter_index=e.iter_index,
                 )
             )
             # Reset everything.
