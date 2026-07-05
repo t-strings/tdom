@@ -720,24 +720,30 @@ class TestComponentWithAmbiguousSlash:
             )
 
 
-def PositionComp() -> Template:
-    return t""
+class TestSourcePosition:
+    def test_tnode_source_position(self):
+        " Check that non-fragments are assigned a source position. "
+        def PositionComp() -> Template:
+            return t""
+        for tnode_type, fragment in (
+            (TElement, t"<span></span>"),
+            (TComment, t"<!--ok-->"),
+            (TDocumentType, t"<!doctype html>"),
+            (TComponent, t"<{PositionComp}></{PositionComp}>"),
+            (TText, t"Just a simple text."),
+        ):
+            tnode = TemplateParser.parse(t"<div>" + fragment + t"</div>")
+            assert (
+                isinstance(tnode, TElement)
+                and tnode.tag == "div"
+                and len(tnode.children) == 1
+            )
+            el = tnode.children[0]
+            assert isinstance(el, tnode_type)
+            assert el.source_pos == PartPosition(index=0, offset=len("<div>"))
 
-
-def test_tnode_parser_position():
-    for tnode_type, fragment in (
-        (TElement, t"<span></span>"),
-        (TComment, t"<!--ok-->"),
-        (TDocumentType, t"<!doctype html>"),
-        (TComponent, t"<{PositionComp}></{PositionComp}>"),
-        (TText, t"Just a simple text."),
-    ):
-        tnode = TemplateParser.parse(t"<div>" + fragment + t"</div>")
-        assert (
-            isinstance(tnode, TElement)
-            and tnode.tag == "div"
-            and len(tnode.children) == 1
-        )
-        el = tnode.children[0]
-        assert isinstance(el, tnode_type)
-        assert el.source_pos == PartPosition(index=0, offset=len("<div>"))
+    def test_fragment_source_position(self):
+        " Fragments do not have a position right now. "
+        root = TemplateParser.parse(t"<div></div><section></section>")
+        assert isinstance(root, TFragment)
+        assert not root.source_pos
