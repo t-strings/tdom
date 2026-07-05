@@ -124,34 +124,32 @@ class SourceTracker:
 
     placeholders: PlaceholderState = field(default_factory=lambda: PlaceholderState())
 
-    # if i_index >= s_index, feeding an interpolation;
-    # otherwise, when i_index < s_index, feeding a string.
-    i_index: int = -1  # The current interpolation index.
-    s_index: int = -1  # The current string index.
+    index: int = -1
 
     def __iter__(self):
+        #
+        # @NOTE: This iterator is only meant to be used once since we track
+        # placeholders both by adding them and letting the user remove them
+        # with calls to `remove_placeholders()`.
         return self
 
     def __next__(self):
-        if self.i_index < self.s_index:
-            # Advance into the next interpolation UNLESS the last string
-            # we returned was at the end of the template.
-            if self.s_index == len(self.template.strings) - 1:
-                raise StopIteration
-            self.i_index += 1
-            return self.placeholders.add_placeholder(self.i_index)
-        elif self.i_index == self.s_index:
-            # Advance into the next string
-            self.s_index += 1
-            return self.template.strings[self.s_index]
+        if self.index < 2 * len(self.template.strings) - 2:
+            self.index += 1
+            if self.index % 2 == 0:
+                return self.template.strings[self.index // 2]
+            else:
+                return self.placeholders.add_placeholder((self.index - 1) // 2)
         else:
-            raise AssertionError("{self.i_index=} should not exceed {self.s_index=}")
+            raise StopIteration
 
-    def values_match(self, i_index1: int, i_index2: int) -> bool:
-        return (
-            self.template.interpolations[i_index1].value
-            == self.template.interpolations[i_index2].value
-        )
+    def get_strings_index(self) -> int:
+        if self.index % 2 == 0:
+            return self.index // 2
+        else:
+            raise AssertionError(
+                f"Index {self.index} is not references an entry in strings."
+            )
 
     def get_reader(self) -> SourceReader:
         return SourceReader(template=self.template)
@@ -323,7 +321,7 @@ class TemplateParser(HTMLParser):
         # i_index + 1 because attributes WITHIN the component's tag might
         # contain interpolations causing the i_index (and s_index) to advance
         # arbitrarily.
-        children_start_s_index = self.get_source().s_index
+        children_start_s_index = self.get_source().get_strings_index()
 
         # @NOTE: This must be called when the tag is handled since it is
         # populated based on the most recently finished start tag. Otherwise
@@ -723,7 +721,7 @@ class TemplateParser(HTMLParser):
                 if (
                     comp.end_i_index is not None
                     and comp.start_i_index != comp.end_i_index
-                    and not source.values_match(comp.start_i_index, comp.end_i_index)
+                    and not reader.values_match(comp.start_i_index, comp.end_i_index)
                 ):
                     starttag_repr = reader.make_interpolation_repr(comp.start_i_index)
                     endtag_repr = reader.make_interpolation_repr(comp.end_i_index)
