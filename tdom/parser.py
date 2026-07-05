@@ -129,13 +129,6 @@ class SourceTracker:
     i_index: int = -1  # The current interpolation index.
     s_index: int = -1  # The current string index.
 
-    parser_pos_translator: ParserPositionTranslator = field(init=False)
-
-    def __post_init__(self):
-        self.parser_pos_translator = make_parser_pos_translator(
-            self.template, self.placeholders.config
-        )
-
     def __iter__(self):
         return self
 
@@ -180,20 +173,23 @@ class SourceTracker:
         """
         return self.placeholders.config.find_placeholders(text)
 
-    def translate_pos(self, parser_pos: LinePosition) -> PartPosition:
-        """
-        Translate the parser position into a part position in the template.
-        """
-        return self.parser_pos_translator.translate(parser_pos)
-
 
 class TemplateParser(HTMLParser):
     root: OpenTFragment
+    "Fallback container of parsed nodes if no other topmost container is found."
+
     stack: list[OpenTag]
+    "Stack of tags left open during parsing."
+
     source: SourceTracker | None
-    " Map from completed tnodes to their parsed children for error reporting. "
+    "Source iterator of template parts, injecting placeholders as needed."
+
+    parser_pos_translator: ParserPositionTranslator | None
+    "Translator from parser position to template part position. "
+
     tcomponent_children: dict[TComponent, list[TNode]]
     "List of children for each finished tcomponent, stored at closing. "
+
     sinfo_table: dict[PartPosition, TagSourceInfo]
     " Tags with more source info than just a position are tracked in this mapping. "
 
@@ -226,8 +222,8 @@ class TemplateParser(HTMLParser):
         return LinePosition(line=line, offset=offset)
 
     def get_source_pos(self, parser_pos: LinePosition | None = None) -> PartPosition:
-        source = self.get_source()
-        return source.translate_pos(
+        "Translate the parser position into a part position in the source template."
+        return self.get_parser_pos_translator().translate(
             self.get_parser_pos() if parser_pos is None else parser_pos
         )
 
@@ -668,6 +664,7 @@ class TemplateParser(HTMLParser):
         self.root = OpenTFragment()
         self.stack = []
         self.source = None
+        self.parser_pos_translator = None
         self.sinfo_table = {}
         self.tcomponent_children = {}
 
@@ -804,10 +801,18 @@ class TemplateParser(HTMLParser):
             raise AssertionError("Source has not been initialized.")
         return self.source
 
+    def get_parser_pos_translator(self) -> ParserPositionTranslator:
+        if self.parser_pos_translator is None:
+            raise AssertionError("Parser position translator has not been initialized.")
+        return self.parser_pos_translator
+
     def feed_template(self, template: Template) -> None:
         """Feed a Template's content to the parser."""
         assert self.source is None, "Did you forget to call reset?"
         self.source = SourceTracker(template)
+        self.parser_pos_translator = make_parser_pos_translator(
+            template, self.source.placeholders.config
+        )
         for content in self.source:
             self.feed(content)
 
