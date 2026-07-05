@@ -12,6 +12,7 @@ from markupsafe import escape as markupsafe_escape
 
 from .callables import get_callable_info
 from .escaping import escape_html_text
+from .parser import ParsingError
 from .processor import (
     AttributeProcessingError,
     CachedTemplateParserProxy,
@@ -27,6 +28,7 @@ from .processor import (
     _prep_component_kwargs as prep_component_kwargs,
 )
 from .protocols import HasHTMLDunder
+from .tnodes import TElement, TText
 
 processor_api = _make_default_template_processor(
     parser_api=TemplateParserProxy(),  # do not use cache
@@ -2222,3 +2224,60 @@ def test_mathml():
   is not a decimal number.
 </p>"""
     )
+
+
+class BadHTMLDunder:
+    def __html__(self):
+        raise ValueError("bad value")
+
+
+class TestProcessingException:
+    def test_attr_error_has_matching_tnode(self):
+        "AttriubteProcessingError should point to tnode where error first occurred."
+        invalid_t = t"<section><div aria={0}><span></span></div></section>"  # 0 is invalid aria value
+        with pytest.raises(AttributeProcessingError) as exc_info:
+            _ = html(invalid_t)
+        assert len(exc_info.value.template_e_states) == 1
+        tnode = exc_info.value.template_e_states[0].tnode
+        assert tnode and isinstance(tnode, TElement) and tnode.tag == "div"
+
+    def test_text_error_has_matching_tnode(self):
+        "TextProcessingError should point to tnode where error first occurred."
+        bad_html_dunder = BadHTMLDunder()  # __html__ raises exception
+        invalid_t = t"<section><div>{bad_html_dunder}</div></section>"
+        with pytest.raises(TextProcessingError) as exc_info:
+            _ = html(invalid_t)
+        assert len(exc_info.value.template_e_states) == 1
+        tnode = exc_info.value.template_e_states[0].tnode
+        assert tnode and isinstance(tnode, TText)
+
+    def test_processing_error_multiple_templates(self):
+        "*ProcessingError should stack error state for each template/tnode as stack unwinds."
+        inner_t = t"<div aria={0}></div>"  # 0 is invalid aria value
+        wrapper_t = t"<div>{inner_t}</div>"
+        with pytest.raises(AttributeProcessingError) as exc_info:
+            _ = html(wrapper_t)
+        assert len(exc_info.value.template_e_states) == 2
+        inner_tnode = exc_info.value.template_e_states[0].tnode
+        assert (
+            inner_tnode
+            and isinstance(inner_tnode, TElement)
+            and inner_tnode.tag == "div"
+        )
+        wrapper_tnode = exc_info.value.template_e_states[1].tnode
+        assert wrapper_tnode and isinstance(wrapper_tnode, TText)
+
+    def test_parsing_error_while_processing(self):
+        inner_t = t"<div>"
+        wrapper_t = t"<div>{inner_t}</div>"
+        with pytest.raises(ProcessingError) as exc_info:
+            _ = html(wrapper_t)
+        assert len(exc_info.value.template_e_states) == 2
+        assert not exc_info.value.template_e_states[0].ttree, (
+            "This can't be set for a parsing error."
+        )
+        wrapper_tnode = exc_info.value.template_e_states[1].tnode
+        assert wrapper_tnode and isinstance(wrapper_tnode, TText)
+        assert isinstance(exc_info.value.__cause__, ParsingError), (
+            "ProcessingError should be chained to parsing error."
+        )
