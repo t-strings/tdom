@@ -766,39 +766,46 @@ class TemplateProcessor(ITemplateProcessor):
         tnode: TNode,  # The leafmost tnode where the error was caught for the "current" template
         template: Template,  # The "current" template that was being processed
     ) -> None:
-        sinfo_table = ttree.unpack_sinfo_table()
-        sinfo = None
-        source_pos = None
-        if isinstance(
-            tnode,
-            (TElement, TText, TComment, TComponent, TDocumentType),
-        ):
-            source_pos = tnode.source_pos
-            if source_pos:
-                sinfo = sinfo_table.get(source_pos, None)
         reader = SourceReader(template)
-        if sinfo:
-            #
-            # Example 4: Getting starttag repr and pos in processor.
-            #
-            starttag_repr = reader.ref_to_repr(sinfo.starttag_ref)
-            starttag_pos_msg = reader.make_template_pos_msg(sinfo.starttag_pos)
+        source_pos = (
+            tnode.source_pos
+            if isinstance(
+                tnode, (TElement, TComponent, TFragment, TComment, TDocumentType, TText)
+            )
+            else None
+        )
+
+        if isinstance(tnode, (TElement, TComponent)):
+            sinfo_table = ttree.unpack_sinfo_table()
+            sinfo = sinfo_table.get(source_pos, None) if source_pos else None
+            if sinfo:
+                starttag_repr = reader.ref_to_repr(sinfo.starttag_ref)
+                starttag_pos_msg = reader.make_template_pos_msg(sinfo.starttag_pos)
+            else:
+                if isinstance(tnode, TComponent):
+                    starttag_repr = reader.ref_to_repr(
+                        TemplateRef(
+                            strings=("<", "...>"), i_indexes=(tnode.start_i_index,)
+                        )
+                    )
+                elif isinstance(tnode, TElement):
+                    starttag_repr = f"<{tnode.tag} ...>"
+                else:
+                    starttag_repr = "unknown source"  # This would likely be a bug.
         else:
-            # @TODO: Scrape together what we can for a better message.
-            if isinstance(tnode, TElement):
-                starttag_repr = f"<{tnode.tag} ...>"
-            elif isinstance(tnode, TComponent):
-                starttag_repr = f"<{{Comp(i_index={tnode.start_i_index})}} ...>"
-            elif isinstance(tnode, (TText, TComment)):
+            if isinstance(tnode, (TText, TComment)):
                 starttag_repr = reader.ref_to_repr(tnode.ref)
-            elif isinstance(tnode, (TDocumentType)):
+            elif isinstance(tnode, TDocumentType):
                 starttag_repr = f"<!DOCTYPE {tnode.text}>"
             else:
+                # @TODO: TFragment/TNode/?
                 starttag_repr = tnode.__class__.__name__.upper()
-            if source_pos:
-                starttag_pos_msg = reader.make_template_pos_msg(source_pos)
-            else:
-                starttag_pos_msg = "unknown location"
+
+        if source_pos:
+            starttag_pos_msg = reader.make_template_pos_msg(source_pos)
+        else:
+            starttag_pos_msg = "unknown location"  # source_pos is optional right now
+
         e.add_note(f"Error occurred at {starttag_repr} at {starttag_pos_msg}.")
 
     def process(
