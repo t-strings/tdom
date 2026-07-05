@@ -722,9 +722,11 @@ class TestComponentWithAmbiguousSlash:
 
 class TestSourcePosition:
     def test_tnode_source_position(self):
-        " Check that non-fragments are assigned a source position. "
+        "Check that non-fragments are assigned a source position."
+
         def PositionComp() -> Template:
             return t""
+
         for tnode_type, fragment in (
             (TElement, t"<span></span>"),
             (TComment, t"<!--ok-->"),
@@ -743,7 +745,7 @@ class TestSourcePosition:
             assert el.source_pos == PartPosition(index=0, offset=len("<div>"))
 
     def test_fragment_source_position(self):
-        " Fragments do not have a position right now. "
+        "Fragments do not have a position right now."
         root = TemplateParser.parse(t"<div></div><section></section>")
         assert isinstance(root, TFragment)
         assert not root.source_pos
