@@ -793,8 +793,10 @@ class TemplateProcessor(ITemplateProcessor):
                 else:
                     starttag_repr = "unknown source"  # This would likely be a bug.
         else:
-            if isinstance(tnode, (TText, TComment)):
+            if isinstance(tnode, TText):
                 starttag_repr = reader.ref_to_repr(tnode.ref)
+            elif isinstance(tnode, TComment):
+                starttag_repr = '<!--{}-->'.format(reader.ref_to_repr(tnode.ref))
             elif isinstance(tnode, TDocumentType):
                 starttag_repr = f"<!DOCTYPE {tnode.text}>"
             else:
