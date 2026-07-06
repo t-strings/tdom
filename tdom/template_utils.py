@@ -95,45 +95,65 @@ class TemplateRef:
         resolved = [interpolations[i_index] for i_index in self.i_indexes]
         return template_from_parts(self.strings, resolved)
 
+    def slice(
+        self,
+        start: PartPosition | None = None,
+        stop: PartPosition | None = None,
+    ) -> TemplateRef:
+        """
+        Slice template ref based on the given start and stop.
+        """
+        size = 2 * len(self.strings) - 1
+        first = start.index if start and start.index is not None else 0
+        assert 0 <= first < size
+        offset = start.offset if start else None
+        last = stop.index if stop and stop.index is not None else size - 1
+        assert 0 <= last < size
+        limit = stop.offset if stop else None
 
-def slice_from_template(
+        strings = []
+        i_indexes = []
+        if first == last:
+            if first % 2 == 0:
+                return TemplateRef(
+                    strings=(self.strings[first][offset:limit],), i_indexes=()
+                )
+            else:
+                # @NOTE: No offset OR limit applied to interpolations.
+                return TemplateRef(strings=("", ""), i_indexes=(first,))
+        else:
+            if first % 2 == 0:
+                strings.append(self.strings[first // 2][offset:])
+            else:
+                # @NOTE: No offset applied to interpolations.
+                strings.append("")
+                i_indexes.append((first - 1) // 2)
+
+        for index in range(first + 1, last + 1):
+            if index % 2 == 0:
+                if index == last:
+                    strings.append(self.strings[index // 2][:limit])
+                else:
+                    strings.append(self.strings[index // 2])
+            else:
+                # @NOTE: No limit applied to interpolations.
+                if index != last:
+                    i_indexes.append((index - 1) // 2)
+        return TemplateRef(strings=tuple(strings), i_indexes=tuple(i_indexes))
+
+
+def slice_to_tref(
     template: Template,
     start: PartPosition | None = None,
     stop: PartPosition | None = None,
-) -> t.Generator[Interpolation | str]:
+) -> TemplateRef:
     """
-    Yield the template parts that make up the requested slice.
+    Slice a template ref from a template based on the given start and stop.
     """
-    first = start.index if start and start.index is not None else 0
-    offset = start.offset if start else None
-    last = (
-        stop.index if stop and stop.index is not None else 2 * len(template.strings) - 1
+    tref = TemplateRef(
+        strings=template.strings, i_indexes=tuple(range(len(template.strings) - 1))
     )
-    limit = stop.offset if stop else None
-
-    if first == last:
-        if first % 2 == 0:
-            yield template.strings[first][offset:limit]
-        else:
-            # @NOTE: No offset OR limit applied to interpolations.
-            yield template.interpolations[first]
-        return
-    else:
-        if first % 2 == 0:
-            yield template.strings[first // 2][offset:]
-        else:
-            # @NOTE: No offset applied to interpolations.
-            yield template.interpolations[(first - 1) // 2]
-
-    for index in range(first + 1, last + 1):
-        if index % 2 == 0:
-            if index == last:
-                yield template.strings[index // 2][:limit]
-            else:
-                yield template.strings[index // 2]
-        else:
-            # @NOTE: No limit applied to interpolations.
-            yield template.interpolations[(index - 1) // 2]
+    return tref.slice(start=start, stop=stop)
 
 
 @dataclass(slots=True, frozen=True)

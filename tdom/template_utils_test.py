@@ -101,3 +101,76 @@ def test_template_ref_resolve():
     resolved_t = src_ref.resolve(src_t.interpolations)
     assert resolved_t.values == ("a", "c", "e")
     assert resolved_t.strings == ("", "b", "d", "f")
+
+
+from .template_utils import PartPosition, slice_to_tref
+
+
+class TestSliceToTRef:
+    def test_string_only_stop(self):
+        parts = list(
+            TemplateRef.from_naive_template(t"<div></div>").slice(
+                start=None, stop=PartPosition(index=0, offset=5)
+            )
+        )
+        assert parts == ["<div>"]
+
+    def test_string_only_start(self):
+        parts = list(
+            slice_to_tref(t"<div></div>", start=PartPosition(index=0, offset=5))
+        )
+        assert parts == ["</div>"]
+
+    def test_string_only_start_stop(self):
+        parts = list(
+            slice_to_tref(
+                t"<div></div>",
+                start=PartPosition(index=0, offset=4),
+                stop=PartPosition(index=0, offset=6),
+            )
+        )
+        assert parts == ["><"]
+
+    def test_single_interpolation_stop(self):
+        parts = TemplateRef.from_naive_template(t"<div>{0}</div>").slice(
+            start=None, stop=PartPosition(index=1, offset=0)
+        )
+        assert list(parts) == ["<div>"]
+
+    def test_single_interpolation_start(self):
+        parts = slice_to_tref(
+            t"<div>{0}</div>", start=None, stop=PartPosition(index=1, offset=0)
+        )
+        assert list(parts) == ["<div>"]
+
+    def test_end_after_interpolation(self):
+        parts = list(
+            slice_to_tref(
+                t"<div>{0}</div>", start=None, stop=PartPosition(index=2, offset=0)
+            )
+        )
+        assert parts == ["<div>", 0]
+
+    def test_newlines(self):
+        parts = list(
+            slice_to_tref(
+                t"<div>\n{0}</div>", start=None, stop=PartPosition(index=0, offset=5)
+            )
+        )
+        assert parts == ["<div>"]
+        parts = list(
+            slice_to_tref(
+                t"<div>\n{0}</div>", start=None, stop=PartPosition(index=0, offset=6)
+            )
+        )
+        assert parts == ["<div>\n"]
+        parts = list(
+            slice_to_tref(
+                t"<div>\n{0}</div>", start=None, stop=PartPosition(index=0, offset=7)
+            )
+        )
+        assert parts == ["<div>\n"]
+        parts = list(
+            slice_to_tref(t"<div>\n{0}</div>", start=PartPosition(index=0, offset=7))
+        )
+        assert parts == [0, "</div>"]

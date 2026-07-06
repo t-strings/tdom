@@ -2,7 +2,7 @@ import typing as t
 from dataclasses import dataclass
 from string.templatelib import Interpolation, Template
 
-from .template_utils import PartPosition, TemplateRef, slice_from_template
+from .template_utils import PartPosition, TemplateRef, slice_to_tref
 
 
 @dataclass(slots=True, frozen=True)
@@ -100,11 +100,11 @@ class SourceReader:
         string representation of the template.
         """
         pos = MutableLinePosition()
-        for part in slice_from_template(self.template, start=None, stop=source_pos):
+        for part in slice_to_tref(self.template, start=None, stop=source_pos):
             if isinstance(part, str):
                 text = part
             else:
-                text = interpolation_repr(part)
+                text = interpolation_repr(self.template.interpolations[part])
             nls = text.count("\n")
             if nls:
                 pos.offset = len(text) - (text.rfind("\n") + 1)
