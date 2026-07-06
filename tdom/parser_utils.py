@@ -110,7 +110,7 @@ def parser_pos_to_part_pos(
                 # had lines, found offset
                 return PartPosition(index, total_offset)
             elif offset_found == offset_need:
-                if index != last_index:
+                if index != last_index and first_nl_index == -1:
                     return PartPosition(index + 1, 0)
                 else:
                     return PartPosition(last_index, offset_found)
