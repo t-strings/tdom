@@ -52,7 +52,15 @@ class ParserPositionTranslator:
 
     def translate(self, parser_pos: LinePosition) -> PartPosition:
         self.validate(parser_pos)
-        return parser_pos_to_part_pos(self.source_text_parts, parser_pos)
+        part_pos = parser_pos_to_part_pos(self.source_text_parts, parser_pos)
+        if part_pos.index % 2 != 0 and part_pos.offset != 0:
+            # You can only land on the start of an interpolation
+            # There is no way to translate a position within a placeholder
+            # to a position within the original interpolation representation.
+            raise ValueError(
+                "Invalid parser position results in offset within interpolation!"
+            )
+        return part_pos
 
 
 def parser_pos_to_part_pos(
