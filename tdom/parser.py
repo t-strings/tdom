@@ -148,7 +148,7 @@ class SourceTracker:
             return self.index // 2
         else:
             raise AssertionError(
-                f"Index {self.index} is not references an entry in strings."
+                f"Index {self.index} is not referencing an entry in strings."
             )
 
     def get_reader(self) -> SourceReader:
