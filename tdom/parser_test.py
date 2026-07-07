@@ -217,8 +217,8 @@ def test_parse_mismatched_tags():
         _ = TemplateParser.parse(t"<div><span>Mismatched</div></span>")
 
 
-def test_parse_unclosed_tag():
-    with pytest.raises(ParsingError, match="unclosed tags remain"):
+def test_parse_unclosed_element():
+    with pytest.raises(ParsingError, match="unclosed tag <div>"):
         _ = TemplateParser.parse(t"<div>Unclosed")
 
 
@@ -490,6 +490,14 @@ def test_unmatched_end_component_tag_error():
 
     with pytest.raises(ParsingError, match="Unexpected closing tag </{Component}>"):
         _ = TemplateParser.parse(t"</{Component}>")
+
+
+def test_unclosed_component_tag_error():
+    def Component():
+        pass
+
+    with pytest.raises(ParsingError, match="unclosed tag <{Component}>"):
+        _ = TemplateParser.parse(t"<{Component}>")
 
 
 def test_placeholder_collision_avoidance():

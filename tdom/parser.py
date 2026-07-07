@@ -752,8 +752,16 @@ class TemplateParser(HTMLParser):
                     "Parser expects more data, is the template valid html?"
                 )
         if self.stack:
-            e = ParsingError("Invalid HTML structure: unclosed tags remain.")
-            self.run_unclosed_ambiguous_slash_checks(self.stack[-1], e)
+            parent = self.stack[-1]
+            if isinstance(parent, (OpenTElement, OpenTComponent)):
+                reader = source.get_reader()
+                starttag_repr = reader.ref_to_repr(parent.sinfo.starttag_ref)
+                pos_msg = reader.make_template_pos_msg(parent.source_pos)
+                unclosed_msg = f"unclosed tag {starttag_repr} at {pos_msg}"
+            else:
+                unclosed_msg = "unclosed tags remain"
+            e = ParsingError(f"Invalid HTML structure: {unclosed_msg}.")
+            self.run_unclosed_ambiguous_slash_checks(parent, e)
             raise e
         if not source.placeholders.is_empty:
             raise ParsingError("Some placeholders were never resolved.")
