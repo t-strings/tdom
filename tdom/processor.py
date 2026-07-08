@@ -1,5 +1,5 @@
 import typing as t
-from collections.abc import Callable, Iterable, Sequence, Mapping
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
