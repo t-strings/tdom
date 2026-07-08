@@ -676,8 +676,7 @@ class ComponentProcessor(IComponentProcessor):
             raise
         except Exception as e:
             # Causes:
-            # - Could be a failed "callable" formatter
-            # - Could be a failed "__html__()" call -- I think? # @TODO:
+            # - Could be a failed "callback" formatter
             #
             raise AttributeProcessingError(
                 "Error occurred processing component attributes"
