@@ -26,8 +26,11 @@ class TestToTemplatePosition:
         )
 
     def test_line(self):
+        # whitespace is part of test
+        # fmt: off
         t = t"""<div>
 {"content"}</div>"""
+        # fmt: on
         reader = SourceReader(template=t)
         source_pos = PartPosition(index=2, offset=0)
         assert reader.to_template_pos(source_pos) == LinePosition(
@@ -35,14 +38,15 @@ class TestToTemplatePosition:
         )
 
     def test_line_in_interpolation(self):
+        # whitespace is part of test
+        # fmt: off
         t = t"""<div>
-{
-            '''
+{'''
 content
-'''
-        }</div>"""
+'''}</div>"""
+        # fmt: on
         reader = SourceReader(template=t)
         source_pos = PartPosition(index=2, offset=0)
         assert reader.to_template_pos(source_pos) == LinePosition(
-            line=4, offset=len('"""}')
+            line=4, offset=len("'''}")
         )
