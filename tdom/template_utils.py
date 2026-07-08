@@ -120,7 +120,7 @@ class TemplateRef:
                 )
             else:
                 # @NOTE: No offset OR limit applied to interpolations.
-                return TemplateRef(strings=("", ""), i_indexes=(first,))
+                return TemplateRef(strings=("", ""), i_indexes=((first - 1) // 2,))
         else:
             if first % 2 == 0:
                 strings.append(self.strings[first // 2][offset:])
