@@ -1835,14 +1835,38 @@ def test_attribute_type_component():
 
 class TestComponentErrors:
     def test_component_non_callable_fails(self):
-        with pytest.raises(ComponentInvocationError):
+        with pytest.raises(ComponentInvocationError, match="must be callable"):
             _ = html(t"<{'not a function'} />")
+
+    def test_catchall_for_attr_prep_callback_error(self):
+        def prep_attr():
+            return 1 / 0
+
+        def Repeat(count: int = 0, children: Template = t"") -> Template:
+            return sum([children] * count, t"")
+
+        with pytest.raises(
+            AttributeProcessingError,
+            match="Error occurred processing component attributes",
+        ):
+            _ = html(t"<{Repeat} count={prep_attr:callback}><span>OK</span></{Repeat}>")
+
+    def test_normal_attr_error(self):
+        def Comp(children: Template, **kwargs) -> Template:
+            return t"<div {kwargs}>{children}</div>"
+
+        with pytest.raises(
+            AttributeProcessingError, match="Cannot use int as value for aria attribute"
+        ):
+            _ = html(t"<{Comp} aria={0}><span>OK</span></{Comp}>")
 
     def test_component_requiring_positional_arg_fails(self):
         def RequiresPositional(whoops: int, /) -> Template:  # pragma: no cover
             return t"<p>Positional arg: {whoops}</p>"
 
-        with pytest.raises(ComponentInvocationError):
+        with pytest.raises(
+            ComponentInvocationError, match="cannot have required positional arguments"
+        ):
             _ = html(t"<{RequiresPositional} />")
 
     def test_mismatched_component_closing_tag_fails(self):
@@ -1852,7 +1876,9 @@ class TestComponentErrors:
         def CloseTag(children: Template) -> Template:
             return t"<div>close</div>"
 
-        with pytest.raises(ComponentInvocationError):
+        with pytest.raises(
+            ComponentInvocationError, match="must match component callable"
+        ):
             _ = html(t"<{OpenTag}>Hello</{CloseTag}>")
 
     @pytest.mark.parametrize(
@@ -2226,7 +2252,12 @@ def test_mathml():
     )
 
 
-class BadHTMLDunder:
+@pytest.fixture
+def bad_html_dunder():
+    return _BadHTMLDunder()
+
+
+class _BadHTMLDunder:
     def __html__(self):
         raise ValueError("bad value")
 
@@ -2241,9 +2272,8 @@ class TestProcessingException:
         tnode = exc_info.value.template_e_states[0].tnode
         assert tnode and isinstance(tnode, TElement) and tnode.tag == "div"
 
-    def test_text_error_has_matching_tnode(self):
+    def test_text_error_has_matching_tnode(self, bad_html_dunder):
         "TextProcessingError should point to tnode where error first occurred."
-        bad_html_dunder = BadHTMLDunder()  # __html__ raises exception
         invalid_t = t"<section><div>{bad_html_dunder}</div></section>"
         with pytest.raises(TextProcessingError) as exc_info:
             _ = html(invalid_t)
