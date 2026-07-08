@@ -1025,6 +1025,19 @@ class TestInterpolationFormatSpec:
                     + Template(f"</{tag}>")
                 )
 
+    def test_callback_internal_error(self):
+        def raise_value_error():
+            raise ValueError("Failed to compute count.")
+
+        with pytest.raises(
+            AttributeProcessingError,
+            match="Unexpected error occurred while processing element attrs",
+        ) as exc_info:
+            _ = html(t"<div count={raise_value_error:callback}></div>")
+        assert isinstance(exc_info.value.__cause__, ValueError), (
+            "Original error should be chained."
+        )
+
 
 # --------------------------------------------------------------------------
 # Conditional rendering and control flow
