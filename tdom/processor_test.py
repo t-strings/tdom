@@ -1881,6 +1881,34 @@ class TestComponentErrors:
         ):
             _ = html(t"<{OpenTag}>Hello</{CloseTag}>")
 
+    def test_func_comp_error(self):
+        def RaisesValueError(children: Template) -> Template:
+            raise ValueError("Failed to build template.")
+
+        with pytest.raises(
+            ComponentInvocationError, match="Failed when invoking component callable[.]"
+        ) as exc_info:
+            _ = html(t"<{RaisesValueError}>Hello</{RaisesValueError}>")
+        assert isinstance(exc_info.value.__cause__, ValueError), (
+            "Original error should be chained."
+        )
+
+    def test_factory_comp_error(self):
+        def RaisesValueError(children: Template) -> Callable[[], Template]:
+            def _RaisesValueError() -> Template:
+                raise ValueError("Failed to build template.")
+
+            return _RaisesValueError
+
+        with pytest.raises(
+            ComponentInvocationError,
+            match="Failed when invoking component callable the second time.",
+        ) as exc_info:
+            _ = html(t"<{RaisesValueError}>Hello</{RaisesValueError}>")
+        assert isinstance(exc_info.value.__cause__, ValueError), (
+            "Original error should be chained."
+        )
+
     @pytest.mark.parametrize(
         "bad_value", ("", "text", None, 1, ("tuple", "of", "strs"))
     )
