@@ -1,5 +1,6 @@
 import datetime
 import typing as t
+from collections import UserDict
 from collections.abc import Callable
 from dataclasses import dataclass
 from itertools import chain, product
@@ -1257,13 +1258,17 @@ class TestSpecialAriaAttribute:
         with pytest.raises(TypeError):
             _ = html(t'<div aria="{aria1} {aria2}"></div>')
 
-    def test_aria_interpolated_attr_dict(self):
-        aria = {"label": "Close", "hidden": True, "another": False, "more": None}
-        res = html(t"<button aria={aria}>X</button>")
-        assert (
-            res
-            == '<button aria-label="Close" aria-hidden="true" aria-another="false">X</button>'
-        )
+    def test_interpolated_mapping(self):
+        aria_dict = {"label": "Close", "hidden": True, "another": False, "more": None}
+        for aria_mapping in (
+            aria_dict,
+            UserDict(aria_dict.items()),
+        ):  # dict and non-dict Mapping
+            res = html(t"<button aria={aria_mapping}>X</button>")
+            assert (
+                res
+                == '<button aria-label="Close" aria-hidden="true" aria-another="false">X</button>'
+            )
 
     def test_aria_interpolate_attr_none(self):
         button_aria = None
@@ -1307,6 +1312,17 @@ class TestSpecialClassAttribute:
             res
             == '<button class="red btn btn-primary one two active blue green yellow">Click me</button>'
         )
+
+    def test_interpolated_mapping(self):
+        class_dict = {"active": True, "btn-secondary": False}
+        for class_mapping in (
+            class_dict,
+            UserDict(class_dict.items()),
+        ):  # dict and non-dict Mapping
+            res = html(
+                t"<button class='btn-secondary' class={class_mapping}>X</button>"
+            )
+            assert res == '<button class="active">X</button>'
 
     def test_interpolated_class_attribute_with_multiple_placeholders(self):
         classes1 = ["btn", "btn-primary"]

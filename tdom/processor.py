@@ -1,5 +1,5 @@
 import typing as t
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
@@ -100,7 +100,7 @@ def _expand_aria_attr(value: object) -> Iterable[HTMLAttribute]:
     """Produce aria-* attributes based on the interpolated value for "aria"."""
     if value is None:
         return
-    elif isinstance(value, dict):
+    elif isinstance(value, Mapping):
         for sub_k, sub_v in value.items():
             if sub_v is True:
                 yield f"aria-{sub_k}", "true"
@@ -120,7 +120,7 @@ def _expand_data_attr(value: object) -> Iterable[Attribute]:
     """Produce data-* attributes based on the interpolated value for "data"."""
     if value is None:
         return
-    elif isinstance(value, dict):
+    elif isinstance(value, Mapping):
         for sub_k, sub_v in value.items():
             if sub_v is True or sub_v is False or sub_v is None:
                 yield f"data-{sub_k}", sub_v
@@ -138,11 +138,11 @@ def _substitute_spread_attrs(value: object) -> Iterable[Attribute]:
 
     A spread attribute is one where the key is a placeholder, indicating that
     the entire attribute set should be replaced by the interpolated value.
-    The value must be a dict or iterable of key-value pairs.
+    The value must be a Mapping.
     """
     if value is None:
         return
-    elif isinstance(value, dict):
+    elif isinstance(value, Mapping):
         yield from value.items()
     else:
         raise TypeError(
@@ -202,7 +202,7 @@ class StyleAccumulator:
                 self.styles.update(
                     {name: value for name, value in parse_style_attribute_value(value)}
                 )
-            case dict():
+            case Mapping():
                 self.styles.update(
                     {
                         str(pn): str(pv) if pv is not None else None
@@ -250,7 +250,7 @@ class ClassAccumulator:
         """
         Merge in an interpolated class value.
         """
-        if isinstance(value, dict):
+        if isinstance(value, Mapping):
             self.toggled_classes.update(
                 {str(cn): bool(toggle) for cn, toggle in value.items()}
             )
