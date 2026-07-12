@@ -143,14 +143,6 @@ class SourceTracker:
         else:
             raise StopIteration
 
-    def get_strings_index(self) -> int:
-        if self.index % 2 == 0:
-            return self.index // 2
-        else:
-            raise AssertionError(
-                f"Index {self.index} is not referencing an entry in strings."
-            )
-
     def get_reader(self) -> SourceReader:
         return SourceReader(template=self.template)
 
@@ -313,20 +305,20 @@ class TemplateParser(HTMLParser):
         # relying on higher layers to validate types and render correctly.
         i_index = tag_ref.i_indexes[0]
 
-        # @NOTE: This must be stored when the tag is handled since it is
-        # set based on when the template parts are fed in and otherwise
-        # might be out of sync.
+        # @NOTE: This must be called when the tag is handled since it is
+        # populated based on the most recently finished start tag. Otherwise
+        # the value will be out of sync.
+        starttag_ref = self.get_starttag_ref()
         # The starting s_index of the component's children template. Note that
         # this string either contains ">" or " />".  It might not be
         # i_index + 1 because attributes WITHIN the component's tag might
         # contain interpolations causing the i_index (and s_index) to advance
         # arbitrarily.
-        children_start_s_index = self.get_source().get_strings_index()
-
-        # @NOTE: This must be called when the tag is handled since it is
-        # populated based on the most recently finished start tag. Otherwise
-        # the value will be out of sync.
-        starttag_ref = self.get_starttag_ref()
+        children_start_s_index = (
+            i_index  # i_index of comp callable, from start of the WHOLE template
+            + len(starttag_ref.strings)  # then count up to the end
+            - 1  # remove 1 since we want an index instead of a limit
+        )
         # @NOTE: The last string should terminate the starttag and end with ">"
         # So this length is the offset from the last interpolation to the start
         # of the children's leading string.
