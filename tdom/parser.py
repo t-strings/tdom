@@ -363,6 +363,9 @@ class TemplateParser(HTMLParser):
                     children=tuple(children),
                     source_pos=source_pos,
                 )
+                source_pos = (
+                    open_tag.source_pos
+                )  # Re-assignment for ty regression in 0.0.59
                 self.sinfo_table[source_pos] = sinfo.close(endtag_pos=endtag_pos)
             case OpenTFragment(children=children, source_pos=source_pos):
                 tnode = TFragment(children=tuple(children), source_pos=source_pos)
