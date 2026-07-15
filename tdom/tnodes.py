@@ -119,8 +119,6 @@ class TagSourceInfo:
 
     starttag_ref: TemplateRef
     " Entire starttag as parsed except placeholders are replaced by references. "
-    ref_attrs: tuple[tuple[TemplateRef, TemplateRef | None], ...]
-    " Attrs as parsed except placeholders are replaced by references. "
     startend: bool
     " Was parsed as startend tag, ie. <tag />. "
     starttag_pos: PartPosition

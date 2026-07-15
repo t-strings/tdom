@@ -55,14 +55,10 @@ class OpenTagSourceInfo:
 
     @NOTE: This is an temporary structure that will be finalized when the
     tag is closed.
-
-    @TODO: Do we need `ref_attrs` or should we just try to get by with the tattrs?
     """
 
     starttag_ref: TemplateRef
     " Entire starttag as parsed except placeholders are replaced by references. "
-    ref_attrs: tuple[tuple[TemplateRef, TemplateRef | None], ...]
-    " Attrs as parsed except placeholders are replaced by references. "
     startend: bool
     " Was parsed as startend tag, ie. <tag />. "
     starttag_pos: PartPosition
@@ -71,7 +67,6 @@ class OpenTagSourceInfo:
     def close(self, endtag_pos: PartPosition | None = None) -> TagSourceInfo:
         return TagSourceInfo(
             starttag_ref=self.starttag_ref,
-            ref_attrs=self.ref_attrs,
             startend=self.startend,
             starttag_pos=self.starttag_pos,
             endtag_pos=endtag_pos,
@@ -256,20 +251,6 @@ class TemplateParser(HTMLParser):
         """Build TAttributes from raw attribute tuples."""
         return tuple(self.make_tattr(attr) for attr in attrs)
 
-    def make_ref_attr(
-        self, source: SourceTracker, attr: HTMLAttribute
-    ) -> tuple[TemplateRef, TemplateRef | None]:
-        return (
-            source.find_placeholders(attr[0]),
-            source.find_placeholders(attr[1]) if attr[1] is not None else None,
-        )
-
-    def make_ref_attrs(
-        self, attrs: Sequence[HTMLAttribute]
-    ) -> tuple[tuple[TemplateRef, TemplateRef | None], ...]:
-        source = self.get_source()
-        return tuple(self.make_ref_attr(source, attr) for attr in attrs)
-
     # ------------------------------------------
     # Tag Helpers
     # ------------------------------------------
@@ -287,7 +268,6 @@ class TemplateParser(HTMLParser):
                 attrs=self.make_tattrs(attrs),
                 sinfo=OpenTagSourceInfo(
                     starttag_ref=self.get_starttag_ref(),
-                    ref_attrs=self.make_ref_attrs(attrs),
                     startend=startend,
                     starttag_pos=source_pos,
                 ),
@@ -334,7 +314,6 @@ class TemplateParser(HTMLParser):
             source_pos=source_pos,
             sinfo=OpenTagSourceInfo(
                 starttag_ref=starttag_ref,
-                ref_attrs=self.make_ref_attrs(attrs),
                 startend=startend,
                 starttag_pos=source_pos,
             ),
@@ -450,6 +429,7 @@ class TemplateParser(HTMLParser):
     def make_mismatch_error(
         self,
         starttag_sinfo: OpenTagSourceInfo,
+        starttag_attrs: tuple[TAttribute, ...],
         endtag_ref: TemplateRef,
         endtag_pos: PartPosition,
     ) -> ParsingError:
@@ -461,7 +441,7 @@ class TemplateParser(HTMLParser):
         e = ParsingError(
             f"Mismatched closing tag </{endtag_repr}> at {endtag_pos_msg} for {starttag_repr} at {starttag_pos_msg}."
         )
-        if self.has_ambiguous_forward_slash(starttag_sinfo):
+        if self.has_ambiguous_forward_slash(starttag_sinfo, starttag_attrs):
             e.add_note(
                 f'Did you mean to quote the last attribute or put a space before "/>" for "{starttag_repr}" at {starttag_pos_msg}?'
             )
@@ -486,7 +466,7 @@ class TemplateParser(HTMLParser):
             case OpenTElement():
                 if tag_ref.is_singleton or (tag_ref.is_literal and tag != open_tag.tag):
                     raise self.make_mismatch_error(
-                        open_tag.sinfo, tag_ref, self.get_source_pos()
+                        open_tag.sinfo, open_tag.attrs, tag_ref, self.get_source_pos()
                     )
                 elif not tag_ref.is_singleton and not tag_ref.is_literal:
                     raise self.make_invalid_endtag_error(tag_ref, self.get_source_pos())
@@ -496,7 +476,7 @@ class TemplateParser(HTMLParser):
             case OpenTComponent():
                 if tag_ref.is_literal:
                     raise self.make_mismatch_error(
-                        open_tag.sinfo, tag_ref, self.get_source_pos()
+                        open_tag.sinfo, open_tag.attrs, tag_ref, self.get_source_pos()
                     )
                 elif not tag_ref.is_singleton:
                     raise self.make_invalid_endtag_error(tag_ref, self.get_source_pos())
@@ -517,7 +497,9 @@ class TemplateParser(HTMLParser):
         return self.get_source().find_placeholders(starttag_text)
 
     def has_ambiguous_forward_slash(
-        self, sinfo: OpenTagSourceInfo | TagSourceInfo | None
+        self,
+        sinfo: OpenTagSourceInfo | TagSourceInfo | None,
+        attrs: tuple[TAttribute, ...],
     ) -> bool:
         """
         Detect when an unquoted attribute value consumes a trailing "/" that
@@ -530,20 +512,29 @@ class TemplateParser(HTMLParser):
         Or more often "<{Component} title={title}/>" which should be corrected
         with "<{Component} title={title} />".
         """
-        if sinfo is not None:
-            return (
-                # has attributes
-                len(sinfo.ref_attrs) > 0
-                # last attr not bare attribute
-                and sinfo.ref_attrs[-1][1] is not None
-                # last char of last string of value of last ref attr is "/"
-                and sinfo.ref_attrs[-1][1].strings[-1][-1] == "/"
-                # parsed starttag ends with "/>"
-                and sinfo.starttag_ref.strings[-1].endswith("/>")
-                # if parsed as startend then its not ambiguous
-                and not sinfo.startend
+        return (
+            # has source info
+            sinfo is not None
+            # has attributes
+            and len(attrs) > 0
+            # last attribute ends with "/"
+            # @NOTE: spread and interpolated attrs never do
+            and (
+                (
+                    isinstance(attrs[-1], TLiteralAttribute)
+                    and attrs[-1].value is not None
+                    and attrs[-1].value.endswith("/")
+                )
+                or (
+                    isinstance(attrs[-1], TTemplatedAttribute)
+                    and attrs[-1].value_ref.strings[-1].endswith("/")
+                )
             )
-        return False
+            # parsed starttag ends with "/>",
+            and sinfo.starttag_ref.strings[-1].endswith("/>")
+            # if parsed AS startend already then its not ambiguous
+            and not sinfo.startend
+        )
 
     # ------------------------------------------
     # HTMLParser tag callbacks
@@ -673,7 +664,7 @@ class TemplateParser(HTMLParser):
         reader = source.get_reader()
         if isinstance(
             parent, (OpenTElement, OpenTComponent)
-        ) and self.has_ambiguous_forward_slash(parent.sinfo):
+        ) and self.has_ambiguous_forward_slash(parent.sinfo, parent.attrs):
             # CASE: "<{C1} attr={value}/>" -- maybe user meant to self-close?
             # CASE: "<div attr={value}/>" -- mayber user meant to self-close?
             starttag_ref = parent.sinfo.starttag_ref
@@ -695,7 +686,7 @@ class TemplateParser(HTMLParser):
                         if child.source_pos is not None
                         else None
                     )
-                    if sinfo and self.has_ambiguous_forward_slash(sinfo):
+                    if sinfo and self.has_ambiguous_forward_slash(sinfo, child.attrs):
                         full_starttag_repr = reader.ref_to_repr(sinfo.starttag_ref)
                         e.add_note(
                             f'Did you mean to quote the last attribute or put a space before "/>" for "{full_starttag_repr}"?'
@@ -728,7 +719,7 @@ class TemplateParser(HTMLParser):
                         if comp.source_pos is not None
                         else None
                     )
-                    if sinfo and self.has_ambiguous_forward_slash(sinfo):
+                    if sinfo and self.has_ambiguous_forward_slash(sinfo, comp.attrs):
                         full_starttag_repr = reader.ref_to_repr(sinfo.starttag_ref)
                         e.add_note(
                             f'Did you mean to quote the last attribute or put a space before "/>" for "{full_starttag_repr}"?'
