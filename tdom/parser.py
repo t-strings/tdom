@@ -339,7 +339,7 @@ class TemplateParser(HTMLParser):
 
     def validate_end_tag(self, tag: str, open_tag: OpenTag) -> int | None:
         """Validate that closing tag matches open tag. Return component end index if applicable."""
-        assert self.source, "Parser source tracker not initialized."
+        source = self.get_source()
         tag_ref = self.placeholders.remove_placeholders(tag)
 
         match open_tag:
@@ -360,7 +360,7 @@ class TemplateParser(HTMLParser):
             case OpenTComponent(start_i_index=start_i_index):
                 if tag_ref.is_literal:
                     raise ValueError(
-                        f"Mismatched closing tag </{tag}> for component starting at {self.source.format_starttag(start_i_index)}."
+                        f"Mismatched closing tag </{tag}> for component starting at {source.format_starttag(start_i_index)}."
                     )
                 if not tag_ref.is_singleton:
                     raise ValueError(
