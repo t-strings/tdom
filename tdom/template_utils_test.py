@@ -160,8 +160,8 @@ def test_template_ref_resolve():
 class TestSliceToTRef:
     def test_string_only_stop(self):
         parts = list(
-            TemplateRef.from_naive_template(t"<div></div>").slice(
-                start=None, stop=PartPosition(index=0, offset=5)
+            slice_to_tref(
+                t"<div></div>", start=None, stop=PartPosition(index=0, offset=5)
             )
         )
         assert parts == ["<div>"]
@@ -224,9 +224,34 @@ class TestSliceToTRef:
         )
         assert parts == [0, "</div>"]
 
+    def test_start_stop_same_string_is_empty(self):
+        assert slice_to_tref(
+            t"<div>{0}={1}</div>",
+            start=PartPosition(index=2, offset=0),
+            stop=PartPosition(index=2, offset=0),
+        ).is_empty
+
+    def test_start_stop_same_interpolation_is_empty(self):
+        assert slice_to_tref(
+            t"<div>{0}={1}</div>",
+            start=PartPosition(index=3, offset=0),
+            stop=PartPosition(index=3, offset=0),
+        ).is_empty
+
+    def test_start_stop_same_substring(self):
+        parts = list(
+            slice_to_tref(
+                t"<div>{0}={1}</div>",
+                start=PartPosition(index=0, offset=1),
+                stop=PartPosition(index=0, offset=4),
+            )
+        )
+        assert parts == ["div"]
+
     def test_start_stop_just_interpolation(self):
         parts = list(
-            TemplateRef.from_naive_template(t"<div>{0}={1}</div>").slice(
+            slice_to_tref(
+                t"<div>{0}={1}</div>",
                 start=PartPosition(index=1, offset=0),
                 stop=PartPosition(index=2, offset=0),
             )
@@ -235,18 +260,10 @@ class TestSliceToTRef:
 
     def test_start_stop_just_string(self):
         parts = list(
-            TemplateRef.from_naive_template(t"<div>{0}={1}</div>").slice(
+            slice_to_tref(
+                t"<div>{0}={1}</div>",
                 start=PartPosition(index=2, offset=0),
                 stop=PartPosition(index=3, offset=0),
             )
         )
         assert parts == ["="]
-
-    def test_start_stop_substring(self):
-        parts = list(
-            TemplateRef.from_naive_template(t"<div>{0}={1}</div>").slice(
-                start=PartPosition(index=0, offset=1),
-                stop=PartPosition(index=0, offset=4),
-            )
-        )
-        assert parts == ["div"]
