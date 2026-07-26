@@ -132,16 +132,16 @@ class TestSliceToTRef:
         assert parts == ["><"]
 
     def test_single_interpolation_stop(self):
-        parts = TemplateRef.from_naive_template(t"<div>{0}</div>").slice(
-            start=None, stop=PartPosition(index=1, offset=0)
+        parts = slice_to_tref(
+            t"<div>{0}</div>", start=None, stop=PartPosition(index=1, offset=0)
         )
         assert list(parts) == ["<div>"]
 
     def test_single_interpolation_start(self):
         parts = slice_to_tref(
-            t"<div>{0}</div>", start=None, stop=PartPosition(index=1, offset=0)
+            t"<div>{0}</div>", start=PartPosition(index=1, offset=0)
         )
-        assert list(parts) == ["<div>"]
+        assert list(parts) == [0, "</div>"]
 
     def test_end_after_interpolation(self):
         parts = list(
