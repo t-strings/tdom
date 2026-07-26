@@ -8,8 +8,7 @@ from .parser import (
     TemplateParser,
 )
 from .placeholders import make_placeholder_config
-from .source import PartPosition
-from .template_utils import TemplateRef
+from .template_utils import PartPosition, TemplateRef
 from .tnodes import (
     TComment,
     TComponent,

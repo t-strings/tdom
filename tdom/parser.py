@@ -14,10 +14,9 @@ from .placeholders import (
 )
 from .source import (
     LinePosition,
-    PartPosition,
     SourceReader,
 )
-from .template_utils import TemplateRef, combine_template_refs
+from .template_utils import PartPosition, TemplateRef, combine_template_refs
 from .tnodes import (
     TagSourceInfo,
     TAttribute,
