@@ -3,7 +3,7 @@ from string.templatelib import Template
 
 from .placeholders import PlaceholderConfig
 from .source import LinePosition, MutableLinePosition
-from .template_utils import PartPosition
+from .template_utils import PartPosition, validate_part_position
 
 type HTMLAttribute = tuple[str, str | None]
 
@@ -53,13 +53,7 @@ class ParserPositionTranslator:
     def translate(self, parser_pos: LinePosition) -> PartPosition:
         self.validate(parser_pos)
         part_pos = parser_pos_to_part_pos(self.source_text_parts, parser_pos)
-        if part_pos.index % 2 != 0 and part_pos.offset != 0:
-            # You can only land on the start of an interpolation
-            # There is no way to translate a position within a placeholder
-            # to a position within the original interpolation representation.
-            raise ValueError(
-                "Invalid parser position results in offset within interpolation!"
-            )
+        validate_part_position(part_pos)
         return part_pos
 
 

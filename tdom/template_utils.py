@@ -193,3 +193,21 @@ class PartPosition:
 
     offset: int = 0
     " Offset from the start of the template part. "
+
+
+def validate_part_position(part_pos: PartPosition) -> None:
+    """
+    Basic part position validation for parts that are converted to template
+    source `LinePosition`.
+
+    @TODO: This might move into the constructor eventually depending on usage.
+    """
+    if part_pos.index % 2 != 0 and part_pos.offset != 0:
+        # You can only land on the start of an interpolation
+        raise ValueError(
+            "Invalid part position, interpolations are not divisible, offset must be 0."
+        )
+    if not (part_pos.offset >= 0):
+        raise ValueError("Offset must always be positive or zero.")
+    if not (part_pos.index >= 0):
+        raise ValueError("Index must always be positive or zero.")

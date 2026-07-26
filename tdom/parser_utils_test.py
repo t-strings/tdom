@@ -147,12 +147,12 @@ class TestParserPositionTranslator:
 
         with pytest.raises(
             ValueError,
-            match="Invalid parser position results in offset within interpolation",
+            match="Invalid part position, interpolations are not divisible, offset must be 0.",
         ):
             _ = ppt.translate(LinePosition(line=2, offset=1))
         with pytest.raises(
             ValueError,
-            match="Invalid parser position results in offset within interpolation",
+            match="Invalid part position, interpolations are not divisible, offset must be 0.",
         ):
             _ = ppt.translate(
                 LinePosition(line=2, offset=len(ph_config.make_placeholder(0)) - 1)
