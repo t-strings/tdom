@@ -18,10 +18,15 @@ def template_from_parts(
 
 def combine_template_refs(*template_refs: TemplateRef) -> TemplateRef:
     """Concatenate multiple template refs together into a single ref."""
-    # trefs -> naive templates -> naive template -> tref
-    return TemplateRef.from_naive_template(
-        Template(*chain.from_iterable(tr.to_naive_template() for tr in template_refs))
+    combined_strings = [""]
+    combined_i_indexes = tuple(
+        chain.from_iterable(tref.i_indexes for tref in template_refs)
     )
+    for tref in template_refs:
+        # Join last tref tail to this tref head
+        combined_strings[-1] = combined_strings[-1] + tref.strings[0]
+        combined_strings.extend(tref.strings[1:])
+    return TemplateRef(strings=tuple(combined_strings), i_indexes=combined_i_indexes)
 
 
 @dataclass(slots=True, frozen=True)

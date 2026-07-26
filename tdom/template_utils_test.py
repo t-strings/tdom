@@ -48,19 +48,39 @@ def test_template_ref_post_init_validation() -> None:
         _ = TemplateRef(("Hello",), (0, 1))
 
 
-def test_combine_template_refs():
-    template_refs = map(
-        TemplateRef.from_naive_template,
-        [
-            t"ab",
-            t"c{0}d",
-            t"ef{1}",
-            t"{2}ghi",
-        ],
-    )
-    assert combine_template_refs(*template_refs) == TemplateRef.from_naive_template(
-        t"abc{0}def{1}{2}ghi"
-    )
+class TestCombineTemplateRefs:
+    def test_general_case(self):
+        template_refs = map(
+            TemplateRef.from_naive_template,
+            [
+                t"ab",
+                t"c{100}d{0}e",
+                t"f{200}",
+                t"{300}ghi",
+            ],
+        )
+        tref = combine_template_refs(*template_refs)
+        assert tref.strings == ("abc", "d", "ef", "", "ghi") and tref.i_indexes == (
+            100,
+            0,
+            200,
+            300,
+        )
+
+    def test_strings(self):
+        trefs = [
+            TemplateRef(strings=(s,), i_indexes=()) for s in ["ab", "", "cdef", "g", ""]
+        ]
+        tref = combine_template_refs(*trefs)
+        assert tref.strings == ("abcdefg",) and tref.i_indexes == ()
+
+    def test_indexes(self):
+        trefs = [TemplateRef(strings=("", ""), i_indexes=(i,)) for i in (100, 200, 300)]
+        tref = combine_template_refs(*trefs)
+        assert tref.strings == ("", "", "", "") and tref.i_indexes == (100, 200, 300)
+
+    def test_null(self):
+        assert combine_template_refs() == TemplateRef.empty()
 
 
 class TestTRefIter:
