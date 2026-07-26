@@ -79,6 +79,17 @@ class TemplateRef:
                 "TemplateRef must have one more string than interpolation indexes."
             )
 
+    def parts_iter(self):
+        """
+        Similar to __iter__ but returns empty strings.
+        """
+        size = len(self.strings) * 2 - 1
+        for index in range(size):
+            if index % 2 == 0:
+                yield self.strings[index // 2]
+            else:
+                yield self.i_indexes[(index - 1) // 2]
+
     def __iter__(self):
         """
         Yield parts like `string.templatelib.Template`: `str, [int, str], ...`.
@@ -89,10 +100,10 @@ class TemplateRef:
         size = len(self.strings) * 2 - 1
         for index in range(size):
             if index % 2 == 0:
-                if (s := self.strings[index//2]):
+                if s := self.strings[index // 2]:
                     yield s
             else:
-                yield self.i_indexes[(index-1)//2]
+                yield self.i_indexes[(index - 1) // 2]
 
     def resolve(self, interpolations: tuple[Interpolation, ...]) -> Template:
         """Use the given interpolations to resolve this reference template into a Template."""

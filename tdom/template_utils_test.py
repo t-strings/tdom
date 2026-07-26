@@ -96,6 +96,57 @@ class TestTRefIter:
         ]
 
 
+class TestTRefPartsIter:
+    "Tests for TemplateRef.parts_iter."
+
+    def test_singleton(self):
+        assert list(TemplateRef.from_naive_template(t"{1}").parts_iter()) == ["", 1, ""]
+
+    def test_empty(self):
+        assert list(TemplateRef.from_naive_template(t"").parts_iter()) == [""]
+
+    def test_empty_prefix(self):
+        assert list(TemplateRef.from_naive_template(t"{1}def").parts_iter()) == [
+            "",
+            1,
+            "def",
+        ]
+
+    def test_empty_suffix(self):
+        assert list(TemplateRef.from_naive_template(t"abc{1}").parts_iter()) == [
+            "abc",
+            1,
+            "",
+        ]
+
+    def test_literal(self):
+        assert list(TemplateRef.from_naive_template(t"abc").parts_iter()) == ["abc"]
+
+    def test_only_interpolations(self):
+        assert list(TemplateRef.from_naive_template(t"{1}{3}{5}").parts_iter()) == [
+            "",
+            1,
+            "",
+            3,
+            "",
+            5,
+            "",
+        ]
+
+    def test_complete(self):
+        assert list(
+            TemplateRef.from_naive_template(t"abc{1}def{3}ghi{5}jkl").parts_iter()
+        ) == [
+            "abc",
+            1,
+            "def",
+            3,
+            "ghi",
+            5,
+            "jkl",
+        ]
+
+
 def test_template_ref_resolve():
     src_t = t"{'a'}b{'c'}d{'e'}f"
     src_ref = TemplateRef(
