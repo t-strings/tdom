@@ -99,11 +99,10 @@ class TemplateRef:
         """
         size = len(self.strings) * 2 - 1
         for index in range(size):
-            if index % 2 == 0:
-                if s := self.strings[index // 2]:
-                    yield s
-            else:
+            if index % 2 != 0:
                 yield self.i_indexes[(index - 1) // 2]
+            elif self.strings[index // 2]:
+                yield self.strings[index // 2]
 
     def resolve(self, interpolations: tuple[Interpolation, ...]) -> Template:
         """Use the given interpolations to resolve this reference template into a Template."""
