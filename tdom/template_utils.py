@@ -80,15 +80,19 @@ class TemplateRef:
             )
 
     def __iter__(self):
-        index = 0
-        last_s_index = len(self.strings) - 1
-        while index <= last_s_index:
-            s = self.strings[index]
-            if s:
-                yield s
-            if index < last_s_index:
-                yield self.i_indexes[index]
-            index += 1
+        """
+        Yield parts like `string.templatelib.Template`: `str, [int, str], ...`.
+
+        Empty strings are omitted which parallels the behavior
+        of `Template.__iter__`.  Use `parts_iter` to include empty strings.
+        """
+        size = len(self.strings) * 2 - 1
+        for index in range(size):
+            if index % 2 == 0:
+                if (s := self.strings[index//2]):
+                    yield s
+            else:
+                yield self.i_indexes[(index-1)//2]
 
     def resolve(self, interpolations: tuple[Interpolation, ...]) -> Template:
         """Use the given interpolations to resolve this reference template into a Template."""

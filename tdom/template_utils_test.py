@@ -2,7 +2,13 @@ from string.templatelib import Interpolation
 
 import pytest
 
-from .template_utils import TemplateRef, combine_template_refs, template_from_parts
+from .template_utils import (
+    PartPosition,
+    TemplateRef,
+    combine_template_refs,
+    slice_to_tref,
+    template_from_parts,
+)
 
 
 def test_template_from_parts() -> None:
@@ -57,40 +63,37 @@ def test_combine_template_refs():
     )
 
 
-def test_template_ref_iter_singleton():
-    assert list(TemplateRef.from_naive_template(t"{1}")) == [1]
+class TestTRefIter:
+    "Tests for TemplateRef.__iter__."
 
+    def test_template_ref_iter_singleton(self):
+        assert list(TemplateRef.from_naive_template(t"{1}")) == [1]
 
-def test_template_ref_iter_empty():
-    assert list(TemplateRef.from_naive_template(t"")) == []
+    def test_template_ref_iter_empty(self):
+        assert list(TemplateRef.from_naive_template(t"")) == []
 
+    def test_template_ref_iter_empty_prefix(self):
+        assert list(TemplateRef.from_naive_template(t"{1}def")) == [1, "def"]
 
-def test_template_ref_iter_empty_prefix():
-    assert list(TemplateRef.from_naive_template(t"{1}def")) == [1, "def"]
+    def test_template_ref_iter_empty_suffix(self):
+        assert list(TemplateRef.from_naive_template(t"abc{1}")) == ["abc", 1]
 
+    def test_template_ref_iter_literal(self):
+        assert list(TemplateRef.from_naive_template(t"abc")) == ["abc"]
 
-def test_template_ref_iter_empty_suffix():
-    assert list(TemplateRef.from_naive_template(t"abc{1}")) == ["abc", 1]
+    def test_template_ref_iter_only_interpolations(self):
+        assert list(TemplateRef.from_naive_template(t"{1}{3}{5}")) == [1, 3, 5]
 
-
-def test_template_ref_iter_literal():
-    assert list(TemplateRef.from_naive_template(t"abc")) == ["abc"]
-
-
-def test_template_ref_iter_only_interpolations():
-    assert list(TemplateRef.from_naive_template(t"{1}{3}{5}")) == [1, 3, 5]
-
-
-def test_template_ref_iter_complete():
-    assert list(TemplateRef.from_naive_template(t"abc{1}def{3}ghi{5}jkl")) == [
-        "abc",
-        1,
-        "def",
-        3,
-        "ghi",
-        5,
-        "jkl",
-    ]
+    def test_template_ref_iter_complete(self):
+        assert list(TemplateRef.from_naive_template(t"abc{1}def{3}ghi{5}jkl")) == [
+            "abc",
+            1,
+            "def",
+            3,
+            "ghi",
+            5,
+            "jkl",
+        ]
 
 
 def test_template_ref_resolve():
@@ -101,9 +104,6 @@ def test_template_ref_resolve():
     resolved_t = src_ref.resolve(src_t.interpolations)
     assert resolved_t.values == ("a", "c", "e")
     assert resolved_t.strings == ("", "b", "d", "f")
-
-
-from .template_utils import PartPosition, slice_to_tref
 
 
 class TestSliceToTRef:
@@ -138,9 +138,7 @@ class TestSliceToTRef:
         assert list(parts) == ["<div>"]
 
     def test_single_interpolation_start(self):
-        parts = slice_to_tref(
-            t"<div>{0}</div>", start=PartPosition(index=1, offset=0)
-        )
+        parts = slice_to_tref(t"<div>{0}</div>", start=PartPosition(index=1, offset=0))
         assert list(parts) == [0, "</div>"]
 
     def test_end_after_interpolation(self):
