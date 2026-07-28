@@ -1,6 +1,7 @@
 import typing as t
 from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import chain
 from string.templatelib import Interpolation, Template
 
 
@@ -16,9 +17,16 @@ def template_from_parts(
 
 
 def combine_template_refs(*template_refs: TemplateRef) -> TemplateRef:
-    return TemplateRef.from_naive_template(
-        sum((tr.to_naive_template() for tr in template_refs), t"")
+    """Concatenate multiple template refs together into a single ref."""
+    combined_strings = [""]
+    combined_i_indexes = tuple(
+        chain.from_iterable(tref.i_indexes for tref in template_refs)
     )
+    for tref in template_refs:
+        # Join last tref tail to this tref head
+        combined_strings[-1] = combined_strings[-1] + tref.strings[0]
+        combined_strings.extend(tref.strings[1:])
+    return TemplateRef(strings=tuple(combined_strings), i_indexes=combined_i_indexes)
 
 
 @dataclass(slots=True, frozen=True)
@@ -76,18 +84,149 @@ class TemplateRef:
                 "TemplateRef must have one more string than interpolation indexes."
             )
 
+    def parts_iter(self):
+        """
+        Similar to __iter__ but returns empty strings.
+        """
+        size = len(self.strings) * 2 - 1
+        for index in range(size):
+            if index % 2 == 0:
+                yield self.strings[index // 2]
+            else:
+                yield self.i_indexes[(index - 1) // 2]
+
     def __iter__(self):
-        index = 0
-        last_s_index = len(self.strings) - 1
-        while index <= last_s_index:
-            s = self.strings[index]
-            if s:
-                yield s
-            if index < last_s_index:
-                yield self.i_indexes[index]
-            index += 1
+        """
+        Yield parts like `string.templatelib.Template`: `str, [int, str], ...`.
+
+        Empty strings are omitted which parallels the behavior
+        of `Template.__iter__`.  Use `parts_iter` to include empty strings.
+        """
+        size = len(self.strings) * 2 - 1
+        for index in range(size):
+            if index % 2 != 0:
+                yield self.i_indexes[(index - 1) // 2]
+            elif self.strings[index // 2]:
+                yield self.strings[index // 2]
 
     def resolve(self, interpolations: tuple[Interpolation, ...]) -> Template:
         """Use the given interpolations to resolve this reference template into a Template."""
         resolved = [interpolations[i_index] for i_index in self.i_indexes]
         return template_from_parts(self.strings, resolved)
+
+    def slice(
+        self,
+        start: PartPosition | None = None,
+        stop: PartPosition | None = None,
+    ) -> TemplateRef:
+        """
+        Slice template ref based on the given start and stop.
+        """
+        # @NOTE: A start interpolation must always be defined since start == None
+        # will be the first "part" which is a string (index=0).
+        if start and start.index % 2 != 0:
+            assert start.offset == 0, (
+                "Interpolation part positions must always have offset 0."
+            )
+        # @NOTE: A stop interpolation must always be defined since stop == None
+        # will be the last "part" which is a string (index=size - 1).
+        if stop and stop.index % 2 != 0:
+            assert stop.offset == 0, (
+                "Interpolation part positions must always have offset 0."
+            )
+        size = 2 * len(self.strings) - 1
+        first = start.index if start and start.index is not None else 0
+        assert 0 <= first < size
+        offset = start.offset if start else None
+        last = stop.index if stop and stop.index is not None else size - 1
+        assert 0 <= last < size
+        limit = stop.offset if stop else None
+
+        strings = []
+        i_indexes = []
+        if first == last:
+            if first % 2 == 0:
+                strings.append(self.strings[first // 2][offset:limit])
+            else:
+                # offset == 0, so this is the equivalent of an empty interval
+                # therefore we should exclude this interpolation but
+                # template-ify with empty string.
+                strings.append("")
+            return TemplateRef(strings=tuple(strings), i_indexes=tuple(i_indexes))
+        else:
+            if first % 2 == 0:
+                strings.append(self.strings[first // 2][offset:])
+            else:
+                # offset == 0, so template-ify with empty string but start by
+                # including this interpolation.
+                strings.append("")
+                i_indexes.append((first - 1) // 2)
+
+        for index in range(first + 1, last + 1):
+            if index % 2 == 0:
+                if index == last:
+                    strings.append(self.strings[index // 2][:limit])
+                else:
+                    strings.append(self.strings[index // 2])
+            else:
+                if index == last:
+                    break  # offset == 0, so exclude this interpolation.
+                else:
+                    i_indexes.append((index - 1) // 2)
+        return TemplateRef(strings=tuple(strings), i_indexes=tuple(i_indexes))
+
+
+def slice_to_tref(
+    template: Template,
+    start: PartPosition | None = None,
+    stop: PartPosition | None = None,
+) -> TemplateRef:
+    """
+    Slice a template ref from a template based on the given start and stop.
+    """
+    tref = TemplateRef(
+        strings=template.strings, i_indexes=tuple(range(len(template.strings) - 1))
+    )
+    return tref.slice(start=start, stop=stop)
+
+
+@dataclass(slots=True, frozen=True)
+class PartPosition:
+    """
+    A unified template part position.
+
+    Translate indexes into strings by multiplying by 2.
+    ie. 0->0, 1->2, 2->4, etc.
+    Reverse by dividing by 2.
+
+    Translate indexes into interpolations by multiplying by 2 and then adding 1.
+    ie. 0->1, 1->3, 2->5, etc.
+    Reverse by subtracting 1 and dividing by 2.
+
+    Using unified indexes allows for simpler iteration as well as starting
+    or stopping at either type of part more seamlessly.
+    """
+
+    index: int
+    " Index of the template parts, translate for strings/interpolations. "
+
+    offset: int = 0
+    " Offset from the start of the template part. "
+
+
+def validate_part_position(part_pos: PartPosition) -> None:
+    """
+    Basic part position validation for parts that are converted to template
+    source `LinePosition`.
+
+    @TODO: This might move into the constructor eventually depending on usage.
+    """
+    if part_pos.index % 2 != 0 and part_pos.offset != 0:
+        # You can only land on the start of an interpolation
+        raise ValueError(
+            "Invalid part position, interpolations are not divisible, offset must be 0."
+        )
+    if not (part_pos.offset >= 0):
+        raise ValueError("Offset must always be positive or zero.")
+    if not (part_pos.index >= 0):
+        raise ValueError("Index must always be positive or zero.")
