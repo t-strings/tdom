@@ -1,10 +1,16 @@
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from html.parser import HTMLParser
-from string.templatelib import Interpolation, Template
+from string.templatelib import Template
 
 from .htmlspec import VOID_ELEMENTS
-from .placeholders import PlaceholderState
+from .placeholders import (
+    PlaceholderConfig,
+    PlaceholderState,
+)
+from .placeholders import (
+    make_placeholder_config as default_make_placeholder_config,
+)
 from .template_utils import TemplateRef, combine_template_refs
 from .tnodes import (
     TAttribute,
@@ -55,31 +61,70 @@ class OpenTComponent:
 type OpenTag = OpenTElement | OpenTFragment | OpenTComponent
 
 
+def configure_source_tracker(
+    template: Template,
+    make_placeholder_config: Callable[
+        [], PlaceholderConfig
+    ] = default_make_placeholder_config,
+) -> SourceTracker:
+    config = make_placeholder_config()
+    return SourceTracker(
+        template=template, placeholders=PlaceholderState(config=config)
+    )
+
+
 @dataclass
 class SourceTracker:
-    """Tracks source locations within a Template for error reporting."""
-
-    # TODO: write utilities to generate complete error messages, with the
-    # template itself in context and the relevant line/column underlined/etc.
+    """
+    Iterator of template parts that adds placeholders to interpolations.
+    """
 
     template: Template
-    # if i_index >= s_index, feeding an interpolation;
-    # otherwise, when i_index < s_index, feeding a string.
-    i_index: int = -1  # The current interpolation index.
-    s_index: int = -1  # The current string index.
 
-    @property
-    def interpolations(self) -> tuple[Interpolation, ...]:
-        return self.template.interpolations
+    placeholders: PlaceholderState
 
-    def advance_interpolation(self) -> int:
-        """Call before processing an interpolation to move to the next one."""
-        self.i_index += 1
-        return self.i_index
+    index: int = -1
+    " Unified template index that moves over interpolations and strings. "
 
-    def advance_string(self) -> int:
-        self.s_index += 1
-        return self.s_index
+    def __iter__(self):
+        #
+        # @NOTE: This iterator is only meant to be used once since we track
+        # placeholders both by adding them and letting the user remove them
+        # with calls to `remove_placeholders()`.
+        return self
+
+    def __next__(self):
+        if self.index < 2 * len(self.template.strings) - 2:
+            self.index += 1
+            if self.index % 2 == 0:
+                return self.template.strings[self.index // 2]
+            else:
+                return self.placeholders.add_placeholder((self.index - 1) // 2)
+        else:
+            raise StopIteration
+
+    def remove_placeholders(self, text: str) -> TemplateRef:
+        """
+        Find tracked placeholders in text and mark them as found.
+
+        @NOTE: Raises if any untracked placeholders are found.
+
+        If you want to make a TemplateRef without changing state use
+        `self.find_placeholders()`.
+        """
+        return self.placeholders.remove_placeholders(text)
+
+    def find_placeholders(self, text: str) -> TemplateRef:
+        """
+        Find all placeholders without affecting tracking.
+        """
+        return self.placeholders.config.find_placeholders(text)
+
+    def has_placeholders(self) -> bool:
+        """
+        Determine if known placeholders still remain.
+        """
+        return not self.placeholders.is_empty
 
     def get_expression(
         self, i_index: int, fallback_prefix: str = "interpolation"
@@ -88,7 +133,7 @@ class SourceTracker:
         Resolve an interpolation index to its original expression for error messages.
         Falls back to a synthetic expression if the original is empty.
         """
-        ip = self.interpolations[i_index]
+        ip = self.template.interpolations[i_index]
         return ip.expression if ip.expression else f"{{{fallback_prefix}-{i_index}}}"
 
     def format_starttag(self, i_index: int) -> str:
@@ -99,7 +144,6 @@ class SourceTracker:
 class TemplateParser(HTMLParser):
     root: OpenTFragment
     stack: list[OpenTag]
-    placeholders: PlaceholderState
     source: SourceTracker | None
 
     def __init__(self, *, convert_charrefs: bool = True):
@@ -124,13 +168,12 @@ class TemplateParser(HTMLParser):
 
     def make_tattr(self, attr: HTMLAttribute) -> TAttribute:
         """Build a TAttribute from a raw attribute tuple."""
+        source = self.get_source()
 
         name, value = attr
 
-        name_ref = self.placeholders.remove_placeholders(name)
-        value_ref = (
-            self.placeholders.remove_placeholders(value) if value is not None else None
-        )
+        name_ref = source.remove_placeholders(name)
+        value_ref = source.remove_placeholders(value) if value is not None else None
 
         if name_ref.is_literal:
             if value_ref is None or value_ref.is_literal:
@@ -161,7 +204,9 @@ class TemplateParser(HTMLParser):
 
     def make_open_tag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> OpenTag:
         """Build an OpenTag from a raw tag and attribute tuples."""
-        tag_ref = self.placeholders.remove_placeholders(tag)
+        source = self.get_source()
+
+        tag_ref = source.remove_placeholders(tag)
 
         if tag_ref.is_literal:
             return OpenTElement(tag=tag, attrs=self.make_tattrs(attrs))
@@ -284,7 +329,7 @@ class TemplateParser(HTMLParser):
     def validate_end_tag(self, tag: str, open_tag: OpenTag) -> int | None:
         """Validate that closing tag matches open tag. Return component end index if applicable."""
         source = self.get_source()
-        tag_ref = self.placeholders.remove_placeholders(tag)
+        tag_ref = source.remove_placeholders(tag)
 
         match open_tag:
             case OpenTElement():
@@ -320,10 +365,11 @@ class TemplateParser(HTMLParser):
         Wrap get_starttag_text and just raise if None is returned.
         Do this so we don't guard for `None` everywhere.
         """
+        source = self.get_source()
         starttag_text = self.get_starttag_text()
         if starttag_text is None:
             raise AssertionError("Expected the parser to have starttag_text set.")
-        return self.placeholders.config.find_placeholders(starttag_text)
+        return source.find_placeholders(starttag_text)
 
     # ------------------------------------------
     # HTMLParser tag callbacks
@@ -357,7 +403,8 @@ class TemplateParser(HTMLParser):
     # ------------------------------------------
 
     def handle_data(self, data: str) -> None:
-        ref = self.placeholders.remove_placeholders(data)
+        source = self.get_source()
+        ref = source.remove_placeholders(data)
         parent = self.get_parent()
         if parent.children and isinstance(parent.children[-1], TText):
             parent.children[-1] = TText(
@@ -367,12 +414,14 @@ class TemplateParser(HTMLParser):
             self.append_child(TText(ref=ref))
 
     def handle_comment(self, data: str) -> None:
-        ref = self.placeholders.remove_placeholders(data)
+        source = self.get_source()
+        ref = source.remove_placeholders(data)
         comment = TComment(ref)
         self.append_child(comment)
 
     def handle_decl(self, decl: str) -> None:
-        ref = self.placeholders.remove_placeholders(decl)
+        source = self.get_source()
+        ref = source.remove_placeholders(decl)
         if not ref.is_literal:
             raise ValueError("Interpolations are not allowed in declarations.")
         elif decl.upper().startswith("DOCTYPE "):
@@ -388,7 +437,6 @@ class TemplateParser(HTMLParser):
         super().reset()
         self.root = OpenTFragment()
         self.stack = []
-        self.placeholders = PlaceholderState()
         self.source = None
 
     def close(self) -> None:
@@ -404,7 +452,7 @@ class TemplateParser(HTMLParser):
                 )
         if self.stack:
             raise ValueError("Invalid HTML structure: unclosed tags remain.")
-        if not self.placeholders.is_empty:
+        if self.source and self.source.has_placeholders():
             raise ValueError("Some placeholders were never resolved.")
         super().close()
 
@@ -441,25 +489,16 @@ class TemplateParser(HTMLParser):
             raise AssertionError("Source has not been initialized.")
         return self.source
 
-    def feed_str(self, s: str) -> None:
-        """Feed a string part of a Template to the parser."""
-        self.feed(s)
-
-    def feed_interpolation(self, index: int) -> None:
-        placeholder = self.placeholders.add_placeholder(index)
-        self.feed(placeholder)
+    def track_source(self, template: Template) -> SourceTracker:
+        if self.source:
+            raise AssertionError("Did you forget to call reset?")
+        source = self.source = configure_source_tracker(template)
+        return source
 
     def feed_template(self, template: Template) -> None:
         """Feed a Template's content to the parser."""
-        assert self.source is None, "Did you forget to call reset?"
-        self.source = SourceTracker(template)
-        for i_index in range(len(template.interpolations)):
-            self.source.advance_string()
-            self.feed_str(template.strings[i_index])
-            self.source.advance_interpolation()
-            self.feed_interpolation(i_index)
-        self.source.advance_string()
-        self.feed_str(template.strings[-1])
+        for content in self.track_source(template):
+            self.feed(content)
 
     @staticmethod
     def parse(t: Template) -> TNode:

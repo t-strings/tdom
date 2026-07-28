@@ -485,6 +485,17 @@ def test_placeholder_collision_avoidance():
     )
 
 
+def test_unresolved_placeholder():
+    t = t"<div>{0}<span>{1}</span>{2}</div>"
+    tp = TemplateParser()
+    tp.feed_template(t)
+    # This would be a bug in the parser so we have to fabricate
+    # this error manually.
+    tp.get_source().placeholders.add_placeholder(3)
+    with pytest.raises(ValueError, match="Some placeholders were never resolved"):
+        tp.close()
+
+
 class TestIncompleteParsing:
     def test_dangling_quotes(self):
         with pytest.raises(ValueError, match="Parser expects more data"):
