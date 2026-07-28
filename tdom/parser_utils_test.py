@@ -22,7 +22,7 @@ class TestParserPositionTranslator:
     def test_case_nontailing_string_ends_with_newline(self, ph_config):
         ppt = make_ppt(t"a\n{0}b", ph_config)
         assert ppt.translate(LinePosition(line=2, offset=0)) == PartPosition(
-            index=0, offset=2
+            index=1, offset=0
         ), """This could also be considered PartPosition(index=1, offset=0)
         but either way should work. """
         assert ppt.translate(
@@ -85,6 +85,12 @@ class TestParserPositionTranslator:
         with pytest.raises(ValueError, match="Offset exceeds reachable"):
             # only 0, 1 and 2 are valid offsets for line 1
             _ = ppt.translate(LinePosition(line=1, offset=3))
+
+    def test_offset_with_line_in_middle_part(self, ph_config):
+        ppt = make_ppt(t"a\nb{0}cd\ne{1}\nfe", ph_config)
+        assert ppt.translate(
+            LinePosition(line=2, offset=1 + len(ph_config.make_placeholder(0)) + 2)
+        ) == PartPosition(index=2, offset=2)
 
     def test_empty_strings(self, ph_config):
         ppt = make_ppt(t"{0}", ph_config)
