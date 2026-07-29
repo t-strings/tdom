@@ -4,7 +4,7 @@ import pytest
 
 from .parser import TemplateParser, configure_source_tracker
 from .placeholders import make_placeholder_config
-from .template_utils import TemplateRef
+from .template_utils import PartPosition, TemplateRef
 from .tnodes import (
     TComment,
     TComponent,
@@ -652,3 +652,155 @@ class TestComponentExtractChildrenTemplate:
                 strings=("<div>Hello, World!</div>",), i_indexes=()
             ),
         )
+
+
+class TestSourcePos:
+    """
+    Test that common nodes have a source position translated and set during parsing.
+    """
+
+    @pytest.mark.parametrize(
+        ("t", "part_pos"),
+        (
+            (t"ABC<div></div>", PartPosition(0, offset=len("ABC"))),
+            (t"{' '}<div></div>", PartPosition(2, offset=0)),
+        ),
+    )
+    def test_el(self, t: Template, part_pos: PartPosition):
+        ttree = TemplateParser.parse_to_ttree(t)
+        assert isinstance(ttree.root, TFragment)
+        node = ttree.root.children[1]
+        assert isinstance(node, TElement) and node.source_pos == part_pos
+
+    @pytest.mark.parametrize(
+        ("t", "part_pos"),
+        (
+            (t"<div></div>ABC", PartPosition(0, offset=len("<div></div>"))),
+            (t"<div>{' '}</div>ABC", PartPosition(2, offset=len("</div>"))),
+        ),
+    )
+    def test_text(self, t: Template, part_pos: PartPosition):
+        ttree = TemplateParser.parse_to_ttree(t)
+        assert isinstance(ttree.root, TFragment)
+        node = ttree.root.children[1]
+        assert isinstance(node, TText) and node.source_pos == part_pos
+
+    @pytest.mark.parametrize(
+        ("t", "part_pos"),
+        (
+            (t"  <!doctype html>", PartPosition(0, offset=2)),
+            (t"{' '}<!doctype html>", PartPosition(2, 0)),
+        ),
+    )
+    def test_doctype(self, t: Template, part_pos: PartPosition):
+        ttree = TemplateParser.parse_to_ttree(t)
+        assert isinstance(ttree.root, TFragment)
+        node = ttree.root.children[1]
+        assert isinstance(node, TDocumentType) and node.source_pos == part_pos
+
+    @pytest.mark.parametrize(
+        ("t", "part_pos"),
+        (
+            (t"  <!--comment-->", PartPosition(0, offset=2)),
+            (t"<div>{'ABC'}</div><!--comment-->", PartPosition(2, len("</div>"))),
+        ),
+    )
+    def test_comment(self, t: Template, part_pos: PartPosition):
+        ttree = TemplateParser.parse_to_ttree(t)
+        assert isinstance(ttree.root, TFragment)
+        node = ttree.root.children[1]
+        assert isinstance(node, TComment) and node.source_pos == part_pos
+
+    def test_component(self):
+        def Comp() -> Template:
+            return t""
+
+        for t, part_pos in (
+            (t"  <{Comp} />", PartPosition(0, offset=len("  "))),
+            (t"  {'ABC'}DEF<{Comp} />", PartPosition(2, offset=len("DEF"))),
+        ):
+            ttree = TemplateParser.parse_to_ttree(t)
+            assert isinstance(ttree.root, TFragment)
+            node = ttree.root.children[1]
+            assert isinstance(node, TComponent) and node.source_pos == part_pos
+
+
+class TestSourceInfo:
+    """
+    Test that elements and components have correct entries in the sinfo_table after parsing.
+    """
+
+    def test_el(self):
+        ttree = TemplateParser.parse_to_ttree(t"<div></div>")
+        sinfo_table = ttree.unpack_sinfo_table()
+        node = ttree.root
+        assert (
+            isinstance(node, TElement)
+            and sinfo_table
+            and node.source_pos is not None
+            and node.source_pos in sinfo_table
+        )
+        sinfo = sinfo_table[node.source_pos]
+        assert sinfo.startend == False
+        assert sinfo.starttag_pos == PartPosition(
+            0, 0
+        ) and sinfo.endtag_pos == PartPosition(0, len("<div>"))
+        assert sinfo.starttag_ref.strings == ("<div>",)
+
+    def test_el_self_closed(self):
+        ttree = TemplateParser.parse_to_ttree(t"<div />")
+        sinfo_table = ttree.unpack_sinfo_table()
+        node = ttree.root
+        assert (
+            isinstance(node, TElement)
+            and sinfo_table
+            and node.source_pos is not None
+            and node.source_pos in sinfo_table
+        )
+        sinfo = sinfo_table[node.source_pos]
+        assert sinfo.startend == True
+        assert sinfo.starttag_pos == PartPosition(0, 0) and sinfo.endtag_pos is None
+        assert sinfo.starttag_ref.strings == ("<div />",)
+
+    def test_component(self):
+        def Comp() -> Template:
+            return t""
+
+        ttree = TemplateParser.parse_to_ttree(t"<{Comp}></{Comp}>")
+        sinfo_table = ttree.unpack_sinfo_table()
+        node = ttree.root
+        assert (
+            isinstance(node, TComponent)
+            and sinfo_table
+            and node.source_pos is not None
+            and node.source_pos in sinfo_table
+        )
+        sinfo = sinfo_table[node.source_pos]
+        assert sinfo.startend == False
+        assert sinfo.starttag_pos == PartPosition(
+            0, 0
+        ) and sinfo.endtag_pos == PartPosition(2, len(">"))
+        assert sinfo.starttag_ref.strings == ("<", ">")
+
+    def test_component_self_closed(self):
+        def Comp() -> Template:
+            return t""
+
+        ttree = TemplateParser.parse_to_ttree(t"<{Comp} />")
+        sinfo_table = ttree.unpack_sinfo_table()
+        node = ttree.root
+        assert (
+            isinstance(node, TComponent)
+            and sinfo_table
+            and node.source_pos is not None
+            and node.source_pos in sinfo_table
+        )
+        sinfo = sinfo_table[node.source_pos]
+        assert sinfo.startend == True
+        assert sinfo.starttag_pos == PartPosition(0, 0) and sinfo.endtag_pos is None
+        assert sinfo.starttag_ref.strings == ("<", " />")
+
+    def test_empty_sinfo_table(self):
+        ttree = TemplateParser.parse_to_ttree(t"<!doctype html>ABC")
+        sinfo_table = ttree.unpack_sinfo_table()
+        assert not sinfo_table
