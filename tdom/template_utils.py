@@ -92,6 +92,81 @@ class TemplateRef:
         resolved = [interpolations[i_index] for i_index in self.i_indexes]
         return template_from_parts(self.strings, resolved)
 
+    def slice(
+        self,
+        start: PartPosition | None = None,
+        stop: PartPosition | None = None,
+    ) -> TemplateRef:
+        """
+        Slice template ref based on the given start and stop.
+        """
+        # @NOTE: A start interpolation must always be defined since start == None
+        # will be the first "part" which is a string (index=0).
+        if start and start.index % 2 != 0:
+            assert start.offset == 0, (
+                "Interpolation part positions must always have offset 0."
+            )
+        # @NOTE: A stop interpolation must always be defined since stop == None
+        # will be the last "part" which is a string (index=size - 1).
+        if stop and stop.index % 2 != 0:
+            assert stop.offset == 0, (
+                "Interpolation part positions must always have offset 0."
+            )
+        size = 2 * len(self.strings) - 1
+        first = start.index if start and start.index is not None else 0
+        assert 0 <= first < size
+        offset = start.offset if start else None
+        last = stop.index if stop and stop.index is not None else size - 1
+        assert 0 <= last < size
+        limit = stop.offset if stop else None
+
+        strings = []
+        i_indexes = []
+        if first == last:
+            if first % 2 == 0:
+                strings.append(self.strings[first // 2][offset:limit])
+            else:
+                # offset == 0, so this is the equivalent of an empty interval
+                # therefore we should exclude this interpolation but
+                # template-ify with empty string.
+                strings.append("")
+            return TemplateRef(strings=tuple(strings), i_indexes=tuple(i_indexes))
+        else:
+            if first % 2 == 0:
+                strings.append(self.strings[first // 2][offset:])
+            else:
+                # offset == 0, so template-ify with empty string but start by
+                # including this interpolation.
+                strings.append("")
+                i_indexes.append((first - 1) // 2)
+
+        for index in range(first + 1, last + 1):
+            if index % 2 == 0:
+                if index == last:
+                    strings.append(self.strings[index // 2][:limit])
+                else:
+                    strings.append(self.strings[index // 2])
+            else:
+                if index == last:
+                    break  # offset == 0, so exclude this interpolation.
+                else:
+                    i_indexes.append((index - 1) // 2)
+        return TemplateRef(strings=tuple(strings), i_indexes=tuple(i_indexes))
+
+
+def slice_to_tref(
+    template: Template,
+    start: PartPosition | None = None,
+    stop: PartPosition | None = None,
+) -> TemplateRef:
+    """
+    Slice a template ref from a template based on the given start and stop.
+    """
+    tref = TemplateRef(
+        strings=template.strings, i_indexes=tuple(range(len(template.strings) - 1))
+    )
+    return tref.slice(start=start, stop=stop)
+
 
 @dataclass(slots=True, frozen=True)
 class PartPosition:

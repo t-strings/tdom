@@ -1,8 +1,14 @@
-from string.templatelib import Interpolation
+from string.templatelib import Interpolation, Template
 
 import pytest
 
-from .template_utils import TemplateRef, combine_template_refs, template_from_parts
+from .template_utils import (
+    PartPosition,
+    TemplateRef,
+    combine_template_refs,
+    slice_to_tref,
+    template_from_parts,
+)
 
 
 def test_template_from_parts() -> None:
@@ -101,3 +107,62 @@ def test_template_ref_resolve():
     resolved_t = src_ref.resolve(src_t.interpolations)
     assert resolved_t.values == ("a", "c", "e")
     assert resolved_t.strings == ("", "b", "d", "f")
+
+
+class TestSliceToTRef:
+    @pytest.mark.parametrize(
+        ("t", "start", "stop", "result"),
+        (
+            (t"<div></div>", None, PartPosition(0, offset=5), ("<div>",)),
+            (t"<div></div>", PartPosition(0, offset=5), None, ("</div>",)),
+            (
+                t"<div></div>",
+                PartPosition(0, offset=4),
+                PartPosition(0, offset=6),
+                ("><",),
+            ),
+            (t"<div></div>", PartPosition(0, offset=5), PartPosition(0, offset=5), ()),
+            (t"<div>{0}</div>", None, PartPosition(1, offset=0), ("<div>",)),
+            (t"<div>{0}</div>", PartPosition(1, offset=0), None, (0, "</div>")),
+            (t"<div>{0}</div>", PartPosition(2, offset=0), None, ("</div>",)),
+            (t"<div>{0}</div>", None, PartPosition(2, offset=0), ("<div>", 0)),
+            (
+                t"<div>{0}</div>",
+                PartPosition(1, offset=0),
+                PartPosition(2, offset=0),
+                (0,),
+            ),
+            (
+                t"<div>{0}</div>",
+                PartPosition(1, offset=0),
+                PartPosition(1, offset=0),
+                (),
+            ),
+            (t"", None, PartPosition(0, offset=0), ()),
+            (t"", PartPosition(0, offset=0), None, ()),
+            (t"", None, None, ()),
+            (t"{0}", None, PartPosition(2, offset=0), (0,)),
+            (t"{0}", PartPosition(0, offset=0), None, (0,)),
+            (t"{0}", None, None, (0,)),
+        ),
+    )
+    def test_interval(
+        self,
+        t: Template,
+        start: PartPosition | None,
+        stop: PartPosition | None,
+        result: tuple[str | int, ...],
+    ) -> None:
+        parts = tuple(slice_to_tref(t, start=start, stop=stop))
+        assert parts == result
+
+    def test_bad_interpolation_target(self) -> None:
+        with pytest.raises(
+            AssertionError,
+            match="Interpolation part positions must always have offset 0",
+        ):
+            _ = slice_to_tref(
+                t"<div>{0}</div>",
+                start=None,
+                stop=PartPosition(1, 20),
+            )
