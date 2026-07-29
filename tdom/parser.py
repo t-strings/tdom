@@ -4,6 +4,11 @@ from html.parser import HTMLParser
 from string.templatelib import Template
 
 from .htmlspec import VOID_ELEMENTS
+from .parser_utils import (
+    HTMLAttribute,
+    ParserPositionTranslator,
+    make_parser_pos_translator,
+)
 from .placeholders import (
     PlaceholderConfig,
     PlaceholderState,
@@ -11,8 +16,10 @@ from .placeholders import (
 from .placeholders import (
     make_placeholder_config as default_make_placeholder_config,
 )
-from .template_utils import TemplateRef, combine_template_refs
+from .source import LinePosition
+from .template_utils import PartPosition, TemplateRef, combine_template_refs
 from .tnodes import (
+    TagSourceInfo,
     TAttribute,
     TComment,
     TComponent,
@@ -25,21 +32,47 @@ from .tnodes import (
     TSpreadAttribute,
     TTemplatedAttribute,
     TText,
+    TTree,
 )
 
-type HTMLAttribute = tuple[str, str | None]
-type HTMLAttributesDict = dict[str, str | None]
+
+@dataclass(frozen=True, slots=True)
+class OpenTagSourceInfo:
+    """
+    Retained tag information from the parsed source meant for error reporting.
+
+    @NOTE: This is an temporary structure that will be finalized when the
+    tag is closed.
+    """
+
+    starttag_ref: TemplateRef
+    " Entire starttag as parsed except placeholders are replaced by references. "
+    startend: bool
+    " Was parsed as startend tag, ie. <tag />. "
+    starttag_pos: PartPosition
+    " Template part position of the starttag. "
+
+    def close(self, endtag_pos: PartPosition | None = None) -> TagSourceInfo:
+        return TagSourceInfo(
+            starttag_ref=self.starttag_ref,
+            startend=self.startend,
+            starttag_pos=self.starttag_pos,
+            endtag_pos=endtag_pos,
+        )
 
 
 @dataclass
 class OpenTElement:
     tag: str
     attrs: tuple[TAttribute, ...]
+    source_pos: PartPosition
+    sinfo: OpenTagSourceInfo
     children: list[TNode] = field(default_factory=list)
 
 
 @dataclass
 class OpenTFragment:
+    source_pos: PartPosition | None = None
     children: list[TNode] = field(default_factory=list)
 
 
@@ -51,6 +84,8 @@ class OpenTComponent:
     offset_into_children_start_s: int
     """The offset INTO the starting string where the component's children template starts."""
     attrs: tuple[TAttribute, ...]
+    source_pos: PartPosition
+    sinfo: OpenTagSourceInfo
     # @NOTE: The `children` are discarded after parsing and are just used to
     # track template consistency.  If the component is processed and
     # returns its children template then that template will be
@@ -67,9 +102,14 @@ def configure_source_tracker(
         [], PlaceholderConfig
     ] = default_make_placeholder_config,
 ) -> SourceTracker:
+    """
+    Configure and return source tracker with its subcomponents.
+    """
     config = make_placeholder_config()
     return SourceTracker(
-        template=template, placeholders=PlaceholderState(config=config)
+        template=template,
+        placeholders=PlaceholderState(config=config),
+        parser_pos_translator=make_parser_pos_translator(template, config),
     )
 
 
@@ -82,6 +122,9 @@ class SourceTracker:
     template: Template
 
     placeholders: PlaceholderState
+
+    parser_pos_translator: ParserPositionTranslator
+    "Translator from parser position to template part position. "
 
     index: int = -1
     " Unified template index that moves over interpolations and strings. "
@@ -126,6 +169,12 @@ class SourceTracker:
         """
         return not self.placeholders.is_empty
 
+    def translate_parser_pos(self, raw_parser_pos: LinePosition) -> PartPosition:
+        """
+        Translate a parser position to a part position within the template.
+        """
+        return self.parser_pos_translator.translate(raw_parser_pos)
+
     def get_expression(
         self, i_index: int, fallback_prefix: str = "interpolation"
     ) -> str:
@@ -146,6 +195,9 @@ class TemplateParser(HTMLParser):
     stack: list[OpenTag]
     source: SourceTracker | None
 
+    sinfo_table: dict[PartPosition, TagSourceInfo]
+    " Tags with more source info than just a position are tracked in this mapping. "
+
     def __init__(self, *, convert_charrefs: bool = True):
         # This calls HTMLParser.reset() which we override to set up our state.
         super().__init__(convert_charrefs=convert_charrefs)
@@ -161,6 +213,25 @@ class TemplateParser(HTMLParser):
     def append_child(self, child: TNode) -> None:
         parent = self.get_parent()
         parent.children.append(child)
+
+    def get_parser_pos(self) -> LinePosition:
+        """
+        Get the current position of the parser.
+
+        @NOTE: This position is relative to text embedded with placeholders but
+        can be translated back to the position within the original template.
+        Since it *IS* relative to placeholders, ie. "SLOTS", this position is
+        unique across a "family" of templates with the same structure.
+        """
+        line, offset = self.getpos()
+        return LinePosition(line=line, offset=offset)
+
+    def get_source_pos(self, parser_pos: LinePosition | None = None) -> PartPosition:
+        "Translate the parser position into a part position in the source template."
+        source = self.get_source()
+        return source.translate_parser_pos(
+            self.get_parser_pos() if parser_pos is None else parser_pos
+        )
 
     # ------------------------------------------
     # Attribute Helpers
@@ -202,14 +273,29 @@ class TemplateParser(HTMLParser):
     # Tag Helpers
     # ------------------------------------------
 
-    def make_open_tag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> OpenTag:
+    def make_open_tag(
+        self,
+        tag: str,
+        attrs: Sequence[HTMLAttribute],
+        startend: bool = False,
+    ) -> OpenTag:
         """Build an OpenTag from a raw tag and attribute tuples."""
         source = self.get_source()
 
         tag_ref = source.remove_placeholders(tag)
 
         if tag_ref.is_literal:
-            return OpenTElement(tag=tag, attrs=self.make_tattrs(attrs))
+            source_pos = self.get_source_pos()
+            return OpenTElement(
+                tag=tag,
+                attrs=self.make_tattrs(attrs),
+                sinfo=OpenTagSourceInfo(
+                    starttag_ref=self.get_starttag_ref(),
+                    startend=startend,
+                    starttag_pos=source_pos,
+                ),
+                source_pos=source_pos,
+            )
 
         if not tag_ref.is_singleton:
             raise ValueError(
@@ -239,41 +325,73 @@ class TemplateParser(HTMLParser):
         # of the children's leading string.
         offset_into_children_start_s = len(starttag_ref.strings[-1])
 
+        source_pos = self.get_source_pos()
+
         return OpenTComponent(
             start_i_index=i_index,
             children_start_s_index=children_start_s_index,
             offset_into_children_start_s=offset_into_children_start_s,
             attrs=self.make_tattrs(attrs),
+            source_pos=source_pos,
+            sinfo=OpenTagSourceInfo(
+                starttag_ref=starttag_ref,
+                startend=startend,
+                starttag_pos=source_pos,
+            ),
         )
 
     def finalize_tag(
-        self, open_tag: OpenTag, endtag_i_index: int | None = None
+        self,
+        open_tag: OpenTag,
+        endtag_i_index: int | None = None,
+        endtag_pos: PartPosition | None = None,
     ) -> TNode:
         """Finalize an OpenTag into a TNode."""
+        source = self.get_source()
         match open_tag:
-            case OpenTElement(tag=tag, attrs=attrs, children=children):
-                return TElement(tag=tag, attrs=attrs, children=tuple(children))
-            case OpenTFragment(children=children):
-                return TFragment(children=tuple(children))
+            case OpenTElement(
+                tag=tag,
+                attrs=attrs,
+                children=children,
+                source_pos=source_pos,
+                sinfo=sinfo,
+            ):
+                tnode = TElement(
+                    tag=tag,
+                    attrs=attrs,
+                    children=tuple(children),
+                    source_pos=source_pos,
+                )
+                source_pos = (
+                    open_tag.source_pos
+                )  # Re-assignment for ty regression in 0.0.59
+                self.sinfo_table[source_pos] = sinfo.close(endtag_pos=endtag_pos)
+            case OpenTFragment(children=children, source_pos=source_pos):
+                tnode = TFragment(children=tuple(children), source_pos=source_pos)
             case OpenTComponent(
                 start_i_index=start_i_index,
                 children_start_s_index=children_start_s_index,
                 offset_into_children_start_s=offset_into_children_start_s,
                 attrs=attrs,
+                source_pos=source_pos,
+                sinfo=sinfo,
             ):
                 children_ref = self.extract_component_children_ref(
                     start_i_index=start_i_index,
                     endtag_i_index=endtag_i_index,
                     children_start_s_index=children_start_s_index,
                     offset_into_children_start_s=offset_into_children_start_s,
-                    template=self.get_source().template,
+                    template=source.template,
                 )
-                return TComponent(
+                self.sinfo_table[source_pos] = sinfo.close(endtag_pos=endtag_pos)
+                tnode = TComponent(
                     start_i_index=start_i_index,
                     end_i_index=endtag_i_index,
                     children_ref=children_ref,
                     attrs=attrs,
+                    source_pos=source_pos,
                 )
+        return tnode
 
     def extract_component_children_ref(
         self,
@@ -385,17 +503,20 @@ class TemplateParser(HTMLParser):
 
     def handle_startendtag(self, tag: str, attrs: Sequence[HTMLAttribute]) -> None:
         """Dispatch a self-closing tag, `<tag />` to specialized handlers."""
-        open_tag = self.make_open_tag(tag, attrs)
+        open_tag = self.make_open_tag(tag, attrs, startend=True)
         final_tag = self.finalize_tag(open_tag)
         self.append_child(final_tag)
 
     def handle_endtag(self, tag: str) -> None:
+        endtag_pos = self.get_source_pos()
         if not self.stack:
             raise ValueError(f"Unexpected closing tag </{tag}> with no open tag.")
 
         open_tag = self.stack.pop()
         endtag_i_index = self.validate_end_tag(tag, open_tag)
-        final_tag = self.finalize_tag(open_tag, endtag_i_index)
+        final_tag = self.finalize_tag(
+            open_tag, endtag_i_index=endtag_i_index, endtag_pos=endtag_pos
+        )
         self.append_child(final_tag)
 
     # ------------------------------------------
@@ -407,16 +528,19 @@ class TemplateParser(HTMLParser):
         ref = source.remove_placeholders(data)
         parent = self.get_parent()
         if parent.children and isinstance(parent.children[-1], TText):
+            prior_text = parent.children[-1]
             parent.children[-1] = TText(
-                ref=combine_template_refs(parent.children[-1].ref, ref)
+                ref=combine_template_refs(parent.children[-1].ref, ref),
+                # Keep starting position of the prior text
+                source_pos=prior_text.source_pos,
             )
         else:
-            self.append_child(TText(ref=ref))
+            self.append_child(TText(ref=ref, source_pos=self.get_source_pos()))
 
     def handle_comment(self, data: str) -> None:
         source = self.get_source()
         ref = source.remove_placeholders(data)
-        comment = TComment(ref)
+        comment = TComment(ref, source_pos=self.get_source_pos())
         self.append_child(comment)
 
     def handle_decl(self, decl: str) -> None:
@@ -426,7 +550,7 @@ class TemplateParser(HTMLParser):
             raise ValueError("Interpolations are not allowed in declarations.")
         elif decl.upper().startswith("DOCTYPE "):
             doctype_content = decl[7:].strip()
-            doctype = TDocumentType(doctype_content)
+            doctype = TDocumentType(doctype_content, source_pos=self.get_source_pos())
             self.append_child(doctype)
         else:
             raise NotImplementedError(
@@ -438,6 +562,7 @@ class TemplateParser(HTMLParser):
         self.root = OpenTFragment()
         self.stack = []
         self.source = None
+        self.sinfo_table = {}
 
     def close(self) -> None:
         if self.waiting_for_data():
@@ -480,6 +605,12 @@ class TemplateParser(HTMLParser):
             # CONSIDER: or as an empty text node?
             return self.finalize_tag(self.root)
 
+    def get_ttree(self) -> TTree:
+        return TTree(
+            self.get_tnode(),
+            sinfos=tuple(self.sinfo_table.values()),
+        )
+
     # ------------------------------------------
     # Feeding and parsing
     # ------------------------------------------
@@ -507,7 +638,12 @@ class TemplateParser(HTMLParser):
         a TNode tree representing its structure. This cachable structure can later
         be resolved against actual interpolation values to produce a Node tree.
         """
+        ttree = TemplateParser.parse_to_ttree(t)
+        return ttree.root
+
+    @staticmethod
+    def parse_to_ttree(t: Template) -> TTree:
         parser = TemplateParser()
         parser.feed_template(t)
         parser.close()
-        return parser.get_tnode()
+        return parser.get_ttree()

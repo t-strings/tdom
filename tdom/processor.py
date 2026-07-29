@@ -29,10 +29,8 @@ from .htmlspec import (
     SVG_TAG_FIX,
     VOID_ELEMENTS,
 )
-from .parser import (
-    HTMLAttribute,
-    TemplateParser,
-)
+from .parser import TemplateParser
+from .parser_utils import HTMLAttribute
 from .protocols import HasHTMLDunder
 from .scope import ScopedTemplate
 from .template_utils import TemplateRef
@@ -49,6 +47,7 @@ from .tnodes import (
     TSpreadAttribute,
     TTemplatedAttribute,
     TText,
+    TTree,
 )
 from .utils import CachableTemplate, LastUpdatedOrderedDict
 
@@ -525,22 +524,33 @@ type RawTextInexactInterpolationValue = (
 
 class ITemplateParserProxy(t.Protocol):
     def to_tnode(self, template: Template) -> TNode: ...
+    def to_ttree(self, template: Template) -> TTree: ...
 
 
 @dataclass(frozen=True)
 class TemplateParserProxy(ITemplateParserProxy):
-    def to_tnode(self, template: Template) -> TNode:
+    def to_tnode(self, template: Template) -> TNode:  # BWC
         return TemplateParser.parse(template)
+
+    def to_ttree(self, template: Template) -> TTree:
+        return TemplateParser.parse_to_ttree(template)
 
 
 @dataclass(frozen=True)
 class CachedTemplateParserProxy(TemplateParserProxy):
     @lru_cache(512)  # noqa: B019
-    def _to_tnode(self, ct: CachableTemplate) -> TNode:
+    def _to_tnode(self, ct: CachableTemplate) -> TNode:  # BWC
         return super().to_tnode(ct.template)
 
-    def to_tnode(self, template: Template) -> TNode:
+    def to_tnode(self, template: Template) -> TNode:  # BWC
         return self._to_tnode(CachableTemplate(template))
+
+    @lru_cache(512)  # noqa: B019
+    def _to_ttree(self, ct: CachableTemplate) -> TTree:
+        return super().to_ttree(ct.template)
+
+    def to_ttree(self, template: Template) -> TTree:
+        return self._to_ttree(CachableTemplate(template))
 
 
 class IComponentProcessor(t.Protocol):
@@ -669,8 +679,8 @@ class TemplateProcessor(ITemplateProcessor):
         return self._process_template(root_template, assume_ctx)
 
     def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
-        root = self.parser_api.to_tnode(template)
-        return self._process_tnode(template, last_ctx, root)
+        ttree = self.parser_api.to_ttree(template)
+        return self._process_tnode(template, last_ctx, ttree.root)
 
     def _process_tnode(
         self, template: Template, last_ctx: ProcessContext, tnode: TNode
