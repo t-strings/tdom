@@ -2,7 +2,12 @@ from string.templatelib import Interpolation, Template
 
 import pytest
 
-from .parser import TemplateParser, configure_source_tracker
+from .parser import (
+    AttributeParsingError,
+    ParsingError,
+    TemplateParser,
+    configure_source_tracker,
+)
 from .placeholders import make_placeholder_config
 from .template_utils import PartPosition, TemplateRef, TemplateSpan
 from .tnodes import (
@@ -223,17 +228,17 @@ def test_parse_title_unusual():
 
 
 def test_parse_mismatched_tags():
-    with pytest.raises(ValueError):
+    with pytest.raises(ParsingError, match="Mismatch"):
         _ = parse_root(t"<div><span>Mismatched</div></span>")
 
 
-def test_parse_unclosed_tag():
-    with pytest.raises(ValueError):
+def test_parse_unclosed_element():
+    with pytest.raises(ParsingError, match="unclosed tag <div>"):
         _ = parse_root(t"<div>Unclosed")
 
 
 def test_parse_unexpected_closing_tag():
-    with pytest.raises(ValueError):
+    with pytest.raises(ParsingError, match="Unexpected closing tag"):
         _ = parse_root(t"Unopened</div>")
 
 
@@ -257,12 +262,12 @@ def test_nested_self_closing_tags():
 
 
 def test_self_closing_tags_unexpected_closing_tag():
-    with pytest.raises(ValueError):
+    with pytest.raises(ParsingError, match="Unexpected closing tag"):
         _ = parse_root(t"<div /></div>")
 
 
 def test_self_closing_void_tags_unexpected_closing_tag():
-    with pytest.raises(ValueError):
+    with pytest.raises(ParsingError, match="Unexpected closing tag"):
         _ = parse_root(t"<input /></input>")
 
 
@@ -351,20 +356,28 @@ def test_spread_attr():
 
 
 def test_templated_attribute_name_error():
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        AttributeParsingError,
+        match="cannot contain interpolations if the value is also interpolated",
+    ):
         attr_name = "some-attr"
         _ = parse_root(t'<div {attr_name}="value" />')
 
 
 def test_templated_attribute_name_and_value_error():
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        AttributeParsingError,
+        match="cannot contain interpolations if the value is also interpolated",
+    ):
         attr_name = "some-attr"
         value = "value"
         _ = parse_root(t'<div {attr_name}="{value}" />')
 
 
 def test_adjacent_spread_attrs_error():
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        AttributeParsingError, match="must have exactly one interpolation in the name"
+    ):
         attrs1 = {}
         attrs2 = {}
         _ = parse_root(t"<div {attrs1}{attrs2} />")
@@ -394,14 +407,16 @@ def test_parse_doctype():
 
 def test_parse_doctype_interpolation_error():
     extra = "SYSTEM"
-    with pytest.raises(ValueError):
+    with pytest.raises(
+        ParsingError, match="Interpolations are not allowed in declarations"
+    ):
         _ = parse_root(t"<!DOCTYPE html {extra}>")
 
 
 def test_unsupported_decl_error():
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ParsingError, match="Only well formed DOCTYPE declarations"):
         _ = parse_root(t"<!doctype-alt html500>")  # Unknown declaration
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ParsingError, match="Only well formed DOCTYPE declarations"):
         _ = parse_root(t"<!doctype>")  # missing DTD
 
 
@@ -460,7 +475,7 @@ def test_component_element_invalid_closing_tag():
     def Component():
         pass
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ParsingError, match="Mismatched closing tag </div>"):
         _ = parse_root(t"<{Component}></div>")
 
 
@@ -468,7 +483,8 @@ def test_component_element_invalid_opening_tag():
     def Component():
         pass
 
-    with pytest.raises(ValueError):
+    # @NOTE: intentional expression
+    with pytest.raises(ParsingError, match="Mismatched closing tag </{Component}>"):
         _ = parse_root(t"<div></{Component}>")
 
 
@@ -476,7 +492,7 @@ def test_adjacent_start_component_tag_error():
     def Component():
         pass
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ParsingError, match="must have exactly one interpolation"):
         _ = parse_root(t"<{Component}{Component}></{Component}>")
 
 
@@ -484,8 +500,24 @@ def test_adjacent_end_component_tag_error():
     def Component():
         pass
 
-    with pytest.raises(ValueError):
+    with pytest.raises(ParsingError, match="must have exactly one interpolation"):
         _ = parse_root(t"<{Component}></{Component}{Component}>")
+
+
+def test_unmatched_end_component_tag_error():
+    def Component():
+        pass
+
+    with pytest.raises(ParsingError, match="Unexpected closing tag </{Component}>"):
+        _ = TemplateParser.parse(t"</{Component}>")
+
+
+def test_unclosed_component_tag_error():
+    def Component():
+        pass
+
+    with pytest.raises(ParsingError, match="unclosed tag <{Component}>"):
+        _ = TemplateParser.parse(t"<{Component}>")
 
 
 def test_placeholder_collision_avoidance():
@@ -513,7 +545,7 @@ def test_unresolved_placeholder():
     # This would be a bug in the parser so we have to fabricate
     # this error manually.
     tp.get_source().placeholders.add_placeholder(3)
-    with pytest.raises(ValueError, match="Some placeholders were never resolved"):
+    with pytest.raises(ParsingError, match="Some placeholders were never resolved"):
         tp.close()
 
 
@@ -558,17 +590,17 @@ class TestSourceTracker:
 
 class TestIncompleteParsing:
     def test_dangling_quotes(self):
-        with pytest.raises(ValueError, match="Parser expects more data"):
+        with pytest.raises(ParsingError, match="Parser expects more data"):
             _ = parse_root(t"<div a='")
-        with pytest.raises(ValueError, match="Parser expects more data"):
+        with pytest.raises(ParsingError, match="Parser expects more data"):
             _ = parse_root(t'<div a="')
 
     def test_unfinished_attribute(self):
-        with pytest.raises(ValueError, match="Parser expects more data"):
+        with pytest.raises(ParsingError, match="Parser expects more data"):
             _ = parse_root(t"<div a=")
 
     def test_placeholder_missing_from_dangling_quote(self):
-        with pytest.raises(ValueError, match="Parser expects more data"):
+        with pytest.raises(ParsingError, match="Parser expects more data"):
             _ = parse_root(t'<div a="{None}')
 
 
@@ -674,6 +706,98 @@ class TestComponentChildrenSpan:
         children = node.children_span.extract(template)
         assert children.strings == ("before ", " after")
         assert children.values == (child,)
+
+
+class TestElementWithAmbiguousSlash:
+    def test_root_unclosed_error(self):
+        with pytest.raises(
+            ParsingError, match="Did you mean to quote the last attribute.*attr[=]root/"
+        ):
+            _ = TemplateParser.parse(t"<div attr=root/>")
+
+    def test_nested_unclosed_error(self):
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*attr[=]nested/",
+        ):
+            _ = TemplateParser.parse(t"<div><div attr=nested/></div>")
+
+    def test_double_nested_unclosed_error(self):
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*attr[=]nested/",
+        ):
+            _ = TemplateParser.parse(t"<div><div/><div><div attr=nested/></div></div>")
+
+    def test_mismatch_with_element_error(self):
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*attr[=]mismatch/",
+        ):
+            _ = TemplateParser.parse(t"<section><div attr=mismatch/></section>")
+
+    def test_mismatch_with_component_error(self):
+        def Comp(children: Template) -> Template:
+            return t""
+
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*attr[=]mismatch/",
+        ):
+            _ = TemplateParser.parse(t"<{Comp}><div attr=mismatch/></{Comp}>")
+
+
+class TestComponentWithAmbiguousSlash:
+    @pytest.fixture
+    def Comp1(self):
+        def _Comp1(children: Template, title: str) -> Template:
+            return children
+
+        return _Comp1
+
+    @pytest.fixture
+    def Comp2(self):
+        def _Comp2(children: Template, title: str) -> Template:
+            return children
+
+        return _Comp2
+
+    @pytest.fixture
+    def Comp3(self):
+        def _Comp3(children: Template, title: str) -> Template:
+            return children
+
+        return _Comp3
+
+    def test_mismatch_with_element_error(self, Comp1):
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*title[=]today/",
+        ):
+            _ = TemplateParser.parse(t"<div><{Comp1} title=today/></div>")
+
+    def test_root_unclosed_error(self, Comp1):
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*title[=]today/",
+        ):
+            _ = TemplateParser.parse(t"<{Comp1} title=today/>")
+
+    def test_single_nested_unclosed_error(self, Comp1, Comp2):
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*title[=]today/",
+        ):
+            _ = TemplateParser.parse(t"<{Comp2}><{Comp1} title=today/></{Comp2}>")
+
+    def test_double_nested_unclosed_error(self, Comp1, Comp2, Comp3):
+        with pytest.raises(
+            ParsingError,
+            match="Did you mean to quote the last attribute.*title[=]today/",
+        ):
+            _ = TemplateParser.parse(
+                t"<{Comp2}><{Comp1}><{Comp3} title=today/></{Comp1}></{Comp2}>"
+            )
 
 
 class TestSourcePos:
