@@ -185,12 +185,9 @@ class TemplateParser(HTMLParser):
         # this string either contains ">" or " />".  It might not be
         # i_index + 1 because attributes WITHIN the component's tag might
         # contain interpolations causing the i_index (and s_index) to advance
-        # arbitrarily.
-        children_start_s_index = (
-            i_index  # i_index of comp callable, from start of the WHOLE template
-            + len(starttag_ref.strings)  # then count up to the end
-            - 1  # remove 1 since we want an index instead of a limit
-        )
+        # arbitrarily.  So we start with the "last" `i_index` in the starttag
+        # and advance to the next string.
+        children_start_s_index = starttag_ref.i_indexes[-1] + 1
 
         # @NOTE: The last string should terminate the starttag and end with ">"
         # So this length is the offset from the last interpolation to the start
