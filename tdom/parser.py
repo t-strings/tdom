@@ -181,9 +181,6 @@ class TemplateParser(HTMLParser):
         # the value will be out of sync.
         starttag_ref = self.get_starttag_ref()
 
-        # @NOTE: This must be stored when the tag is handled since it is
-        # set based on when the template parts are fed in and otherwise
-        # might be out of sync.
         # The starting s_index of the component's children template. Note that
         # this string either contains ">" or " />".  It might not be
         # i_index + 1 because attributes WITHIN the component's tag might
