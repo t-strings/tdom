@@ -2,7 +2,7 @@ from string.templatelib import Interpolation, Template
 
 import pytest
 
-from .parser import TemplateParser
+from .parser import TemplateParser, configure_source_tracker
 from .placeholders import make_placeholder_config
 from .template_utils import TemplateRef
 from .tnodes import (
@@ -494,6 +494,34 @@ def test_unresolved_placeholder():
     tp.get_source().placeholders.add_placeholder(3)
     with pytest.raises(ValueError, match="Some placeholders were never resolved"):
         tp.close()
+
+
+class TestSourceTracker:
+    def test_iter(self):
+        t = t"<div>{0}</div>"
+        st = configure_source_tracker(t)
+        itr = iter(st)
+        parts = []
+        parts.append(next(itr))
+        assert itr.index == 0
+        assert not itr.has_placeholders()
+        assert parts[0] == t.strings[0], "String parts pass through."
+        parts.append(next(itr))
+        assert itr.index == 1
+        assert itr.has_placeholders(), "Placeholder was addeded."
+        tref_find = st.find_placeholders(parts[1])
+        assert itr.has_placeholders() and tref_find.i_indexes[0] == 0
+        tref_removed = st.remove_placeholders(parts[1])
+        assert not itr.has_placeholders() and tref_removed.i_indexes[0] == 0, (
+            "Placeholder removed."
+        )
+        parts.append(next(itr))
+        assert itr.index == 2
+        with pytest.raises(StopIteration):
+            next(itr)
+        assert itr.index == 2, (
+            "Once the iter is exhausted the index remains at the last element."
+        )
 
 
 class TestIncompleteParsing:
