@@ -4,7 +4,7 @@ from html.parser import HTMLParser
 from string.templatelib import Interpolation, Template
 
 from .htmlspec import VOID_ELEMENTS
-from .placeholders import PlaceholderConfig, PlaceholderState
+from .placeholders import PlaceholderState
 from .template_utils import TemplateRef, combine_template_refs
 from .tnodes import (
     TAttribute,
@@ -176,86 +176,30 @@ class TemplateParser(HTMLParser):
         # relying on higher layers to validate types and render correctly.
         i_index = tag_ref.i_indexes[0]
 
-        # @NOTE: This must be stored when the tag is handled since it is
-        # set based on when the template parts are fed in and otherwise
-        # might be out of sync.
+        # @NOTE: This must be called when the tag is handled since it is
+        # populated based on the most recently finished start tag. Otherwise
+        # the value will be out of sync.
+        starttag_ref = self.get_starttag_ref()
+
         # The starting s_index of the component's children template. Note that
         # this string either contains ">" or " />".  It might not be
         # i_index + 1 because attributes WITHIN the component's tag might
         # contain interpolations causing the i_index (and s_index) to advance
-        # arbitrarily.
-        children_start_s_index = self.get_source().s_index
+        # arbitrarily.  So we start with the "last" `i_index` in the starttag
+        # and advance to the next string.
+        children_start_s_index = starttag_ref.i_indexes[-1] + 1
 
-        # @NOTE: This must be called when the tag is handled since it is
-        # populated based on the most recently finished start tag. Otherwise
-        # the value will be out of sync.
-        starttag_text = self.get_starttag_text()
-        if starttag_text is None:
-            raise AssertionError(
-                f"Expected startag_text to be set when parsing component at {i_index}."
-            )
-
-        tattrs = self.make_tattrs(attrs)
-
-        offset_into_children_start_s = self.compute_offset_into_children_start_s(
-            start_i_index=i_index,
-            tattrs=tattrs,
-            config=self.placeholders.config,
-            starttag_text=starttag_text,
-        )
+        # @NOTE: The last string should terminate the starttag and end with ">"
+        # So this length is the offset from the last interpolation to the start
+        # of the children's leading string.
+        offset_into_children_start_s = len(starttag_ref.strings[-1])
 
         return OpenTComponent(
             start_i_index=i_index,
             children_start_s_index=children_start_s_index,
             offset_into_children_start_s=offset_into_children_start_s,
-            attrs=tattrs,
+            attrs=self.make_tattrs(attrs),
         )
-
-    def compute_offset_into_children_start_s(
-        self,
-        start_i_index: int,
-        tattrs: tuple[TAttribute, ...],
-        config: PlaceholderConfig,
-        starttag_text: str,
-    ) -> int:
-        """
-        Compute offset into "string" containing the start of children template.
-
-        @NOTE: This is to actually OFFLOAD work to the parser itself.  If we try
-        to "rebuild" the tag from the parse result we are bound to fail in some
-        way(s). We essentially re-run the placeholder process but with content
-        we KNOWN ends at the end of the starttag, ie. ">", because the parser
-        told us that is where it ends (rather than trying to scan for ">"
-        because ">" might be in literal tags).
-
-        Examples:
-
-        <{Comp}></{Comp}> -- len(">")
-        <{Comp}>children</{Comp}> -- len(">")
-        <{Comp} title="1>0">children</{Comp}> -- len(' title="1>0">')
-        <{Comp} title="{'1>0'}">children</{Comp}> -- len('">')
-        """
-        # Rebuild known interpolations in the starttag.
-        known: set[int] = {start_i_index}  # The component callable itself.
-        for attr in tattrs:
-            if isinstance(attr, TInterpolatedAttribute):
-                known.add(attr.value_i_index)
-            elif isinstance(attr, TSpreadAttribute):
-                known.add(attr.i_index)
-            elif isinstance(attr, TTemplatedAttribute):
-                known.update(attr.value_ref.i_indexes)
-        # Now re-remove those placeholders using the same config we used to
-        # make them.
-        temp_placeholders = PlaceholderState(known=known, config=config)
-        tag_ref = temp_placeholders.remove_placeholders(starttag_text)
-        if not temp_placeholders.is_empty:
-            raise AssertionError(
-                "There are extra placeholders still in the starttag_text."
-            )
-        # Now the last string should terminate the starttag and end with ">"
-        # So this length is the offset from the last interpolation to the start
-        # of the children's leading string.
-        return len(tag_ref.strings[-1])
 
     def finalize_tag(
         self, open_tag: OpenTag, endtag_i_index: int | None = None
@@ -339,7 +283,7 @@ class TemplateParser(HTMLParser):
 
     def validate_end_tag(self, tag: str, open_tag: OpenTag) -> int | None:
         """Validate that closing tag matches open tag. Return component end index if applicable."""
-        assert self.source, "Parser source tracker not initialized."
+        source = self.get_source()
         tag_ref = self.placeholders.remove_placeholders(tag)
 
         match open_tag:
@@ -360,7 +304,7 @@ class TemplateParser(HTMLParser):
             case OpenTComponent(start_i_index=start_i_index):
                 if tag_ref.is_literal:
                     raise ValueError(
-                        f"Mismatched closing tag </{tag}> for component starting at {self.source.format_starttag(start_i_index)}."
+                        f"Mismatched closing tag </{tag}> for component starting at {source.format_starttag(start_i_index)}."
                     )
                 if not tag_ref.is_singleton:
                     raise ValueError(
@@ -370,6 +314,16 @@ class TemplateParser(HTMLParser):
                 # component callable that matches the start tag. We do not check
                 # any of this in the parser, instead relying on higher layers.
                 return tag_ref.i_indexes[0]
+
+    def get_starttag_ref(self) -> TemplateRef:
+        """
+        Wrap get_starttag_text and just raise if None is returned.
+        Do this so we don't guard for `None` everywhere.
+        """
+        starttag_text = self.get_starttag_text()
+        if starttag_text is None:
+            raise AssertionError("Expected the parser to have starttag_text set.")
+        return self.placeholders.config.find_placeholders(starttag_text)
 
     # ------------------------------------------
     # HTMLParser tag callbacks
