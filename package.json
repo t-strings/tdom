@@ -1,8 +1,8 @@
 {
   "name": "tdom",
   "version": "1.0.0",
-  "dependencies": {
-    "prettier": "^3.9.5"
+  "devDependencies": {
+    "prettier": "^3"
   },
   "prettier": {
     "printWidth": 80,

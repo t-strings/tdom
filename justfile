@@ -1,4 +1,4 @@
-default: lint format_check type_check test
+default: lint format_check format_docs_check type_check test
 
 lint:
     uv run ruff check
@@ -7,7 +7,10 @@ format_check:
     uv run ruff format --check
 
 format_docs:
-    npx prettier --write "**/*.md"
+    npx prettier --write README.md "docs/**/*.md"
+
+format_docs_check:
+    npx prettier --check README.md "docs/**/*.md"
 
 type_check_pyright:
     uv run pyright
