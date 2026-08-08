@@ -309,16 +309,26 @@ assert page == "<div><h1>My Site</h1></div>"
 ```
 
 In the example above, `content` is a `Template` object that gets correctly
-parsed and embedded within the outer template. You can also explicitly call
-`html()` on nested templates if you prefer:
+parsed and embedded within the outer template.
+
+Nest the `Template` itself; don't render it first. `html()` returns a plain
+`str`, so interpolating an already-rendered result escapes it:
 
 ```python
 content = t"<h1>My Site</h1>"
-page = html(t"<div>{content}</div>")
-assert page == "<div><h1>My Site</h1></div>"
+page = html(t"<div>{html(content)}</div>")
+assert page == "<div>&lt;h1&gt;My Site&lt;/h1&gt;</div>"
 ```
 
-The result is the same either way.
+If you do need to embed HTML you have already rendered, mark it as safe:
+
+```python
+from tdom import Markup
+
+content = t"<h1>My Site</h1>"
+page = html(t"<div>{Markup(html(content))}</div>")
+assert page == "<div><h1>My Site</h1></div>"
+```
 
 #### Component Functions
 
