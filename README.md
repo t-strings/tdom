@@ -472,17 +472,14 @@ assert 'width="48"' in result
 assert 'stroke="blue"' in result
 ```
 
-#### Context
+#### Passing Data to Nested Components
 
-Unlike some template systems that provide implicit "context" objects for passing
-data through component hierarchies, `tdom` embraces Python's explicit approach.
-If you need to pass data to nested components, you have several Pythonic
-options:
+`tdom` prefers Python's explicit approach: if a component needs a value, pass it
+as an argument. Most of the time that is the right answer, and it keeps the flow
+of data obvious.
 
-1. **Pass data as explicit arguments**: The most straightforward approach.
-
-2. **Use closures**: Components are just functions, so they can close over
-   variables in their enclosing scope:
+Components are just functions, so they can also close over variables in their
+enclosing scope:
 
 ```python
 theme = {"primary": "blue", "spacing": "10px"}
@@ -497,14 +494,45 @@ assert 'margin: 10px' in result
 assert '>Click me</button>' in result
 ```
 
-3. **Use module-level or global state**: For truly application-wide
-   configuration.
+For values that need to reach deeply nested components without being threaded
+through every layer in between, `tdom` provides `Scope` and `ScopedTemplate`.
+These build on Python's
+[`contextvars`](https://docs.python.org/3/library/contextvars.html), so they are
+async- and thread-safe.
 
-4. **Use a dedicated context library**: Libraries like `contextvars` can
-   provide more sophisticated context management if needed.
+A component returns a `ScopedTemplate` instead of a `Template` to bind a value
+for the duration of that subtree's render:
 
-This explicit approach makes it clear where data comes from and avoids the
-"magic" of implicit context passing.
+```python
+from contextvars import ContextVar
+from tdom import Scope, ScopedTemplate
+
+current_theme: ContextVar[str] = ContextVar("current_theme", default="light")
+
+def ThemeProvider(children: Template, value: str) -> ScopedTemplate:
+    return ScopedTemplate(Scope(current_theme, value), children)
+
+def ThemedButton(text: str) -> Template:
+    return t'<button class="btn-{current_theme.get()}">{text}</button>'
+
+page = html(t'<{ThemeProvider} value="dark"><{ThemedButton} text="Save" /></{ThemeProvider}>')
+assert page == '<button class="btn-dark">Save</button>'
+```
+
+Note that `ThemedButton` reads the value inside its own function body. This
+matters: t-string interpolations are evaluated when a template is _built_, not
+when it is rendered. An interpolation written directly between the provider's
+tags therefore runs before the scope is active:
+
+```python
+page = html(t'<{ThemeProvider} value="dark">{current_theme.get()}</{ThemeProvider}>')
+assert page == "light"
+```
+
+So consumers of a scoped value need to be components, not inline interpolations.
+
+`Scope` and `ScopedTemplate` are deliberately low-level; a friendlier provider
+API may follow.
 
 ### The `tdom` Module
 
