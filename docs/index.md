@@ -17,7 +17,6 @@ maxdepth: 1
 hidden: True
 ---
 why
-usage/index
 License <license>
 Changelog <https://github.com/t-strings/tdom/releases>
 ```

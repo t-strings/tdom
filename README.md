@@ -311,16 +311,26 @@ assert page == "<div><h1>My Site</h1></div>"
 ```
 
 In the example above, `content` is a `Template` object that gets correctly
-parsed and embedded within the outer template. You can also explicitly call
-`html()` on nested templates if you prefer:
+parsed and embedded within the outer template.
+
+Nest the `Template` itself; don't render it first. `html()` returns a plain
+`str`, so interpolating an already-rendered result escapes it:
 
 ```python
 content = t"<h1>My Site</h1>"
-page = html(t"<div>{content}</div>")
-assert page == "<div><h1>My Site</h1></div>"
+page = html(t"<div>{html(content)}</div>")
+assert page == "<div>&lt;h1&gt;My Site&lt;/h1&gt;</div>"
 ```
 
-The result is the same either way.
+If you do need to embed HTML you have already rendered, mark it as safe:
+
+```python
+from tdom import Markup
+
+content = t"<h1>My Site</h1>"
+page = html(t"<div>{Markup(html(content))}</div>")
+assert page == "<div><h1>My Site</h1></div>"
+```
 
 #### Component Functions
 
@@ -474,17 +484,14 @@ assert 'width="48"' in result
 assert 'stroke="blue"' in result
 ```
 
-#### Context
+#### Passing Data to Nested Components
 
-Unlike some template systems that provide implicit "context" objects for passing
-data through component hierarchies, `tdom` embraces Python's explicit approach.
-If you need to pass data to nested components, you have several Pythonic
-options:
+`tdom` prefers Python's explicit approach: if a component needs a value, pass it
+as an argument. Most of the time that is the right answer, and it keeps the flow
+of data obvious.
 
-1. **Pass data as explicit arguments**: The most straightforward approach.
-
-2. **Use closures**: Components are just functions, so they can close over
-   variables in their enclosing scope:
+Components are just functions, so they can also close over variables in their
+enclosing scope:
 
 ```python
 theme = {"primary": "blue", "spacing": "10px"}
@@ -499,38 +506,75 @@ assert 'margin: 10px' in result
 assert '>Click me</button>' in result
 ```
 
-3. **Use module-level or global state**: For truly application-wide
-   configuration.
+For values that need to reach deeply nested components without being threaded
+through every layer in between, `tdom` provides `Scope` and `ScopedTemplate`.
+These build on Python's
+[`contextvars`](https://docs.python.org/3/library/contextvars.html), so they are
+async- and thread-safe.
 
-4. **Use a dedicated context library**: Libraries like `contextvars` can
-   provide more sophisticated context management if needed.
-
-This explicit approach makes it clear where data comes from and avoids the
-"magic" of implicit context passing.
-
-### The `tdom` Module
-
-#### Utilities
-
-The `tdom` package includes several utility functions for working with
-interpolations:
-
-**`format_interpolation()`**: This function handles the formatting of
-interpolated values according to their format specifiers and conversions. It's
-used internally by the `html()` function but can also be used independently:
+A component returns a `ScopedTemplate` instead of a `Template` to bind a value
+for the duration of that subtree's render:
 
 ```python
-from string.templatelib import Interpolation
+from contextvars import ContextVar
+from tdom import Scope, ScopedTemplate
+
+current_theme: ContextVar[str] = ContextVar("current_theme", default="light")
+
+def ThemeProvider(children: Template, value: str) -> ScopedTemplate:
+    return ScopedTemplate(Scope(current_theme, value), children)
+
+def ThemedButton(text: str) -> Template:
+    return t'<button class="btn-{current_theme.get()}">{text}</button>'
+
+page = html(t'<{ThemeProvider} value="dark"><{ThemedButton} text="Save" /></{ThemeProvider}>')
+assert page == '<button class="btn-dark">Save</button>'
+```
+
+Note that `ThemedButton` reads the value inside its own function body. This
+matters: t-string interpolations are evaluated when a template is _built_, not
+when it is rendered. An interpolation written directly between the provider's
+tags therefore runs before the scope is active:
+
+```python
+page = html(t'<{ThemeProvider} value="dark">{current_theme.get()}</{ThemeProvider}>')
+assert page == "light"
+```
+
+So consumers of a scoped value need to be components, not inline interpolations.
+
+`Scope` and `ScopedTemplate` are deliberately low-level; a friendlier provider
+API may follow.
+
+### Lower-Level Utilities
+
+The `tdom.format` submodule holds the helpers that `html()` uses to turn
+interpolations into values. They are not exported from the top-level `tdom`
+package, but you can import them directly if you are building your own t-string
+processor.
+
+**`convert()`** applies a conversion specifier (`!a`, `!r`, `!s`) to a value,
+following the same semantics as f-strings:
+
+```python
 from tdom.format import convert
 
-# Test convert function
 assert convert("hello", "s") == "hello"
 assert convert("hello", "r") == "'hello'"
 assert convert(42, None) == 42
 ```
 
-**`convert()`**: Applies conversion specifiers (`!a`, `!r`, `!s`) to values
-before formatting, following the same semantics as f-strings.
+**`format_interpolation()`** takes a whole `Interpolation` and applies its
+conversion, then its format specifier:
+
+```python
+from string.templatelib import Interpolation
+from tdom.format import format_interpolation
+
+# Interpolation(value, expression, conversion, format_spec)
+assert format_interpolation(Interpolation(42, "x", None, "04d")) == "0042"
+assert format_interpolation(Interpolation("hi", "x", "r", "")) == "'hi'"
+```
 
 These utilities follow the patterns established by PEP 750 for t-string
 processing, allowing you to build custom template processors if needed.
