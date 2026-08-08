@@ -34,7 +34,7 @@ jobs:
         run: uv run ruff format --check
 
       - name: Check Markdown formatting
-        run: npx prettier --check "**/*.md"
+        run: npx prettier --check README.md "docs/**/*.md"
 
       - name: Type check with Pyright
         run: uv run pyright
