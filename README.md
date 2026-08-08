@@ -14,11 +14,15 @@ A 🤘 rockin' t-string HTML templating system for Python 3.14.
 
 ## NOTE WELL
 
-This is pre-alpha software. It is still under heavy development and the API may change without warning. We would love community feedback to help shape the direction of this project!
+This is pre-alpha software. It is still under heavy development and the API may
+change without warning. We would love community feedback to help shape the
+direction of this project!
 
 ## Installation
 
-You'll need [Python 3.14](https://www.python.org/downloads/release/python-3140/), which was released in October 2025.
+You'll need
+[Python 3.14](https://www.python.org/downloads/release/python-3140/), which was
+released in October 2025.
 
 Then, just run:
 
@@ -26,7 +30,8 @@ Then, just run:
 pip install tdom
 ```
 
-If you have [Astral's `uv`](https://docs.astral.sh/uv/) you can easily try `tdom` in an isolated Python 3.14 environment:
+If you have [Astral's `uv`](https://docs.astral.sh/uv/) you can easily try
+`tdom` in an isolated Python 3.14 environment:
 
 ```bash
 uv run --with tdom --python 3.14 python
@@ -150,7 +155,7 @@ assert button == '<button class="btn btn-primary">Click me</button>'
 #### The `style` Attribute
 
 The `style` attribute has special handling to make it easy to combine multiple
-styles from different sources.  The simplest way is to provide a dictionary of
+styles from different sources. The simplest way is to provide a dictionary of
 CSS properties and values for the `style` attribute:
 
 ```python
@@ -397,10 +402,10 @@ assert result == "Your greeting is <span>Hello, Alice!</span>."
 Component functions are great for simple use cases, but for more complex
 components you may want to use a class-based approach. Remember that the
 component invocation syntax (`<{ComponentName} ... />`) works with any callable.
-That includes the `__init__` method of a class.  If a callable does not return
-a `Template` then it must return another callable that takes no arguments and
-returns a `Template`.  That can be done by defining a `__call__` method on
-the class.
+That includes the `__init__` method of a class. If a callable does not return a
+`Template` then it must return another callable that takes no arguments and
+returns a `Template`. That can be done by defining a `__call__` method on the
+class.
 
 One particularly useful pattern is to build class-based components with
 dataclasses:
@@ -443,8 +448,8 @@ class, making it easier to manage complex components.
 As a note, `children` are optional in component signatures. If a component
 requests children, it will receive them if provided. If no children are
 provided, the value of children is an empty `Template`, ie. `t""`. If the
-component does _not_ ask for children, but they are provided, then they
-are silently ignored.
+component does _not_ ask for children, but they are provided, then they are
+silently ignored.
 
 #### SVG Support
 
