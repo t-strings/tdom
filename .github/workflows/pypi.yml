@@ -13,15 +13,24 @@ jobs:
   test_and_build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - name: Set up Python 3.14.0-rc.2
-        uses: actions/setup-python@v5
+      - name: Set up Python 3.14.6
+        uses: actions/setup-python@v7
         with:
-          python-version: 3.14.0-rc.2
+          python-version: 3.14.6
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v6
+        uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+
+      - name: Set up Node 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install Node dependencies
+        run: npm ci
 
       - name: Lint
         run: uv run ruff check
@@ -29,8 +38,14 @@ jobs:
       - name: Check formatting
         run: uv run ruff format --check
 
-      - name: Type check
+      - name: Check Markdown formatting
+        run: npx prettier --check README.md "docs/**/*.md"
+
+      - name: Type check with Pyright
         run: uv run pyright
+
+      - name: Type check with Ty
+        run: uv run ty check
 
       - name: Run tests
         run: uv run pytest -v
@@ -39,7 +54,7 @@ jobs:
         run: uv build
 
       - name: Store the distribution packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: python-packages
           path: dist/
@@ -54,7 +69,7 @@ jobs:
       id-token: write
     steps:
       - name: Download distribution packages
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v8
         with:
           name: python-packages
           path: dist/
