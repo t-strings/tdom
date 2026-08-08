@@ -10,7 +10,7 @@ A 🤘 rockin' t-string HTML templating system for Python 3.14.
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/t-strings/tdom/blob/main/LICENSE)
 [![Docs](https://img.shields.io/badge/docs-online-blue.svg)](https://t-strings.github.io/tdom/)
 
-**Documentation:** <https://t-strings.github.io/tdom/>
+**Upcoming (incomplete) documentation:** <https://t-strings.github.io/tdom/>
 
 ## NOTE WELL
 
