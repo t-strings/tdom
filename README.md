@@ -534,29 +534,35 @@ So consumers of a scoped value need to be components, not inline interpolations.
 `Scope` and `ScopedTemplate` are deliberately low-level; a friendlier provider
 API may follow.
 
-### The `tdom` Module
+### Lower-Level Utilities
 
-#### Utilities
+The `tdom.format` submodule holds the helpers that `html()` uses to turn
+interpolations into values. They are not exported from the top-level `tdom`
+package, but you can import them directly if you are building your own t-string
+processor.
 
-The `tdom` package includes several utility functions for working with
-interpolations:
-
-**`format_interpolation()`**: This function handles the formatting of
-interpolated values according to their format specifiers and conversions. It's
-used internally by the `html()` function but can also be used independently:
+**`convert()`** applies a conversion specifier (`!a`, `!r`, `!s`) to a value,
+following the same semantics as f-strings:
 
 ```python
-from string.templatelib import Interpolation
 from tdom.format import convert
 
-# Test convert function
 assert convert("hello", "s") == "hello"
 assert convert("hello", "r") == "'hello'"
 assert convert(42, None) == 42
 ```
 
-**`convert()`**: Applies conversion specifiers (`!a`, `!r`, `!s`) to values
-before formatting, following the same semantics as f-strings.
+**`format_interpolation()`** takes a whole `Interpolation` and applies its
+conversion, then its format specifier:
+
+```python
+from string.templatelib import Interpolation
+from tdom.format import format_interpolation
+
+# Interpolation(value, expression, conversion, format_spec)
+assert format_interpolation(Interpolation(42, "x", None, "04d")) == "0042"
+assert format_interpolation(Interpolation("hi", "x", "r", "")) == "'hi'"
+```
 
 These utilities follow the patterns established by PEP 750 for t-string
 processing, allowing you to build custom template processors if needed.
