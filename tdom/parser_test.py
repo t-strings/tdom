@@ -497,6 +497,17 @@ def test_unresolved_placeholder():
 
 
 class TestSourceTracker:
+    @pytest.mark.parametrize("t", (t"", t"simple"))
+    def test_only_string(self, t: Template):
+        st = configure_source_tracker(t)
+        itr = iter(st)
+        part = next(itr)
+        assert isinstance(part, str) and part == t.strings[0]
+        assert itr.index == 0
+        with pytest.raises(StopIteration):
+            _ = next(itr)
+        assert itr.index == 0, "Still at 0."
+
     def test_iter(self):
         t = t"<div>{0}</div>"
         st = configure_source_tracker(t)
