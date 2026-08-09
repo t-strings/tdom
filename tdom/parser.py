@@ -631,17 +631,12 @@ class TemplateParser(HTMLParser):
             self.feed(content)
 
     @staticmethod
-    def parse(t: Template) -> TNode:
+    def parse(t: Template) -> TTree:
         """
         Parse a Template containing valid HTML and substitutions and return
-        a TNode tree representing its structure. This cachable structure can later
-        be resolved against actual interpolation values to produce a Node tree.
+        a TTree representing its structure. This cachable structure can later
+        be resolved against actual interpolation values to produce HTML.
         """
-        ttree = TemplateParser.parse_to_ttree(t)
-        return ttree.root
-
-    @staticmethod
-    def parse_to_ttree(t: Template) -> TTree:
         parser = TemplateParser()
         parser.feed_template(t)
         parser.close()

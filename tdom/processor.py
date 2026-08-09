@@ -529,7 +529,7 @@ class ITemplateParserProxy(t.Protocol):
 @dataclass(frozen=True)
 class TemplateParserProxy(ITemplateParserProxy):
     def to_ttree(self, template: Template) -> TTree:
-        return TemplateParser.parse_to_ttree(template)
+        return TemplateParser.parse(template)
 
 
 @dataclass(frozen=True)
