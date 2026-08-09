@@ -523,28 +523,17 @@ type RawTextInexactInterpolationValue = (
 
 
 class ITemplateParserProxy(t.Protocol):
-    def to_tnode(self, template: Template) -> TNode: ...
     def to_ttree(self, template: Template) -> TTree: ...
 
 
 @dataclass(frozen=True)
 class TemplateParserProxy(ITemplateParserProxy):
-    def to_tnode(self, template: Template) -> TNode:  # BWC
-        return TemplateParser.parse(template)
-
     def to_ttree(self, template: Template) -> TTree:
         return TemplateParser.parse_to_ttree(template)
 
 
 @dataclass(frozen=True)
 class CachedTemplateParserProxy(TemplateParserProxy):
-    @lru_cache(512)  # noqa: B019
-    def _to_tnode(self, ct: CachableTemplate) -> TNode:  # BWC
-        return super().to_tnode(ct.template)
-
-    def to_tnode(self, template: Template) -> TNode:  # BWC
-        return self._to_tnode(CachableTemplate(template))
-
     @lru_cache(512)  # noqa: B019
     def _to_ttree(self, ct: CachableTemplate) -> TTree:
         return super().to_ttree(ct.template)

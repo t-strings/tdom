@@ -1932,12 +1932,12 @@ def test_process_template_internal_cache():
     # this is not great and hopefully we can find a better solution.
     assert isinstance(cached_process_api, TemplateProcessor)
     assert isinstance(cached_process_api.parser_api, CachedTemplateParserProxy)
-    start_ci = cached_process_api.parser_api._to_tnode.cache_info()
-    tnode1 = process_api.parser_api.to_tnode(sample_t)
-    tnode2 = process_api.parser_api.to_tnode(sample_t)
-    cached_tnode1 = cached_process_api.parser_api.to_tnode(sample_t)
-    cached_tnode2 = cached_process_api.parser_api.to_tnode(sample_t)
-    cached_tnode3 = cached_process_api.parser_api.to_tnode(sample_diff_t)
+    start_ci = cached_process_api.parser_api._to_ttree.cache_info()
+    tnode1 = process_api.parser_api.to_ttree(sample_t).root
+    tnode2 = process_api.parser_api.to_ttree(sample_t).root
+    cached_tnode1 = cached_process_api.parser_api.to_ttree(sample_t).root
+    cached_tnode2 = cached_process_api.parser_api.to_ttree(sample_t).root
+    cached_tnode3 = cached_process_api.parser_api.to_ttree(sample_diff_t).root
     # Check that the uncached and cached services are actually
     # returning non-identical results.
     assert tnode1 is not cached_tnode1
@@ -1955,12 +1955,12 @@ def test_process_template_internal_cache():
     assert tnode2 == cached_tnode1
     # Now that we are setup we check that the cache is internally
     # working as we intended.
-    ci = cached_process_api.parser_api._to_tnode.cache_info()
+    ci = cached_process_api.parser_api._to_ttree.cache_info()
     # cached_tnode2 and cached_tnode3 are hits after cached_tnode1
     assert ci.hits - start_ci.hits == 2
     # cached_tf1 was a miss because cache was empty (brand new)
     assert ci.misses - start_ci.misses == 1
-    cached_tnode4 = cached_process_api.parser_api.to_tnode(alt_t)
+    cached_tnode4 = cached_process_api.parser_api.to_ttree(alt_t).root
     # A different template produces a brand new tf.
     assert cached_tnode1 is not cached_tnode4
     # The template is new AND has a different structure so it also
