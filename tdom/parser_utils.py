@@ -34,6 +34,25 @@ class ParserPosition:
 def precompute_line_to_part_pos(
     source_text_parts: tuple[str, ...],
 ) -> dict[int, PartPosition]:
+    """
+    Precompute the part position of the start of every line.
+
+    @NOTE: This might be a performance improvement *but its purpose*
+    is to simplify the translation logic because we can start from a part
+    position right away by using the requested line without the offset. See the
+    `ParserPositionTranslator` for more information.
+
+    source_text_parts:
+        A tuple of all the template parts (strings and interpolations) but with
+        the interpolations converted to placeholders. These parts are in-order
+        as they are in the template using a unified indexing scheme, ie. from
+        `0` to `2 * len(template.strings) - 1`.
+
+    return:
+        A mapping from line number, starting at 1, to the part position where
+        that line starts, ie. `LinePosition(line=line, offset=0)`.
+
+    """
     line_to_part_pos = {1: PartPosition(0, 0)}
     line = 1
     for index, part_text in enumerate(source_text_parts):
@@ -52,6 +71,11 @@ def precompute_line_to_part_pos(
 def make_parser_pos_translator(
     template: Template, config: PlaceholderConfig
 ) -> ParserPositionTranslator:
+    """
+    Configure and return a `ParserPositionTranslator`.
+
+    We precompute a few things to make the translator's job easier.
+    """
 
     source_text_parts = tuple(
         template.strings[index // 2]
@@ -125,6 +149,19 @@ class ParserPositionTranslator:
         return ParserPosition(line=line, offset=offset, eol=eol, eof=eof)
 
     def translate(self, raw_parser_pos: LinePosition) -> PartPosition:
+        """
+        Translate a parser line position to a template part position.
+
+        raw_parser_pos:
+            A line position in a coordinate system that consists of the entire
+            template merged into a continuous string with placeholder strings
+            injected for `Interpolation`s.
+
+        return:
+            A position in a coordinate system that uses a unified index into
+            the parts of the `Template`.  For interpolations the offset must be
+            `0` but the offset can be a non-zero number for string parts.
+        """
         parser_pos = self.validate_raw_parser_pos(raw_parser_pos)
         part_pos = parser_pos_to_part_pos(
             self.source_text_parts, parser_pos, self.line_to_part_pos
@@ -146,7 +183,6 @@ def parser_pos_to_part_pos(
     - Track the offset while advancing into each part.
     - When we reach the parser position then return the current part
         and the current offset from the start of that part.
-
     """
     pos = MutableLinePosition(line=parser_pos.line, offset=0)
     part_pos = line_to_part_pos[parser_pos.line]
