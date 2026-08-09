@@ -356,18 +356,18 @@ class TemplateParser(HTMLParser):
                 source_pos=source_pos,
                 sinfo=sinfo,
             ):
-                tnode = TElement(
+                source_pos = (
+                    open_tag.source_pos
+                )  # Re-assignment for ty regression in 0.0.59
+                self.sinfo_table[source_pos] = sinfo.close(endtag_pos=endtag_pos)
+                return TElement(
                     tag=tag,
                     attrs=attrs,
                     children=tuple(children),
                     source_pos=source_pos,
                 )
-                source_pos = (
-                    open_tag.source_pos
-                )  # Re-assignment for ty regression in 0.0.59
-                self.sinfo_table[source_pos] = sinfo.close(endtag_pos=endtag_pos)
             case OpenTFragment(children=children, source_pos=source_pos):
-                tnode = TFragment(children=tuple(children), source_pos=source_pos)
+                return TFragment(children=tuple(children), source_pos=source_pos)
             case OpenTComponent(
                 start_i_index=start_i_index,
                 children_start_s_index=children_start_s_index,
@@ -384,14 +384,13 @@ class TemplateParser(HTMLParser):
                     template=source.template,
                 )
                 self.sinfo_table[source_pos] = sinfo.close(endtag_pos=endtag_pos)
-                tnode = TComponent(
+                return TComponent(
                     start_i_index=start_i_index,
                     end_i_index=endtag_i_index,
                     children_ref=children_ref,
                     attrs=attrs,
                     source_pos=source_pos,
                 )
-        return tnode
 
     def extract_component_children_ref(
         self,
