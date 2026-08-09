@@ -530,7 +530,7 @@ class TemplateParser(HTMLParser):
         if parent.children and isinstance(parent.children[-1], TText):
             prior_text = parent.children[-1]
             parent.children[-1] = TText(
-                ref=combine_template_refs(parent.children[-1].ref, ref),
+                ref=combine_template_refs(prior_text.ref, ref),
                 # Keep starting position of the prior text
                 source_pos=prior_text.source_pos,
             )
