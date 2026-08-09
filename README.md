@@ -57,6 +57,7 @@ Import the `html` function and start creating templates:
 
 ```python
 from tdom import html
+
 greeting = html(t"<h1>Hello, World!</h1>")
 assert greeting == "<h1>Hello, World!</h1>"
 ```
@@ -79,7 +80,9 @@ to prevent XSS attacks:
 ```python
 user_name = "<script>alert('owned')</script>"
 safe_output = html(t"<p>Hello, {user_name}!</p>")
-assert safe_output == "<p>Hello, &lt;script&gt;alert(&#39;owned&#39;)&lt;/script&gt;!</p>"
+assert (
+    safe_output == "<p>Hello, &lt;script&gt;alert(&#39;owned&#39;)&lt;/script&gt;!</p>"
+)
 ```
 
 ### Attribute Substitution
@@ -138,7 +141,7 @@ The `class` attribute can also be a dictionary to toggle classes on or off:
 
 ```python
 classes = {"active": True, "btn": True}
-button = html(t'<button class={classes}>Click me</button>')
+button = html(t"<button class={classes}>Click me</button>")
 assert button == '<button class="active btn">Click me</button>'
 ```
 
@@ -162,7 +165,10 @@ CSS properties and values for the `style` attribute:
 # Style attributes from dictionaries
 styles = {"color": "red", "font-weight": "bold", "margin": "10px"}
 styled = html(t"<p style={styles}>Important text</p>")
-assert styled == '<p style="color: red; font-weight: bold; margin: 10px">Important text</p>'
+assert (
+    styled
+    == '<p style="color: red; font-weight: bold; margin: 10px">Important text</p>'
+)
 ```
 
 Style attributes can also be merged to extend a base style:
@@ -182,7 +188,10 @@ dictionary keys to the appropriate attribute names:
 data_attrs = {"user-id": 123, "role": "admin"}
 aria_attrs = {"label": "Close dialog", "hidden": True}
 element = html(t"<div data={data_attrs} aria={aria_attrs}>Content</div>")
-assert element == '<div data-user-id="123" data-role="admin" aria-label="Close dialog" aria-hidden="true">Content</div>'
+assert (
+    element
+    == '<div data-user-id="123" data-role="admin" aria-label="Close dialog" aria-hidden="true">Content</div>'
+)
 ```
 
 Note that boolean values in `aria` attributes are converted to `"true"` or
@@ -214,8 +223,11 @@ spreading:
 ```python
 classes = {"btn": True, "active": True}
 attrs = {"class": classes, "id": "act_now", "data": {"wow": "such-attr"}}
-button = html(t'<button {attrs}>Click me</button>')
-assert button == '<button class="btn active" id="act_now" data-wow="such-attr">Click me</button>'
+button = html(t"<button {attrs}>Click me</button>")
+assert (
+    button
+    == '<button class="btn active" id="act_now" data-wow="such-attr">Click me</button>'
+)
 ```
 
 ### Conditional Rendering
@@ -227,7 +239,7 @@ is_logged_in = True
 user_content = t"<span>Welcome back!</span>"
 guest_content = t"<a href='/login'>Please log in</a>"
 header = html(t"<div>{user_content if is_logged_in else guest_content}</div>")
-assert header == '<div><span>Welcome back!</span></div>'
+assert header == "<div><span>Welcome back!</span></div>"
 ```
 
 Short-circuit evaluation is also supported for conditionally including elements:
@@ -267,7 +279,7 @@ from tdom import html, Markup
 
 trusted_html = Markup("<strong>This is safe HTML</strong>")
 content = html(t"<div>{trusted_html}</div>")
-assert content == '<div><strong>This is safe HTML</strong></div>'
+assert content == "<div><strong>This is safe HTML</strong></div>"
 ```
 
 As a convenience, `tdom` also supports a `:safe` format specifier that marks a
@@ -288,6 +300,7 @@ class SafeWidget:
     def __html__(self):
         return "<button>Custom Widget</button>"
 
+
 page = html(t"<div>My widget: {SafeWidget()}</div>")
 assert page == "<div>My widget: <button>Custom Widget</button></div>"
 ```
@@ -298,6 +311,7 @@ treated as safe:
 
 ```python
 from tdom import html, Markup
+
 trusted_html = Markup("<strong>This is safe HTML</strong>")
 page = html(t"<div>{trusted_html:unsafe}</div>")
 assert page == "<div>&lt;strong&gt;This is safe HTML&lt;/strong&gt;</div>"
@@ -350,6 +364,7 @@ from string.templatelib import Template
 from typing import Any, Iterable
 from tdom import html
 
+
 def MyComponent(children: Template, **attrs: Any) -> Template:
     return t"<div {attrs}>Cool: {children}</div>"
 ```
@@ -371,11 +386,17 @@ from string.templatelib import Template
 from typing import Any
 from tdom import html
 
-def Link(*, href: str, text: str, data_value: int, children: Template = t'', **attrs: Any) -> Template:
+
+def Link(
+    *, href: str, text: str, data_value: int, children: Template = t"", **attrs: Any
+) -> Template:
     # Children are ignored.
     return t'<a href="{href}" {attrs}>{text}: {data_value}</a>'
 
-result = html(t'<{Link} href="https://example.com" text="Example" data-value={42} target="_blank" />')
+
+result = html(
+    t'<{Link} href="https://example.com" text="Example" data-value={42} target="_blank" />'
+)
 assert result == '<a href="https://example.com" target="_blank">Example: 42</a>'
 ```
 
@@ -392,6 +413,7 @@ from string.templatelib import Template
 ```python
 def Greeting(name: str) -> Template:
     return t"<span>Hello, {name}!</span>"
+
 
 result = html(t"Your greeting is <{Greeting} name='Alice' />.")
 assert result == "Your greeting is <span>Hello, Alice!</span>."
@@ -417,6 +439,7 @@ from typing import Any, Iterable
 from tdom import html
 from textwrap import dedent
 
+
 @dataclass
 class Card:
     children: Template
@@ -427,19 +450,25 @@ class Card:
         return t"""
             <div class='card'>
                 <h2>{self.title}</h2>
-                {self.subtitle and t'<h3>{self.subtitle}</h3>'}
+                {self.subtitle and t"<h3>{self.subtitle}</h3>"}
                 <div class="content">{self.children}</div>
             </div>
         """
 
-result = html(t"<{Card} title='My Card' subtitle='A subtitle'><p>Card content</p></{Card}>")
-assert dedent(result) == """
+
+result = html(
+    t"<{Card} title='My Card' subtitle='A subtitle'><p>Card content</p></{Card}>"
+)
+assert (
+    dedent(result)
+    == """
 <div class="card">
     <h2>My Card</h2>
     <h3>A subtitle</h3>
     <div class="content"><p>Card content</p></div>
 </div>
 """
+)
 ```
 
 This approach allows you to encapsulate component logic and state within a
@@ -484,6 +513,7 @@ def Icon(*, size: int = 24, color: str = "currentColor") -> Template:
         </svg>
     """
 
+
 result = html(t'<{Icon} size={48} color="blue" />')
 assert 'width="48"' in result
 assert 'stroke="blue"' in result
@@ -501,14 +531,16 @@ enclosing scope:
 ```python
 theme = {"primary": "blue", "spacing": "10px"}
 
+
 def Button(text: str) -> Template:
     # Button has access to theme from enclosing scope
     return t'<button style="color: {theme["primary"]}; margin: {theme["spacing"]}">{text}</button>'
 
+
 result = html(t'<{Button} text="Click me" />')
-assert 'color: blue' in result
-assert 'margin: 10px' in result
-assert '>Click me</button>' in result
+assert "color: blue" in result
+assert "margin: 10px" in result
+assert ">Click me</button>" in result
 ```
 
 For values that need to reach deeply nested components without being threaded
@@ -526,13 +558,18 @@ from tdom import Scope, ScopedTemplate
 
 current_theme: ContextVar[str] = ContextVar("current_theme", default="light")
 
+
 def ThemeProvider(children: Template, value: str) -> ScopedTemplate:
     return ScopedTemplate(Scope(current_theme, value), children)
+
 
 def ThemedButton(text: str) -> Template:
     return t'<button class="btn-{current_theme.get()}">{text}</button>'
 
-page = html(t'<{ThemeProvider} value="dark"><{ThemedButton} text="Save" /></{ThemeProvider}>')
+
+page = html(
+    t'<{ThemeProvider} value="dark"><{ThemedButton} text="Save" /></{ThemeProvider}>'
+)
 assert page == '<button class="btn-dark">Save</button>'
 ```
 
