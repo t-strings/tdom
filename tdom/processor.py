@@ -432,10 +432,7 @@ def _prep_component_kwargs(
     # Add all supported attributes
     for attr_name, attr_value in attrs.items():
         snake_name = _kebab_to_snake(attr_name)
-        if snake_name in callable_info.named_params and (
-            # Don't use a coerced snake name if there is another snake attr available.
-            snake_name == attr_name or snake_name not in attrs
-        ):
+        if snake_name in callable_info.named_params:
             if snake_name in kwargs:
                 raise ValueError(
                     f"Ambiguous attribute {attr_name}: Two attributes resolved to the same named param {snake_name}."
