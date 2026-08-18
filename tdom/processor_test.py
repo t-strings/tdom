@@ -1560,6 +1560,53 @@ class TestPrepComponentKwargs:
                 callable_info, {"children": t""}, children=t"<span></span>"
             )
 
+    def test_to_snake(self):
+        def Wrapper(mw_em, **kwargs):
+            pass
+
+        callable_info = get_callable_info(Wrapper)
+        assert prep_component_kwargs(callable_info, {"mw-em": 20}, children=t"") == {
+            "mw_em": 20
+        }
+
+    @pytest.mark.parametrize(
+        "attrs", [(("mw-em", 20), ("mw_em", 10)), (("mw_em", 20), ("mw-em", 10))]
+    )
+    def test_to_snake_collision_no_kwargs(self, attrs):
+        def Wrapper(mw_em):
+            pass
+
+        callable_info = get_callable_info(Wrapper)
+        with pytest.raises(ValueError, match="Unexpected attribute mw-em"):
+            _ = prep_component_kwargs(callable_info, dict(attrs), children=t"")
+
+    @pytest.mark.parametrize(
+        "attrs", [(("mw-em", 20), ("mw_em", 10)), (("mw_em", 10), ("mw-em", 20))]
+    )
+    def test_to_snake_collision_kwargs(self, attrs):
+        def Wrapper(mw_em, **kwargs):
+            pass
+
+        callable_info = get_callable_info(Wrapper)
+        assert prep_component_kwargs(callable_info, dict(attrs), children=t"") == {
+            "mw_em": 10,
+            "mw-em": 20,
+        }, (
+            "Kebab attrs should go into kwargs if there is an exact snake attr available."
+        )
+
+    def test_to_snake_ambiguous_collision(self):
+        def Wrapper(prefix_attr_value, **kwargs):
+            pass
+
+        callable_info = get_callable_info(Wrapper)
+        with pytest.raises(ValueError, match="Ambiguous attribute "):
+            _ = prep_component_kwargs(
+                callable_info,
+                {"prefix-attr_value": 10, "prefix_attr-value": 20},
+                children=t"",
+            )
+
 
 class TestFunctionComponent:
     @staticmethod
