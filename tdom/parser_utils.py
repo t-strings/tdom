@@ -117,20 +117,19 @@ def parser_pos_to_part_pos(
     exception: a template always ends with a string part, and EOF belongs to the
     end of that final string.
     """
-    absolute_offset = parser_pos
     source_length = part_end_offsets[-1]
-    if not 0 <= absolute_offset <= source_length:
+    if not 0 <= parser_pos <= source_length:
         raise ValueError(
-            f"Parser position falls outside the input: {absolute_offset} not in [0, {source_length}]"
+            f"Parser position falls outside the input: {parser_pos} not in [0, {source_length}]"
         )
 
     last_index = len(part_end_offsets) - 1
-    if absolute_offset == source_length:
+    if parser_pos == source_length:
         final_part_start = part_end_offsets[last_index - 1] if last_index else 0
         return PartPosition(last_index, source_length - final_part_start)
 
-    index = bisect_left(part_end_offsets, absolute_offset)
+    index = bisect_left(part_end_offsets, parser_pos)
     part_start = part_end_offsets[index - 1] if index else 0
-    if absolute_offset == part_end_offsets[index]:
+    if parser_pos == part_end_offsets[index]:
         return PartPosition(index + 1, 0)
-    return PartPosition(index, absolute_offset - part_start)
+    return PartPosition(index, parser_pos - part_start)
