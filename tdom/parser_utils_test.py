@@ -31,6 +31,20 @@ class TestParserPositionTranslator:
         assert ppt.validate_raw_parser_pos(LinePosition(2, 2)) == 5
         assert ppt.validate_raw_parser_pos(LinePosition(3, 0)) == 6
 
+    def test_translate_absolute_offset_to_part_position(self, ph_config):
+        ppt = make_ppt(t"a{0}b", ph_config)
+        placeholder_length = len(ph_config.make_placeholder(0))
+
+        assert ppt.parser_pos_to_part_pos(0) == PartPosition(0, 0)
+        assert ppt.parser_pos_to_part_pos(1) == PartPosition(1, 0)
+        assert ppt.parser_pos_to_part_pos(1 + placeholder_length) == PartPosition(2, 0)
+        assert ppt.parser_pos_to_part_pos(2 + placeholder_length) == PartPosition(2, 1)
+
+        with pytest.raises(ValueError, match="Parser position falls outside"):
+            ppt.parser_pos_to_part_pos(-1)
+        with pytest.raises(ValueError, match="Parser position falls outside"):
+            ppt.parser_pos_to_part_pos(3 + placeholder_length)
+
     def test_case_nontailing_string_ends_with_newline(self, ph_config):
         ppt = make_ppt(t"a\n{0}b", ph_config)
         assert ppt.translate(LinePosition(line=2, offset=0)) == PartPosition(

@@ -45,7 +45,7 @@ def make_parser_pos_translator(
     )
 
 
-@dataclass
+@dataclass(frozen=True, slots=True)
 class ParserPositionTranslator:
     line_start_offsets: tuple[int, ...]
     """Absolute offsets where lines in the parser input start."""
@@ -86,6 +86,33 @@ class ParserPositionTranslator:
             )
         return line_start + offset
 
+    def parser_pos_to_part_pos(self, parser_pos: ParserPosition) -> PartPosition:
+        """
+        Translate an absolute parser-input position into a template part position.
+
+        A position exactly between parts belongs to the following part. EOF is the
+        exception: a template always ends with a string part, and EOF belongs to the
+        end of that final string.
+        """
+        source_length = self.part_end_offsets[-1]
+        if not 0 <= parser_pos <= source_length:
+            raise ValueError(
+                f"Parser position falls outside the input: {parser_pos} not in [0, {source_length}]"
+            )
+
+        last_index = len(self.part_end_offsets) - 1
+        if parser_pos == source_length:
+            final_part_start = (
+                self.part_end_offsets[last_index - 1] if last_index else 0
+            )
+            return PartPosition(last_index, source_length - final_part_start)
+
+        index = bisect_left(self.part_end_offsets, parser_pos)
+        part_start = self.part_end_offsets[index - 1] if index else 0
+        if parser_pos == self.part_end_offsets[index]:
+            return PartPosition(index + 1, 0)
+        return PartPosition(index, parser_pos - part_start)
+
     def translate(self, raw_parser_pos: LinePosition) -> PartPosition:
         """
         Translate a parser line position to a template part position.
@@ -101,35 +128,6 @@ class ParserPositionTranslator:
             `0` but the offset can be a non-zero number for string parts.
         """
         parser_pos = self.validate_raw_parser_pos(raw_parser_pos)
-        part_pos = parser_pos_to_part_pos(self.part_end_offsets, parser_pos)
+        part_pos = self.parser_pos_to_part_pos(parser_pos)
         validate_part_position(part_pos)
         return part_pos
-
-
-def parser_pos_to_part_pos(
-    part_end_offsets: tuple[int, ...],
-    parser_pos: ParserPosition,
-) -> PartPosition:
-    """
-    Translate an absolute parser-input position into a template part position.
-
-    A position exactly between parts belongs to the following part. EOF is the
-    exception: a template always ends with a string part, and EOF belongs to the
-    end of that final string.
-    """
-    source_length = part_end_offsets[-1]
-    if not 0 <= parser_pos <= source_length:
-        raise ValueError(
-            f"Parser position falls outside the input: {parser_pos} not in [0, {source_length}]"
-        )
-
-    last_index = len(part_end_offsets) - 1
-    if parser_pos == source_length:
-        final_part_start = part_end_offsets[last_index - 1] if last_index else 0
-        return PartPosition(last_index, source_length - final_part_start)
-
-    index = bisect_left(part_end_offsets, parser_pos)
-    part_start = part_end_offsets[index - 1] if index else 0
-    if parser_pos == part_end_offsets[index]:
-        return PartPosition(index + 1, 0)
-    return PartPosition(index, parser_pos - part_start)
