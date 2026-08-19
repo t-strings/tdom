@@ -2,7 +2,10 @@ from string.templatelib import Template
 
 import pytest
 
-from .parser_utils import ParserPositionTranslator, make_parser_pos_translator
+from .parser_utils import (
+    ParserPositionTranslator,
+    make_parser_pos_translator,
+)
 from .placeholders import PlaceholderConfig, make_placeholder_config
 from .source import LinePosition
 from .template_utils import PartPosition
@@ -19,6 +22,15 @@ def make_ppt(template: Template, config: PlaceholderConfig) -> ParserPositionTra
 
 
 class TestParserPositionTranslator:
+    def test_normalize_to_absolute_offset(self, ph_config):
+        ppt = make_ppt(t"ab\ncd\n", ph_config)
+
+        assert ppt.validate_raw_parser_pos(LinePosition(1, 0)) == 0
+        assert ppt.validate_raw_parser_pos(LinePosition(1, 2)) == 2
+        assert ppt.validate_raw_parser_pos(LinePosition(2, 0)) == 3
+        assert ppt.validate_raw_parser_pos(LinePosition(2, 2)) == 5
+        assert ppt.validate_raw_parser_pos(LinePosition(3, 0)) == 6
+
     def test_case_nontailing_string_ends_with_newline(self, ph_config):
         ppt = make_ppt(t"a\n{0}b", ph_config)
         assert ppt.translate(LinePosition(line=2, offset=0)) == PartPosition(
@@ -58,6 +70,16 @@ class TestParserPositionTranslator:
             LinePosition(line=1, offset=1 + len(ph_config.make_placeholder(0)) + 1)
         ) == PartPosition(index=2, offset=1), (
             "the end of the tailing string remains the end."
+        )
+
+    def test_case_consecutive_interpolations(self, ph_config):
+        ppt = make_ppt(t"{0}{1}", ph_config)
+        placeholder_length = len(ph_config.make_placeholder(0))
+
+        assert ppt.translate(LinePosition(1, 0)) == PartPosition(1, 0)
+        assert ppt.translate(LinePosition(1, placeholder_length)) == PartPosition(2, 0)
+        assert ppt.translate(LinePosition(1, 2 * placeholder_length)) == PartPosition(
+            4, 0
         )
 
     def test_offset_without_line(self, ph_config):
