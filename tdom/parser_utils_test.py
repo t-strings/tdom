@@ -22,28 +22,28 @@ def make_ppt(template: Template, config: PlaceholderConfig) -> ParserPositionTra
 
 
 class TestParserPositionTranslator:
-    def test_normalize_to_absolute_offset(self, ph_config):
+    def test_line_pos_to_abs_pos(self, ph_config):
         ppt = make_ppt(t"ab\ncd\n", ph_config)
 
-        assert ppt.validate_raw_parser_pos(LinePosition(1, 0)) == 0
-        assert ppt.validate_raw_parser_pos(LinePosition(1, 2)) == 2
-        assert ppt.validate_raw_parser_pos(LinePosition(2, 0)) == 3
-        assert ppt.validate_raw_parser_pos(LinePosition(2, 2)) == 5
-        assert ppt.validate_raw_parser_pos(LinePosition(3, 0)) == 6
+        assert ppt.line_pos_to_abs_pos(LinePosition(1, 0)) == 0
+        assert ppt.line_pos_to_abs_pos(LinePosition(1, 2)) == 2
+        assert ppt.line_pos_to_abs_pos(LinePosition(2, 0)) == 3
+        assert ppt.line_pos_to_abs_pos(LinePosition(2, 2)) == 5
+        assert ppt.line_pos_to_abs_pos(LinePosition(3, 0)) == 6
 
-    def test_translate_absolute_offset_to_part_position(self, ph_config):
+    def test_translate_abs_pos_to_part_pos(self, ph_config):
         ppt = make_ppt(t"a{0}b", ph_config)
         placeholder_length = len(ph_config.make_placeholder(0))
 
-        assert ppt.parser_pos_to_part_pos(0) == PartPosition(0, 0)
-        assert ppt.parser_pos_to_part_pos(1) == PartPosition(1, 0)
-        assert ppt.parser_pos_to_part_pos(1 + placeholder_length) == PartPosition(2, 0)
-        assert ppt.parser_pos_to_part_pos(2 + placeholder_length) == PartPosition(2, 1)
+        assert ppt.abs_pos_to_part_pos(0) == PartPosition(0, 0)
+        assert ppt.abs_pos_to_part_pos(1) == PartPosition(1, 0)
+        assert ppt.abs_pos_to_part_pos(1 + placeholder_length) == PartPosition(2, 0)
+        assert ppt.abs_pos_to_part_pos(2 + placeholder_length) == PartPosition(2, 1)
 
-        with pytest.raises(ValueError, match="Parser position falls outside"):
-            ppt.parser_pos_to_part_pos(-1)
-        with pytest.raises(ValueError, match="Parser position falls outside"):
-            ppt.parser_pos_to_part_pos(3 + placeholder_length)
+        with pytest.raises(ValueError, match="Absolute position falls outside"):
+            ppt.abs_pos_to_part_pos(-1)
+        with pytest.raises(ValueError, match="Absolute position falls outside"):
+            ppt.abs_pos_to_part_pos(3 + placeholder_length)
 
     def test_case_nontailing_string_ends_with_newline(self, ph_config):
         ppt = make_ppt(t"a\n{0}b", ph_config)
