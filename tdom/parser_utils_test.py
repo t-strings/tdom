@@ -17,7 +17,7 @@ def ph_config():
 
 
 def make_ppt(template: Template, config: PlaceholderConfig) -> ParserPositionTranslator:
-    "Just a shorthand function."
+    """Just a shorthand function."""
     return make_parser_pos_translator(template=template, config=config)
 
 

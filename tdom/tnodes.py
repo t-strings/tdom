@@ -118,13 +118,13 @@ class TagSourceInfo:
     """
 
     starttag_ref: TemplateRef
-    " Entire starttag as parsed except placeholders are replaced by references. "
+    """Entire starttag as parsed except placeholders are replaced by references."""
     startend: bool
-    " Was parsed as startend tag, ie. <tag />. "
+    """Was parsed as startend tag, ie. <tag />."""
     starttag_pos: PartPosition
-    " Template part position of the starttag, ie. <tag> or <tag />. "
+    """Template part position of the starttag, ie. <tag> or <tag />."""
     endtag_pos: PartPosition | None = None
-    " Template part position of the endtag, ie. </tag>. "
+    """Template part position of the endtag, ie. </tag>."""
 
 
 @dataclass(slots=True, frozen=True)

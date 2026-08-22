@@ -68,7 +68,7 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-extend-select = ["ICN"]
+extend-select = ["D210", "D300", "ICN"]
 preview = true
 
 [tool.ruff.lint.flake8-import-conventions]
