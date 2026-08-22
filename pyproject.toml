@@ -46,10 +46,10 @@ dev = [
   "pytest-cov>=7.1.0",
   "pytest-html>=4.2.0",
   "pytest-watcher>=0.6.3",
-  "ruff>=0.15.22",
+  "ruff>=0.16.4",
   "sphinx>=9.1.0",
   "sybil[pytest]>=10.1.0",
-  "ty>=0.0.61",
+  "ty>=0.0.73",
 ]
 
 [tool.pytest]
@@ -68,7 +68,14 @@ exclude = [
 ]
 
 [tool.ruff.lint]
+extend-select = ["ICN"]
 preview = true
+
+[tool.ruff.lint.flake8-import-conventions]
+banned-from = ["typing"]
+
+[tool.ruff.lint.flake8-import-conventions.extend-aliases]
+typing = "t"
 
 [tool.uv.build-backend]
 module-name = "tdom"
