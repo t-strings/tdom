@@ -127,7 +127,7 @@ class TagSourceInfo:
     " Template part position of the endtag, ie. </tag>. "
 
 
-@dataclass
+@dataclass(slots=True, frozen=True)
 class TTree:
     root: TNode
 
