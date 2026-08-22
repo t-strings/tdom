@@ -5,7 +5,7 @@ from string.templatelib import Template
 
 from .placeholders import PlaceholderConfig
 from .source import LinePosition
-from .template_utils import PartPosition, validate_part_position
+from .template_utils import PartPosition
 
 type HTMLAttribute = tuple[str, str | None]
 type AbsolutePosition = int
@@ -128,6 +128,4 @@ class ParserPositionTranslator:
             `0` but the offset can be a non-zero number for string parts.
         """
         abs_pos = self.line_pos_to_abs_pos(parser_pos)
-        part_pos = self.abs_pos_to_part_pos(abs_pos)
-        validate_part_position(part_pos)
-        return part_pos
+        return self.abs_pos_to_part_pos(abs_pos)

@@ -9,32 +9,36 @@ def template_from_parts(
 ) -> Template:
     """Construct a template string from the given strings and parts."""
     assert len(strings) == len(interpolations) + 1, (
-        "TemplateRef must have one more string than interpolation references."
+        "A template must have one more string than interpolations."
     )
     flat = [x for pair in zip(strings, interpolations) for x in pair] + [strings[-1]]
     return Template(*flat)
 
 
-def combine_template_refs(*template_refs: TemplateRef) -> TemplateRef:
-    return TemplateRef.from_naive_template(
-        sum((tr.to_naive_template() for tr in template_refs), t"")
-    )
-
-
 @dataclass(slots=True, frozen=True)
 class TemplateRef:
-    """Reference to a template with indexes for its original interpolations."""
+    """Template strings whose interpolations are supplied by another template."""
 
     strings: tuple[str, ...]
     """Static string parts of the original string.templatelib.Template"""
 
-    i_indexes: tuple[int, ...]
-    """Indexes of the interpolations in the original string.templatelib.Template"""
+    i_start: int = 0
+    """Index of the first interpolation in the original template."""
+
+    @property
+    def i_count(self) -> int:
+        """Number of interpolations referenced by this template."""
+        return len(self.strings) - 1
+
+    @property
+    def i_stop(self) -> int:
+        """Exclusive stop index of the interpolations in the original template."""
+        return self.i_start + self.i_count
 
     @property
     def is_literal(self) -> bool:
         """Return True if there are no interpolations."""
-        return not self.i_indexes
+        return self.i_count == 0
 
     @property
     def is_empty(self) -> bool:
@@ -46,14 +50,9 @@ class TemplateRef:
         """Return True if there is exactly one interpolation and no other content."""
         return self.strings == ("", "")
 
-    def to_naive_template(self) -> Template:
-        return template_from_parts(
-            self.strings, [Interpolation(i, "", None, "") for i in self.i_indexes]
-        )
-
     @classmethod
     def literal(cls, s: str) -> t.Self:
-        return cls((s,), ())
+        return cls((s,))
 
     @classmethod
     def empty(cls) -> t.Self:
@@ -61,20 +60,13 @@ class TemplateRef:
 
     @classmethod
     def singleton(cls, i_index: int) -> t.Self:
-        return cls(("", ""), (i_index,))
+        return cls(("", ""), i_index)
 
-    @classmethod
-    def from_naive_template(cls, t: Template) -> TemplateRef:
-        return cls(
-            strings=t.strings,
-            i_indexes=tuple(int(ip.value) for ip in t.interpolations),
-        )
-
-    def __post_init__(self):
-        if len(self.strings) != len(self.i_indexes) + 1:
-            raise ValueError(
-                "TemplateRef must have one more string than interpolation indexes."
-            )
+    def __post_init__(self) -> None:
+        if not self.strings:
+            raise ValueError("TemplateRef must have at least one string.")
+        if self.is_literal and self.i_start != 0:
+            raise ValueError("Literal TemplateRef instances must have i_start 0.")
 
     def __iter__(self):
         index = 0
@@ -84,16 +76,35 @@ class TemplateRef:
             if s:
                 yield s
             if index < last_s_index:
-                yield self.i_indexes[index]
+                yield self.i_start + index
             index += 1
 
-    def resolve(self, interpolations: tuple[Interpolation, ...]) -> Template:
-        """Use the given interpolations to resolve this reference template into a Template."""
-        resolved = [interpolations[i_index] for i_index in self.i_indexes]
-        return template_from_parts(self.strings, resolved)
+    def concat(self, other: TemplateRef) -> TemplateRef:
+        """Join two adjacent template references."""
+        if (
+            not self.is_literal
+            and not other.is_literal
+            and self.i_stop != other.i_start
+        ):
+            raise ValueError("TemplateRef interpolation ranges must be contiguous.")
+
+        return TemplateRef(
+            strings=(
+                *self.strings[:-1],
+                self.strings[-1] + other.strings[0],
+                *other.strings[1:],
+            ),
+            i_start=other.i_start if self.is_literal else self.i_start,
+        )
+
+    def bind(self, source: Template) -> Template:
+        """Bind interpolation objects from a structurally compatible template."""
+        return template_from_parts(
+            self.strings, source.interpolations[self.i_start : self.i_stop]
+        )
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True, frozen=True, order=True)
 class PartPosition:
     """
     A unified template part position.
@@ -116,20 +127,71 @@ class PartPosition:
     offset: int = 0
     """Offset from the start of the template part."""
 
+    @property
+    def is_string(self) -> bool:
+        """Return True if this position is within a string part."""
+        return self.index % 2 == 0
 
-def validate_part_position(part_pos: PartPosition) -> None:
-    """
-    Basic part position validation for parts that are converted to template
-    source `LinePosition`.
+    @property
+    def is_interpolation(self) -> bool:
+        """Return True if this position is at an interpolation part."""
+        return not self.is_string
 
-    @TODO: This might move into the constructor eventually depending on usage.
-    """
-    if part_pos.index % 2 != 0 and part_pos.offset != 0:
-        # You can only land on the start of an interpolation
-        raise ValueError(
-            "Invalid part position, interpolations are not divisible, offset must be 0."
+    def __post_init__(self) -> None:
+        """Validate invariants shared by every template part position."""
+        if self.index < 0:
+            raise ValueError("Index must always be positive or zero.")
+        if self.offset < 0:
+            raise ValueError("Offset must always be positive or zero.")
+        if self.is_interpolation and self.offset != 0:
+            # Interpolations are indivisible, so their only position is the start.
+            raise ValueError("Interpolation part positions must always have offset 0.")
+
+    def validate(self, source: Template) -> None:
+        """Raise if this position falls outside the source template."""
+        part_count = 2 * len(source.strings) - 1
+        if self.index >= part_count:
+            raise ValueError(
+                "PartPosition index falls outside the template: "
+                f"{self.index} >= {part_count}."
+            )
+        if self.is_string:
+            string = source.strings[self.index // 2]
+            if self.offset > len(string):
+                raise ValueError(
+                    "PartPosition offset falls outside its string: "
+                    f"{self.offset} > {len(string)}."
+                )
+
+
+@dataclass(slots=True, frozen=True)
+class TemplateSpan:
+    """A half-open span in the global part coordinates of a template."""
+
+    start: PartPosition
+    stop: PartPosition
+
+    def __post_init__(self) -> None:
+        if self.start > self.stop:
+            raise ValueError("TemplateSpan start must not be after stop.")
+
+    def extract(self, source: Template) -> Template:
+        """Extract this span from a structurally compatible template."""
+        self.start.validate(source)
+        self.stop.validate(source)
+
+        first_string = self.start.index // 2
+        last_string = self.stop.index // 2
+        strings = list(source.strings[first_string : last_string + 1])
+
+        if self.stop.is_string:
+            strings[-1] = strings[-1][: self.stop.offset]
+
+        if self.start.is_string:
+            strings[0] = strings[0][self.start.offset :]
+        else:
+            strings[0] = ""
+
+        return template_from_parts(
+            strings, source.interpolations[first_string:last_string]
         )
-    if not (part_pos.offset >= 0):
-        raise ValueError("Offset must always be positive or zero.")
-    if not (part_pos.index >= 0):
-        raise ValueError("Index must always be positive or zero.")

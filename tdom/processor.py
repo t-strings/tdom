@@ -33,7 +33,7 @@ from .parser import TemplateParser
 from .parser_utils import HTMLAttribute
 from .protocols import HasHTMLDunder
 from .scope import ScopedTemplate
-from .template_utils import TemplateRef
+from .template_utils import TemplateRef, TemplateSpan
 from .tnodes import (
     TAttribute,
     TComment,
@@ -297,9 +297,7 @@ ATTR_ACCUMULATOR_MAKERS = {
 type AttributeValueAccumulator = StyleAccumulator | ClassAccumulator
 
 
-def _resolve_t_attrs(
-    attrs: Sequence[TAttribute], interpolations: tuple[Interpolation, ...]
-) -> AttributesDict:
+def _resolve_t_attrs(attrs: Sequence[TAttribute], template: Template) -> AttributesDict:
     """
     Replace placeholder values in attributes with their interpolated values.
 
@@ -323,7 +321,7 @@ def _resolve_t_attrs(
                 else:
                     new_attrs[name] = attr_value
             case TInterpolatedAttribute(name=name, value_i_index=i_index):
-                interpolation = interpolations[i_index]
+                interpolation = template.interpolations[i_index]
                 attr_value = format_interpolation(interpolation)
                 if name in ATTR_ACCUMULATOR_MAKERS:
                     if name not in attr_accs:
@@ -337,7 +335,7 @@ def _resolve_t_attrs(
                 else:
                     new_attrs[name] = attr_value
             case TTemplatedAttribute(name=name, value_ref=ref):
-                attr_t = ref.resolve(interpolations)
+                attr_t = ref.bind(template)
                 attr_value = format_template(attr_t)
                 if name in ATTR_ACCUMULATOR_MAKERS:
                     if name not in attr_accs:
@@ -350,7 +348,7 @@ def _resolve_t_attrs(
                 else:
                     new_attrs[name] = attr_value
             case TSpreadAttribute(i_index=i_index):
-                interpolation = interpolations[i_index]
+                interpolation = template.interpolations[i_index]
                 spread_value = format_interpolation(interpolation)
                 for sub_k, sub_v in _substitute_spread_attrs(spread_value):
                     if sub_k in ATTR_ACCUMULATOR_MAKERS:
@@ -616,7 +614,7 @@ class ComponentProcessor(IComponentProcessor):
             )
         kwargs = _prep_component_kwargs(
             get_callable_info(component_callable),
-            _resolve_t_attrs(attrs, template.interpolations),
+            _resolve_t_attrs(attrs, template),
             children=component_template,
             provided_attrs=provided_attrs,
             raise_on_requires_positional=True,
@@ -690,14 +688,14 @@ class TemplateProcessor(ITemplateProcessor):
                 return self._process_comment(template, last_ctx, ref)
             case TFragment(children):
                 return self._process_fragment(template, last_ctx, children)
-            case TComponent(start_i_index, end_i_index, children_ref, attrs):
+            case TComponent(start_i_index, end_i_index, children_span, attrs):
                 return self._process_component(
                     template,
                     last_ctx,
                     attrs,
                     start_i_index,
                     end_i_index,
-                    children_ref,
+                    children_span,
                 )
             case TElement(tag, attrs, children):
                 return self._process_element(template, last_ctx, tag, attrs, children)
@@ -808,7 +806,7 @@ class TemplateProcessor(ITemplateProcessor):
         """
         Process an element's attributes into a string.
         """
-        resolved_attrs = _resolve_t_attrs(attrs, template.interpolations)
+        resolved_attrs = _resolve_t_attrs(attrs, template)
         if last_ctx.ns == "svg":
             attrs_str = serialize_html_attrs(
                 _fix_svg_attrs(_resolve_html_attrs(resolved_attrs))
@@ -826,12 +824,16 @@ class TemplateProcessor(ITemplateProcessor):
         attrs: tuple[TAttribute, ...],
         start_i_index: int,
         end_i_index: int | None,
-        children_ref: TemplateRef,
+        children_span: TemplateSpan | None,
     ) -> str:
         """
         Invoke a component and process the result into a string.
         """
-        children_template = children_ref.resolve(template.interpolations)
+        children_template = (
+            children_span.extract(template)
+            if children_span is not None
+            else Template("")
+        )
         if (
             start_i_index != end_i_index
             and end_i_index is not None
@@ -972,7 +974,7 @@ def resolve_text_without_recursion(
     across the boundary between other content and the pass-through content.
     """
     if content_ref.is_singleton:
-        value = format_interpolation(template.interpolations[content_ref.i_indexes[0]])
+        value = format_interpolation(template.interpolations[content_ref.i_start])
         value = t.cast(RawTextExactInterpolationValue, value)  # ty: ignore[redundant-cast]
         if value is None or isinstance(value, bool):
             return ""

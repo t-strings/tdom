@@ -1,7 +1,7 @@
 import typing as t
 from dataclasses import dataclass, field
 
-from .template_utils import PartPosition, TemplateRef
+from .template_utils import PartPosition, TemplateRef, TemplateSpan
 
 
 @dataclass(slots=True, frozen=True)
@@ -98,10 +98,8 @@ class TComponent(TNode):
     end_i_index: int | None = None
     """The interpolation index for the component's ending tag name, if any."""
 
-    children_ref: TemplateRef = field(
-        default_factory=lambda: TemplateRef(strings=("",), i_indexes=())
-    )
-    """The template ref that describes the component's children template."""
+    children_span: TemplateSpan | None = None
+    """The source span for the component's children, if it has an end tag."""
 
     attrs: tuple[TAttribute, ...] = field(default_factory=tuple)
 
@@ -117,14 +115,17 @@ class TagSourceInfo:
     template instance.
     """
 
-    starttag_ref: TemplateRef
-    """Entire starttag as parsed except placeholders are replaced by references."""
+    starttag_span: TemplateSpan
+    """Source span occupied by the start tag."""
     startend: bool
     """Was parsed as startend tag, ie. <tag />."""
-    starttag_pos: PartPosition
-    """Template part position of the starttag, ie. <tag> or <tag />."""
     endtag_pos: PartPosition | None = None
     """Template part position of the endtag, ie. </tag>."""
+
+    @property
+    def starttag_pos(self) -> PartPosition:
+        """Template part position where the start tag begins."""
+        return self.starttag_span.start
 
 
 @dataclass(slots=True, frozen=True)
