@@ -97,28 +97,28 @@ class TemplateRef:
         start: PartPosition | None = None,
         stop: PartPosition | None = None,
     ) -> TemplateRef:
-        """
-        Slice template ref based on the given start and stop.
-        """
-        # @NOTE: A start interpolation must always be defined since start == None
-        # will be the first "part" which is a string (index=0).
-        if start and start.index % 2 != 0:
-            assert start.offset == 0, (
-                "Interpolation part positions must always have offset 0."
-            )
-        # @NOTE: A stop interpolation must always be defined since stop == None
-        # will be the last "part" which is a string (index=size - 1).
-        if stop and stop.index % 2 != 0:
-            assert stop.offset == 0, (
-                "Interpolation part positions must always have offset 0."
-            )
+        """Return the half-open interval from start (inclusive) to stop (exclusive)."""
         size = 2 * len(self.strings) - 1
-        first = start.index if start and start.index is not None else 0
-        assert 0 <= first < size
+        first = start.index if start else 0
+        if first >= size:
+            raise ValueError(
+                f"Start position index falls outside the template: {first} >= {size}."
+            )
         offset = start.offset if start else None
-        last = stop.index if stop and stop.index is not None else size - 1
-        assert 0 <= last < size
+        last = stop.index if stop else size - 1
+        if last >= size:
+            raise ValueError(
+                f"Stop position index falls outside the template: {last} >= {size}."
+            )
         limit = stop.offset if stop else None
+        if first > last or (
+            first == last
+            and first % 2 == 0
+            and offset is not None
+            and limit is not None
+            and offset > limit
+        ):
+            raise ValueError("Start position must not be after stop position.")
 
         strings = []
         i_indexes = []
@@ -138,7 +138,7 @@ class TemplateRef:
                 # offset == 0, so template-ify with empty string but start by
                 # including this interpolation.
                 strings.append("")
-                i_indexes.append((first - 1) // 2)
+                i_indexes.append(self.i_indexes[(first - 1) // 2])
 
         for index in range(first + 1, last + 1):
             if index % 2 == 0:
@@ -150,7 +150,7 @@ class TemplateRef:
                 if index == last:
                     break  # offset == 0, so exclude this interpolation.
                 else:
-                    i_indexes.append((index - 1) // 2)
+                    i_indexes.append(self.i_indexes[(index - 1) // 2])
         return TemplateRef(strings=tuple(strings), i_indexes=tuple(i_indexes))
 
 
@@ -191,20 +191,12 @@ class PartPosition:
     offset: int = 0
     """Offset from the start of the template part."""
 
-
-def validate_part_position(part_pos: PartPosition) -> None:
-    """
-    Basic part position validation for parts that are converted to template
-    source `LinePosition`.
-
-    @TODO: This might move into the constructor eventually depending on usage.
-    """
-    if part_pos.index % 2 != 0 and part_pos.offset != 0:
-        # You can only land on the start of an interpolation
-        raise ValueError(
-            "Invalid part position, interpolations are not divisible, offset must be 0."
-        )
-    if not (part_pos.offset >= 0):
-        raise ValueError("Offset must always be positive or zero.")
-    if not (part_pos.index >= 0):
-        raise ValueError("Index must always be positive or zero.")
+    def __post_init__(self) -> None:
+        """Validate invariants shared by every template part position."""
+        if self.index < 0:
+            raise ValueError("Index must always be positive or zero.")
+        if self.offset < 0:
+            raise ValueError("Offset must always be positive or zero.")
+        if self.index % 2 != 0 and self.offset != 0:
+            # Interpolations are indivisible, so their only position is the start.
+            raise ValueError("Interpolation part positions must always have offset 0.")

@@ -109,6 +109,61 @@ def test_template_ref_resolve():
     assert resolved_t.strings == ("", "b", "d", "f")
 
 
+class TestPartPosition:
+    @pytest.mark.parametrize(
+        ("index", "offset", "message"),
+        (
+            (-1, 0, "Index must always be positive or zero"),
+            (0, -1, "Offset must always be positive or zero"),
+            (1, 1, "Interpolation part positions must always have offset 0"),
+        ),
+    )
+    def test_invalid(self, index: int, offset: int, message: str) -> None:
+        with pytest.raises(ValueError, match=message):
+            _ = PartPosition(index, offset)
+
+
+class TestTemplateRefSlice:
+    def test_preserves_interpolation_indexes(self) -> None:
+        ref = TemplateRef(strings=("A", "B", "C"), i_indexes=(3, 7))
+
+        assert ref.slice() == ref
+        assert ref.slice(start=PartPosition(1), stop=PartPosition(2, 1)) == TemplateRef(
+            strings=("", "B"), i_indexes=(3,)
+        )
+
+    @pytest.mark.parametrize(
+        ("start", "stop"),
+        (
+            (PartPosition(2), PartPosition(0)),
+            (PartPosition(0, 2), PartPosition(0, 1)),
+        ),
+    )
+    def test_reversed_range(self, start: PartPosition, stop: PartPosition) -> None:
+        with pytest.raises(
+            ValueError, match="Start position must not be after stop position"
+        ):
+            _ = TemplateRef(strings=("ABC", "DEF"), i_indexes=(3,)).slice(
+                start=start, stop=stop
+            )
+
+    @pytest.mark.parametrize(
+        ("start", "stop", "bound"),
+        (
+            (PartPosition(3), None, "Start"),
+            (None, PartPosition(3), "Stop"),
+        ),
+    )
+    def test_position_outside_template(
+        self,
+        start: PartPosition | None,
+        stop: PartPosition | None,
+        bound: str,
+    ) -> None:
+        with pytest.raises(ValueError, match=f"{bound} position index"):
+            _ = TemplateRef.literal("ABC").slice(start=start, stop=stop)
+
+
 class TestSliceToTRef:
     @pytest.mark.parametrize(
         ("t", "start", "stop", "result"),
@@ -156,13 +211,9 @@ class TestSliceToTRef:
         parts = tuple(slice_to_tref(t, start=start, stop=stop))
         assert parts == result
 
-    def test_bad_interpolation_target(self) -> None:
-        with pytest.raises(
-            AssertionError,
-            match="Interpolation part positions must always have offset 0",
-        ):
-            _ = slice_to_tref(
-                t"<div>{0}</div>",
-                start=None,
-                stop=PartPosition(1, 20),
-            )
+    def test_interpolation_interval(self) -> None:
+        assert slice_to_tref(
+            t"<div>{0}</div>",
+            start=PartPosition(1),
+            stop=PartPosition(2),
+        ) == TemplateRef(strings=("", ""), i_indexes=(0,))
