@@ -43,16 +43,19 @@ class PlaceholderConfig:
             return TemplateRef.literal(s)
 
         strings: list[str] = []
-        i_indexes: list[int] = []
+        indexes: list[int] = []
         last_index = 0
         for match in matches:
             start, end = match.span()
             strings.append(s[last_index:start])
-            i_indexes.append(int(match[1]))
+            indexes.append(int(match[1]))
             last_index = end
         strings.append(s[last_index:])
 
-        return TemplateRef(tuple(strings), tuple(i_indexes))
+        i_start = indexes[0]
+        if indexes != list(range(i_start, i_start + len(indexes))):
+            raise ValueError("TemplateRef interpolation indexes must be contiguous.")
+        return TemplateRef(tuple(strings), i_start)
 
 
 @dataclass
@@ -79,7 +82,7 @@ class PlaceholderState:
         If no placeholders are found, returns a static PlaceholderRef.
         """
         pt = self.config.find_placeholders(text)
-        for index in pt.i_indexes:
+        for index in range(pt.i_start, pt.i_stop):
             if index not in self.known:
                 raise ValueError(f"Unknown placeholder index {index} found in text.")
             self.known.remove(index)

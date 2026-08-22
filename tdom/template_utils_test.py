@@ -5,7 +5,6 @@ import pytest
 from .template_utils import (
     PartPosition,
     TemplateRef,
-    combine_template_refs,
     slice_to_tref,
     template_from_parts,
 )
@@ -23,7 +22,7 @@ def test_template_ref_is_literal() -> None:
     literal_ref = TemplateRef.literal("Hello")
     assert literal_ref.is_literal
 
-    non_literal_ref = TemplateRef(("", ""), (0,))
+    non_literal_ref = TemplateRef(("", ""))
     assert not non_literal_ref.is_literal
 
 
@@ -43,67 +42,97 @@ def test_template_ref_is_singleton() -> None:
     assert not non_singleton_ref.is_singleton
 
 
+def test_template_ref_interpolation_range() -> None:
+    ref = TemplateRef(("A", "B", "C"), i_start=3)
+
+    assert ref.i_start == 3
+    assert ref.i_count == 2
+    assert ref.i_stop == 5
+
+
 def test_template_ref_post_init_validation() -> None:
-    with pytest.raises(ValueError):
-        _ = TemplateRef(("Hello",), (0, 1))
+    with pytest.raises(ValueError, match="at least one string"):
+        _ = TemplateRef(())
+
+    with pytest.raises(ValueError, match="Literal TemplateRef"):
+        _ = TemplateRef(("Hello",), i_start=1)
 
 
-def test_combine_template_refs():
-    template_refs = map(
-        TemplateRef.from_naive_template,
-        [
-            t"ab",
-            t"c{0}d",
-            t"ef{1}",
-            t"{2}ghi",
-        ],
+def test_template_ref_concat():
+    template_refs = (
+        TemplateRef.literal("ab"),
+        TemplateRef(("c", "d")),
+        TemplateRef(("ef", ""), i_start=1),
+        TemplateRef(("", "ghi"), i_start=2),
     )
-    assert combine_template_refs(*template_refs) == TemplateRef.from_naive_template(
-        t"abc{0}def{1}{2}ghi"
+    combined = template_refs[0]
+    for ref in template_refs[1:]:
+        combined = combined.concat(ref)
+
+    assert combined == TemplateRef(("abc", "def", "", "ghi"))
+
+
+def test_template_ref_concat_literals():
+    assert TemplateRef.literal("abc").concat(
+        TemplateRef.literal("def")
+    ) == TemplateRef.literal("abcdef")
+
+
+def test_template_ref_concat_with_nonzero_start():
+    combined = (
+        TemplateRef.literal("a")
+        .concat(TemplateRef(("b", "c"), i_start=3))
+        .concat(TemplateRef.literal("d"))
+        .concat(TemplateRef(("e", "f"), i_start=4))
     )
+
+    assert combined == TemplateRef(("ab", "cde", "f"), i_start=3)
+
+
+def test_template_ref_concat_rejects_discontiguous_ranges():
+    with pytest.raises(ValueError, match="ranges must be contiguous"):
+        _ = TemplateRef.singleton(1).concat(TemplateRef.singleton(3))
 
 
 def test_template_ref_iter_singleton():
-    assert list(TemplateRef.from_naive_template(t"{1}")) == [1]
+    assert list(TemplateRef.singleton(1)) == [1]
 
 
 def test_template_ref_iter_empty():
-    assert list(TemplateRef.from_naive_template(t"")) == []
+    assert list(TemplateRef.empty()) == []
 
 
 def test_template_ref_iter_empty_prefix():
-    assert list(TemplateRef.from_naive_template(t"{1}def")) == [1, "def"]
+    assert list(TemplateRef(("", "def"), i_start=1)) == [1, "def"]
 
 
 def test_template_ref_iter_empty_suffix():
-    assert list(TemplateRef.from_naive_template(t"abc{1}")) == ["abc", 1]
+    assert list(TemplateRef(("abc", ""), i_start=1)) == ["abc", 1]
 
 
 def test_template_ref_iter_literal():
-    assert list(TemplateRef.from_naive_template(t"abc")) == ["abc"]
+    assert list(TemplateRef.literal("abc")) == ["abc"]
 
 
 def test_template_ref_iter_only_interpolations():
-    assert list(TemplateRef.from_naive_template(t"{1}{3}{5}")) == [1, 3, 5]
+    assert list(TemplateRef(("", "", "", ""), i_start=1)) == [1, 2, 3]
 
 
 def test_template_ref_iter_complete():
-    assert list(TemplateRef.from_naive_template(t"abc{1}def{3}ghi{5}jkl")) == [
+    assert list(TemplateRef(("abc", "def", "ghi", "jkl"), i_start=1)) == [
         "abc",
         1,
         "def",
-        3,
+        2,
         "ghi",
-        5,
+        3,
         "jkl",
     ]
 
 
 def test_template_ref_resolve():
     src_t = t"{'a'}b{'c'}d{'e'}f"
-    src_ref = TemplateRef(
-        strings=src_t.strings, i_indexes=tuple(range(len(src_t.interpolations)))
-    )
+    src_ref = TemplateRef(strings=src_t.strings)
     resolved_t = src_ref.resolve(src_t.interpolations)
     assert resolved_t.values == ("a", "c", "e")
     assert resolved_t.strings == ("", "b", "d", "f")
@@ -136,12 +165,17 @@ class TestPartPosition:
 
 class TestTemplateRefSlice:
     def test_preserves_interpolation_indexes(self) -> None:
-        ref = TemplateRef(strings=("A", "B", "C"), i_indexes=(3, 7))
+        ref = TemplateRef(strings=("A", "B", "C"), i_start=3)
 
         assert ref.slice() == ref
         assert ref.slice(start=PartPosition(1), stop=PartPosition(2, 1)) == TemplateRef(
-            strings=("", "B"), i_indexes=(3,)
+            strings=("", "B"), i_start=3
         )
+
+    def test_literal_slice_normalizes_interpolation_start(self) -> None:
+        ref = TemplateRef(strings=("A", "B"), i_start=3)
+
+        assert ref.slice(start=PartPosition(2)) == TemplateRef.literal("B")
 
     @pytest.mark.parametrize(
         ("start", "stop"),
@@ -154,7 +188,7 @@ class TestTemplateRefSlice:
         with pytest.raises(
             ValueError, match="Start position must not be after stop position"
         ):
-            _ = TemplateRef(strings=("ABC", "DEF"), i_indexes=(3,)).slice(
+            _ = TemplateRef(strings=("ABC", "DEF"), i_start=3).slice(
                 start=start, stop=stop
             )
 
@@ -227,4 +261,4 @@ class TestSliceToTRef:
             t"<div>{0}</div>",
             start=PartPosition(1),
             stop=PartPosition(2),
-        ) == TemplateRef(strings=("", ""), i_indexes=(0,))
+        ) == TemplateRef(strings=("", ""))

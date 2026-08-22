@@ -98,9 +98,7 @@ class TComponent(TNode):
     end_i_index: int | None = None
     """The interpolation index for the component's ending tag name, if any."""
 
-    children_ref: TemplateRef = field(
-        default_factory=lambda: TemplateRef(strings=("",), i_indexes=())
-    )
+    children_ref: TemplateRef = field(default_factory=TemplateRef.empty)
     """The template ref that describes the component's children template."""
 
     attrs: tuple[TAttribute, ...] = field(default_factory=tuple)

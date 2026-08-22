@@ -17,7 +17,7 @@ from .placeholders import (
     make_placeholder_config as default_make_placeholder_config,
 )
 from .source import LinePosition
-from .template_utils import PartPosition, TemplateRef, combine_template_refs
+from .template_utils import PartPosition, TemplateRef
 from .tnodes import (
     TagSourceInfo,
     TAttribute,
@@ -251,7 +251,7 @@ class TemplateParser(HTMLParser):
                 return TLiteralAttribute(name=name, value=value)
             elif value_ref.is_singleton:
                 return TInterpolatedAttribute(
-                    name=name, value_i_index=value_ref.i_indexes[0]
+                    name=name, value_i_index=value_ref.i_start
                 )
             else:
                 return TTemplatedAttribute(name=name, value_ref=value_ref)
@@ -263,7 +263,7 @@ class TemplateParser(HTMLParser):
             raise ValueError(
                 "Spread attributes must have exactly one interpolation in the name."
             )
-        return TSpreadAttribute(i_index=name_ref.i_indexes[0])
+        return TSpreadAttribute(i_index=name_ref.i_start)
 
     def make_tattrs(self, attrs: Sequence[HTMLAttribute]) -> tuple[TAttribute, ...]:
         """Build TAttributes from raw attribute tuples."""
@@ -305,7 +305,7 @@ class TemplateParser(HTMLParser):
         # HERE BE DRAGONS: the interpolation at i_index should be a
         # component callable. We do not check this in the parser, instead
         # relying on higher layers to validate types and render correctly.
-        i_index = tag_ref.i_indexes[0]
+        i_index = tag_ref.i_start
 
         # @NOTE: This must be called when the tag is handled since it is
         # populated based on the most recently finished start tag. Otherwise
@@ -318,7 +318,7 @@ class TemplateParser(HTMLParser):
         # contain interpolations causing the i_index (and s_index) to advance
         # arbitrarily.  So we start with the "last" `i_index` in the starttag
         # and advance to the next string.
-        children_start_s_index = starttag_ref.i_indexes[-1] + 1
+        children_start_s_index = starttag_ref.i_stop
 
         # @NOTE: The last string should terminate the starttag and end with ">"
         # So this length is the offset from the last interpolation to the start
@@ -420,7 +420,7 @@ class TemplateParser(HTMLParser):
             if children_start_s_index == children_end_s_index:
                 # CASE: Entire children template is a string, leading == trailing.
                 leading = leading[: leading.rfind("</")]
-                children_ref = TemplateRef(strings=(leading,), i_indexes=())
+                children_ref = TemplateRef.literal(leading)
             else:
                 # CASE: Children template contains interpolations so the trailing
                 # "string" will not be the same as the leading "string".
@@ -434,13 +434,11 @@ class TemplateParser(HTMLParser):
                         ],
                         trailing,
                     ),
-                    i_indexes=tuple(
-                        range(children_start_s_index, children_end_s_index)
-                    ),
+                    i_start=children_start_s_index,
                 )
         else:
             # CASE: <{Comp} /> -- no children template
-            children_ref = TemplateRef(strings=("",), i_indexes=())
+            children_ref = TemplateRef.empty()
         return children_ref
 
     def validate_end_tag(self, tag: str, open_tag: OpenTag) -> int | None:
@@ -475,7 +473,7 @@ class TemplateParser(HTMLParser):
                 # HERE BE DRAGONS: the interpolation at end_i_index shuld be a
                 # component callable that matches the start tag. We do not check
                 # any of this in the parser, instead relying on higher layers.
-                return tag_ref.i_indexes[0]
+                return tag_ref.i_start
 
     def get_starttag_ref(self) -> TemplateRef:
         """
@@ -529,7 +527,7 @@ class TemplateParser(HTMLParser):
         if parent.children and isinstance(parent.children[-1], TText):
             prior_text = parent.children[-1]
             parent.children[-1] = TText(
-                ref=combine_template_refs(prior_text.ref, ref),
+                ref=prior_text.ref.concat(ref),
                 # Keep starting position of the prior text
                 source_pos=prior_text.source_pos,
             )

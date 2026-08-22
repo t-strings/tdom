@@ -972,7 +972,7 @@ def resolve_text_without_recursion(
     across the boundary between other content and the pass-through content.
     """
     if content_ref.is_singleton:
-        value = format_interpolation(template.interpolations[content_ref.i_indexes[0]])
+        value = format_interpolation(template.interpolations[content_ref.i_start])
         value = t.cast(RawTextExactInterpolationValue, value)  # ty: ignore[redundant-cast]
         if value is None or isinstance(value, bool):
             return ""

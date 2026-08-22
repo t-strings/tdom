@@ -15,26 +15,30 @@ def template_from_parts(
     return Template(*flat)
 
 
-def combine_template_refs(*template_refs: TemplateRef) -> TemplateRef:
-    return TemplateRef.from_naive_template(
-        sum((tr.to_naive_template() for tr in template_refs), t"")
-    )
-
-
 @dataclass(slots=True, frozen=True)
 class TemplateRef:
-    """Reference to a template with indexes for its original interpolations."""
+    """Reference to a contiguous range within an original template."""
 
     strings: tuple[str, ...]
     """Static string parts of the original string.templatelib.Template"""
 
-    i_indexes: tuple[int, ...]
-    """Indexes of the interpolations in the original string.templatelib.Template"""
+    i_start: int = 0
+    """Index of the first interpolation in the original template."""
+
+    @property
+    def i_count(self) -> int:
+        """Number of interpolations referenced by this template."""
+        return len(self.strings) - 1
+
+    @property
+    def i_stop(self) -> int:
+        """Exclusive stop index of the interpolations in the original template."""
+        return self.i_start + self.i_count
 
     @property
     def is_literal(self) -> bool:
         """Return True if there are no interpolations."""
-        return not self.i_indexes
+        return self.i_count == 0
 
     @property
     def is_empty(self) -> bool:
@@ -46,14 +50,9 @@ class TemplateRef:
         """Return True if there is exactly one interpolation and no other content."""
         return self.strings == ("", "")
 
-    def to_naive_template(self) -> Template:
-        return template_from_parts(
-            self.strings, [Interpolation(i, "", None, "") for i in self.i_indexes]
-        )
-
     @classmethod
     def literal(cls, s: str) -> t.Self:
-        return cls((s,), ())
+        return cls((s,))
 
     @classmethod
     def empty(cls) -> t.Self:
@@ -61,20 +60,13 @@ class TemplateRef:
 
     @classmethod
     def singleton(cls, i_index: int) -> t.Self:
-        return cls(("", ""), (i_index,))
-
-    @classmethod
-    def from_naive_template(cls, t: Template) -> TemplateRef:
-        return cls(
-            strings=t.strings,
-            i_indexes=tuple(int(ip.value) for ip in t.interpolations),
-        )
+        return cls(("", ""), i_index)
 
     def __post_init__(self):
-        if len(self.strings) != len(self.i_indexes) + 1:
-            raise ValueError(
-                "TemplateRef must have one more string than interpolation indexes."
-            )
+        if not self.strings:
+            raise ValueError("TemplateRef must have at least one string.")
+        if self.is_literal and self.i_start != 0:
+            raise ValueError("Literal TemplateRef instances must have i_start 0.")
 
     def __iter__(self):
         index = 0
@@ -84,12 +76,32 @@ class TemplateRef:
             if s:
                 yield s
             if index < last_s_index:
-                yield self.i_indexes[index]
+                yield self.i_start + index
             index += 1
+
+    def concat(self, other: TemplateRef) -> TemplateRef:
+        """Join two adjacent template references."""
+        if (
+            not self.is_literal
+            and not other.is_literal
+            and self.i_stop != other.i_start
+        ):
+            raise ValueError("TemplateRef interpolation ranges must be contiguous.")
+
+        return TemplateRef(
+            strings=(
+                *self.strings[:-1],
+                self.strings[-1] + other.strings[0],
+                *other.strings[1:],
+            ),
+            i_start=other.i_start if self.is_literal else self.i_start,
+        )
 
     def resolve(self, interpolations: tuple[Interpolation, ...]) -> Template:
         """Use the given interpolations to resolve this reference template into a Template."""
-        resolved = [interpolations[i_index] for i_index in self.i_indexes]
+        resolved = [
+            interpolations[i_index] for i_index in range(self.i_start, self.i_stop)
+        ]
         return template_from_parts(self.strings, resolved)
 
     def slice(
@@ -117,7 +129,6 @@ class TemplateRef:
         first_string = first // 2
         last_string = last // 2
         strings = list(self.strings[first_string : last_string + 1])
-        i_indexes = self.i_indexes[first_string:last_string]
 
         # Apply the stop first because both positions may be in the same string.
         if last % 2 == 0:
@@ -128,7 +139,10 @@ class TemplateRef:
         else:
             strings[0] = ""
 
-        return TemplateRef(strings=tuple(strings), i_indexes=i_indexes)
+        return TemplateRef(
+            strings=tuple(strings),
+            i_start=self.i_start + first_string if len(strings) > 1 else 0,
+        )
 
 
 def slice_to_tref(
@@ -139,9 +153,7 @@ def slice_to_tref(
     """
     Slice a template ref from a template based on the given start and stop.
     """
-    tref = TemplateRef(
-        strings=template.strings, i_indexes=tuple(range(len(template.strings) - 1))
-    )
+    tref = TemplateRef(strings=template.strings)
     return tref.slice(start=start, stop=stop)
 
 

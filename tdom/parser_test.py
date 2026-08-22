@@ -84,13 +84,13 @@ def test_parse_text_with_entities():
 def test_parse_text_with_template_singleton():
     greeting = "Hello, World!"
     node = parse_root(t"{greeting}")
-    assert node == TText(ref=TemplateRef(strings=("", ""), i_indexes=(0,)))
+    assert node == TText(ref=TemplateRef(strings=("", "")))
 
 
 def test_parse_text_with_template():
     who = "World"
     node = parse_root(t"Hello, {who}!")
-    assert node == TText(ref=TemplateRef(strings=("Hello, ", "!"), i_indexes=(0,)))
+    assert node == TText(ref=TemplateRef(strings=("Hello, ", "!")))
 
 
 #
@@ -132,16 +132,14 @@ def test_parse_element_with_template():
     node = parse_root(t"<div>Hello, {who}!</div>")
     assert node == TElement(
         "div",
-        children=(TText(ref=TemplateRef(strings=("Hello, ", "!"), i_indexes=(0,))),),
+        children=(TText(ref=TemplateRef(strings=("Hello, ", "!"))),),
     )
 
 
 def test_parse_element_with_template_singleton():
     greeting = "Hello, World!"
     node = parse_root(t"<div>{greeting}</div>")
-    assert node == TElement(
-        "div", children=(TText(ref=TemplateRef(strings=("", ""), i_indexes=(0,))),)
-    )
+    assert node == TElement("div", children=(TText(ref=TemplateRef(strings=("", ""))),))
 
 
 def test_parse_multiple_voids():
@@ -315,8 +313,8 @@ def test_templated_attr():
     value1 = 42
     value2 = 99
     node = parse_root(t'<div value1="{value1}-burrito" value2="neato-{value2}-wow" />')
-    value1_ref = TemplateRef(strings=("", "-burrito"), i_indexes=(0,))
-    value2_ref = TemplateRef(strings=("neato-", "-wow"), i_indexes=(1,))
+    value1_ref = TemplateRef(strings=("", "-burrito"))
+    value2_ref = TemplateRef(strings=("neato-", "-wow"), i_start=1)
     assert node == TElement(
         "div",
         attrs=(
@@ -368,9 +366,7 @@ def test_parse_comment():
 def test_parse_comment_interpolation():
     text = "comment"
     node = parse_root(t"<!-- This is a {text} -->")
-    assert node == TComment(
-        ref=TemplateRef(strings=(" This is a ", " "), i_indexes=(0,))
-    )
+    assert node == TComment(ref=TemplateRef(strings=(" This is a ", " ")))
 
 
 #
@@ -405,7 +401,7 @@ def test_component_element_with_children():
     assert node == TComponent(
         start_i_index=0,
         end_i_index=1,
-        children_ref=TemplateRef(strings=("<div>Hello, World!</div>",), i_indexes=()),
+        children_ref=TemplateRef.literal("<div>Hello, World!</div>"),
     )
 
 
@@ -479,7 +475,7 @@ def test_placeholder_collision_avoidance():
         f'{config.suffix}"></div>',
     )
     tnode = parse_root(template)
-    value_ref = TemplateRef(strings=(config.prefix, config.suffix), i_indexes=(0,))
+    value_ref = TemplateRef(strings=(config.prefix, config.suffix))
     assert tnode == TElement(
         "div", attrs=(TTemplatedAttribute(name="data-tricky", value_ref=value_ref),)
     )
@@ -521,9 +517,9 @@ class TestSourceTracker:
         assert itr.index == 1
         assert itr.has_placeholders(), "Placeholder was addeded."
         tref_find = st.find_placeholders(parts[1])
-        assert itr.has_placeholders() and tref_find.i_indexes[0] == 0
+        assert itr.has_placeholders() and tref_find.i_start == 0
         tref_removed = st.remove_placeholders(parts[1])
-        assert not itr.has_placeholders() and tref_removed.i_indexes[0] == 0, (
+        assert not itr.has_placeholders() and tref_removed.i_start == 0, (
             "Placeholder removed."
         )
         parts.append(next(itr))
@@ -564,7 +560,7 @@ class TestComponentExtractChildrenTemplate:
         assert node == TComponent(
             start_i_index=0,
             end_i_index=1,
-            children_ref=TemplateRef(strings=("",), i_indexes=()),
+            children_ref=TemplateRef.empty(),
         )
 
     def test_extract_startend(self, Component):
@@ -572,7 +568,7 @@ class TestComponentExtractChildrenTemplate:
         assert node == TComponent(
             start_i_index=0,
             end_i_index=None,
-            children_ref=TemplateRef(strings=("",), i_indexes=()),
+            children_ref=TemplateRef.empty(),
         )
 
     def test_extract(self, Component):
@@ -580,9 +576,7 @@ class TestComponentExtractChildrenTemplate:
         assert node == TComponent(
             start_i_index=0,
             end_i_index=1,
-            children_ref=TemplateRef(
-                strings=("<div>Hello, World!</div>",), i_indexes=()
-            ),
+            children_ref=TemplateRef.literal("<div>Hello, World!</div>"),
         )
 
     def test_extract_with_attr_interpolation(self, Component):
@@ -594,9 +588,7 @@ class TestComponentExtractChildrenTemplate:
             start_i_index=0,
             end_i_index=2,
             attrs=(TInterpolatedAttribute(name="title", value_i_index=1),),
-            children_ref=TemplateRef(
-                strings=("<div>Hello, World!</div>",), i_indexes=()
-            ),
+            children_ref=TemplateRef.literal("<div>Hello, World!</div>"),
         )
         # Quoted...
         node2 = parse_root(
@@ -612,9 +604,7 @@ class TestComponentExtractChildrenTemplate:
             start_i_index=0,
             end_i_index=1,
             attrs=(TLiteralAttribute("title", "1 > 0"),),
-            children_ref=TemplateRef(
-                strings=("<div>Hello, World!</div>",), i_indexes=()
-            ),
+            children_ref=TemplateRef.literal("<div>Hello, World!</div>"),
         )
 
     def test_extract_with_interpolated_attr_literal_attr_gt_char(self, Component):
@@ -628,9 +618,7 @@ class TestComponentExtractChildrenTemplate:
                 TInterpolatedAttribute(name="id", value_i_index=1),
                 TLiteralAttribute("title", "1 > 0"),
             ),
-            children_ref=TemplateRef(
-                strings=("<div>Hello, World!</div>",), i_indexes=()
-            ),
+            children_ref=TemplateRef.literal("<div>Hello, World!</div>"),
         )
 
     def test_extract_with_templated_attr_gt_char(self, Component):
@@ -642,13 +630,11 @@ class TestComponentExtractChildrenTemplate:
             end_i_index=3,
             attrs=(
                 TTemplatedAttribute(
-                    "id", TemplateRef(strings=("", "_", ""), i_indexes=(1, 2))
+                    "id", TemplateRef(strings=("", "_", ""), i_start=1)
                 ),
                 TLiteralAttribute("title", "1 > 0"),
             ),
-            children_ref=TemplateRef(
-                strings=("<div>Hello, World!</div>",), i_indexes=()
-            ),
+            children_ref=TemplateRef.literal("<div>Hello, World!</div>"),
         )
 
 
