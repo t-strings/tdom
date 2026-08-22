@@ -17,7 +17,7 @@ from .placeholders import (
     make_placeholder_config as default_make_placeholder_config,
 )
 from .source import LinePosition
-from .template_utils import PartPosition, TemplateRef
+from .template_utils import PartPosition, TemplateRef, TemplateSpan
 from .tnodes import (
     TagSourceInfo,
     TAttribute,
@@ -45,18 +45,20 @@ class OpenTagSourceInfo:
     tag is closed.
     """
 
-    starttag_ref: TemplateRef
-    """Entire starttag as parsed except placeholders are replaced by references."""
+    starttag_span: TemplateSpan
+    """Source span occupied by the start tag."""
     startend: bool
     """Was parsed as startend tag, ie. <tag />."""
-    starttag_pos: PartPosition
-    """Template part position of the starttag."""
+
+    @property
+    def starttag_pos(self) -> PartPosition:
+        """Template part position where the start tag begins."""
+        return self.starttag_span.start
 
     def close(self, endtag_pos: PartPosition | None = None) -> TagSourceInfo:
         return TagSourceInfo(
-            starttag_ref=self.starttag_ref,
+            starttag_span=self.starttag_span,
             startend=self.startend,
-            starttag_pos=self.starttag_pos,
             endtag_pos=endtag_pos,
         )
 
@@ -79,10 +81,8 @@ class OpenTFragment:
 @dataclass
 class OpenTComponent:
     start_i_index: int
-    children_start_s_index: int
-    """The strings index where the component's children template starts."""
-    offset_into_children_start_s: int
-    """The offset INTO the starting string where the component's children template starts."""
+    children_start: PartPosition
+    """Source position where the component's children start."""
     attrs: tuple[TAttribute, ...]
     source_pos: PartPosition
     sinfo: OpenTagSourceInfo
@@ -290,9 +290,8 @@ class TemplateParser(HTMLParser):
                 tag=tag,
                 attrs=self.make_tattrs(attrs),
                 sinfo=OpenTagSourceInfo(
-                    starttag_ref=self.get_starttag_ref(),
+                    starttag_span=self.get_starttag_span(),
                     startend=startend,
-                    starttag_pos=source_pos,
                 ),
                 source_pos=source_pos,
             )
@@ -307,36 +306,19 @@ class TemplateParser(HTMLParser):
         # relying on higher layers to validate types and render correctly.
         i_index = tag_ref.i_start
 
-        # @NOTE: This must be called when the tag is handled since it is
-        # populated based on the most recently finished start tag. Otherwise
-        # the value will be out of sync.
-        starttag_ref = self.get_starttag_ref()
-
-        # The starting s_index of the component's children template. Note that
-        # this string either contains ">" or " />".  It might not be
-        # i_index + 1 because attributes WITHIN the component's tag might
-        # contain interpolations causing the i_index (and s_index) to advance
-        # arbitrarily.  So we start with the "last" `i_index` in the starttag
-        # and advance to the next string.
-        children_start_s_index = starttag_ref.i_stop
-
-        # @NOTE: The last string should terminate the starttag and end with ">"
-        # So this length is the offset from the last interpolation to the start
-        # of the children's leading string.
-        offset_into_children_start_s = len(starttag_ref.strings[-1])
-
-        source_pos = self.get_source_pos()
+        # This must be called while handling the tag because HTMLParser retains
+        # only the most recently parsed start tag text.
+        starttag_span = self.get_starttag_span()
+        source_pos = starttag_span.start
 
         return OpenTComponent(
             start_i_index=i_index,
-            children_start_s_index=children_start_s_index,
-            offset_into_children_start_s=offset_into_children_start_s,
+            children_start=starttag_span.stop,
             attrs=self.make_tattrs(attrs),
             source_pos=source_pos,
             sinfo=OpenTagSourceInfo(
-                starttag_ref=starttag_ref,
+                starttag_span=starttag_span,
                 startend=startend,
-                starttag_pos=source_pos,
             ),
         )
 
@@ -347,7 +329,6 @@ class TemplateParser(HTMLParser):
         endtag_pos: PartPosition | None = None,
     ) -> TNode:
         """Finalize an OpenTag into a TNode."""
-        source = self.get_source()
         match open_tag:
             case OpenTElement(
                 tag=tag,
@@ -370,76 +351,24 @@ class TemplateParser(HTMLParser):
                 return TFragment(children=tuple(children), source_pos=source_pos)
             case OpenTComponent(
                 start_i_index=start_i_index,
-                children_start_s_index=children_start_s_index,
-                offset_into_children_start_s=offset_into_children_start_s,
+                children_start=children_start,
                 attrs=attrs,
                 source_pos=source_pos,
                 sinfo=sinfo,
             ):
-                children_ref = self.extract_component_children_ref(
-                    start_i_index=start_i_index,
-                    endtag_i_index=endtag_i_index,
-                    children_start_s_index=children_start_s_index,
-                    offset_into_children_start_s=offset_into_children_start_s,
-                    template=source.template,
+                children_span = (
+                    TemplateSpan(start=children_start, stop=endtag_pos)
+                    if endtag_pos is not None
+                    else None
                 )
                 self.sinfo_table[source_pos] = sinfo.close(endtag_pos=endtag_pos)
                 return TComponent(
                     start_i_index=start_i_index,
                     end_i_index=endtag_i_index,
-                    children_ref=children_ref,
+                    children_span=children_span,
                     attrs=attrs,
                     source_pos=source_pos,
                 )
-
-    def extract_component_children_ref(
-        self,
-        start_i_index: int,
-        endtag_i_index: int | None,
-        children_start_s_index: int,
-        offset_into_children_start_s: int,
-        template: Template,
-    ) -> TemplateRef:
-        """
-        Extract the component children template from the entire template.
-
-        We use this template as a "key" into the cache to get the TNode tree.
-        """
-        if start_i_index != endtag_i_index and endtag_i_index is not None:
-            # CASE: <{Comp}>...</{Comp}> or <{Comp}></{Comp}>
-
-            # Use the interpolation index of the callable in the closing tag
-            # preceding "string" index is always the same as an interpolation index
-            # The "string" should look like this: "...</"
-            children_end_s_index = endtag_i_index
-            # Offset past the trailing part of the component's start tag to get to
-            # where the first "string" of the children's template starts.
-            leading = template.strings[children_start_s_index][
-                offset_into_children_start_s:
-            ]
-            if children_start_s_index == children_end_s_index:
-                # CASE: Entire children template is a string, leading == trailing.
-                leading = leading[: leading.rfind("</")]
-                children_ref = TemplateRef.literal(leading)
-            else:
-                # CASE: Children template contains interpolations so the trailing
-                # "string" will not be the same as the leading "string".
-                trailing = template.strings[children_end_s_index]
-                trailing = trailing[: trailing.rfind("</")]
-                children_ref = TemplateRef(
-                    strings=(
-                        leading,
-                        *template.strings[
-                            children_start_s_index + 1 : children_end_s_index
-                        ],
-                        trailing,
-                    ),
-                    i_start=children_start_s_index,
-                )
-        else:
-            # CASE: <{Comp} /> -- no children template
-            children_ref = TemplateRef.empty()
-        return children_ref
 
     def validate_end_tag(self, tag: str, open_tag: OpenTag) -> int | None:
         """Validate that closing tag matches open tag. Return component end index if applicable."""
@@ -475,16 +404,29 @@ class TemplateParser(HTMLParser):
                 # any of this in the parser, instead relying on higher layers.
                 return tag_ref.i_start
 
-    def get_starttag_ref(self) -> TemplateRef:
-        """
-        Wrap get_starttag_text and just raise if None is returned.
-        Do this so we don't guard for `None` everywhere.
-        """
-        source = self.get_source()
+    def get_starttag_span(self) -> TemplateSpan:
+        """Return the source span occupied by the current start tag."""
         starttag_text = self.get_starttag_text()
         if starttag_text is None:
             raise AssertionError("Expected the parser to have starttag_text set.")
-        return source.find_placeholders(starttag_text)
+
+        parser_start = self.get_parser_pos()
+        line_count = starttag_text.count("\n")
+        parser_stop = (
+            LinePosition(
+                line=parser_start.line + line_count,
+                offset=len(starttag_text.rsplit("\n", 1)[-1]),
+            )
+            if line_count
+            else LinePosition(
+                line=parser_start.line,
+                offset=parser_start.offset + len(starttag_text),
+            )
+        )
+        return TemplateSpan(
+            start=self.get_source_pos(parser_start),
+            stop=self.get_source_pos(parser_stop),
+        )
 
     # ------------------------------------------
     # HTMLParser tag callbacks
@@ -537,7 +479,7 @@ class TemplateParser(HTMLParser):
     def handle_comment(self, data: str) -> None:
         source = self.get_source()
         ref = source.remove_placeholders(data)
-        comment = TComment(ref, source_pos=self.get_source_pos())
+        comment = TComment(ref=ref, source_pos=self.get_source_pos())
         self.append_child(comment)
 
     def handle_decl(self, decl: str) -> None:

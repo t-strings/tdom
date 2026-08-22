@@ -9,7 +9,7 @@ def template_from_parts(
 ) -> Template:
     """Construct a template string from the given strings and parts."""
     assert len(strings) == len(interpolations) + 1, (
-        "TemplateRef must have one more string than interpolation references."
+        "A template must have one more string than interpolations."
     )
     flat = [x for pair in zip(strings, interpolations) for x in pair] + [strings[-1]]
     return Template(*flat)
@@ -17,7 +17,7 @@ def template_from_parts(
 
 @dataclass(slots=True, frozen=True)
 class TemplateRef:
-    """Reference to a contiguous range within an original template."""
+    """Template strings whose interpolations are supplied by another template."""
 
     strings: tuple[str, ...]
     """Static string parts of the original string.templatelib.Template"""
@@ -62,7 +62,7 @@ class TemplateRef:
     def singleton(cls, i_index: int) -> t.Self:
         return cls(("", ""), i_index)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not self.strings:
             raise ValueError("TemplateRef must have at least one string.")
         if self.is_literal and self.i_start != 0:
@@ -97,64 +97,11 @@ class TemplateRef:
             i_start=other.i_start if self.is_literal else self.i_start,
         )
 
-    def resolve(self, interpolations: tuple[Interpolation, ...]) -> Template:
-        """Use the given interpolations to resolve this reference template into a Template."""
-        resolved = [
-            interpolations[i_index] for i_index in range(self.i_start, self.i_stop)
-        ]
-        return template_from_parts(self.strings, resolved)
-
-    def slice(
-        self,
-        start: PartPosition | None = None,
-        stop: PartPosition | None = None,
-    ) -> TemplateRef:
-        """Return the half-open interval from start (inclusive) to stop (exclusive)."""
-        size = 2 * len(self.strings) - 1
-        first = start.index if start else 0
-        if first >= size:
-            raise ValueError(
-                f"Start position index falls outside the template: {first} >= {size}."
-            )
-        offset = start.offset if start else None
-        last = stop.index if stop else size - 1
-        if last >= size:
-            raise ValueError(
-                f"Stop position index falls outside the template: {last} >= {size}."
-            )
-        limit = stop.offset if stop else None
-        if start is not None and stop is not None and start > stop:
-            raise ValueError("Start position must not be after stop position.")
-
-        first_string = first // 2
-        last_string = last // 2
-        strings = list(self.strings[first_string : last_string + 1])
-
-        # Apply the stop first because both positions may be in the same string.
-        if last % 2 == 0:
-            strings[-1] = strings[-1][:limit]
-
-        if first % 2 == 0:
-            strings[0] = strings[0][offset:]
-        else:
-            strings[0] = ""
-
-        return TemplateRef(
-            strings=tuple(strings),
-            i_start=self.i_start + first_string if len(strings) > 1 else 0,
+    def bind(self, source: Template) -> Template:
+        """Bind interpolation objects from a structurally compatible template."""
+        return template_from_parts(
+            self.strings, source.interpolations[self.i_start : self.i_stop]
         )
-
-
-def slice_to_tref(
-    template: Template,
-    start: PartPosition | None = None,
-    stop: PartPosition | None = None,
-) -> TemplateRef:
-    """
-    Slice a template ref from a template based on the given start and stop.
-    """
-    tref = TemplateRef(strings=template.strings)
-    return tref.slice(start=start, stop=stop)
 
 
 @dataclass(slots=True, frozen=True, order=True)
@@ -180,12 +127,71 @@ class PartPosition:
     offset: int = 0
     """Offset from the start of the template part."""
 
+    @property
+    def is_string(self) -> bool:
+        """Return True if this position is within a string part."""
+        return self.index % 2 == 0
+
+    @property
+    def is_interpolation(self) -> bool:
+        """Return True if this position is at an interpolation part."""
+        return not self.is_string
+
     def __post_init__(self) -> None:
         """Validate invariants shared by every template part position."""
         if self.index < 0:
             raise ValueError("Index must always be positive or zero.")
         if self.offset < 0:
             raise ValueError("Offset must always be positive or zero.")
-        if self.index % 2 != 0 and self.offset != 0:
+        if self.is_interpolation and self.offset != 0:
             # Interpolations are indivisible, so their only position is the start.
             raise ValueError("Interpolation part positions must always have offset 0.")
+
+    def validate(self, source: Template) -> None:
+        """Raise if this position falls outside the source template."""
+        part_count = 2 * len(source.strings) - 1
+        if self.index >= part_count:
+            raise ValueError(
+                "PartPosition index falls outside the template: "
+                f"{self.index} >= {part_count}."
+            )
+        if self.is_string:
+            string = source.strings[self.index // 2]
+            if self.offset > len(string):
+                raise ValueError(
+                    "PartPosition offset falls outside its string: "
+                    f"{self.offset} > {len(string)}."
+                )
+
+
+@dataclass(slots=True, frozen=True)
+class TemplateSpan:
+    """A half-open span in the global part coordinates of a template."""
+
+    start: PartPosition
+    stop: PartPosition
+
+    def __post_init__(self) -> None:
+        if self.start > self.stop:
+            raise ValueError("TemplateSpan start must not be after stop.")
+
+    def extract(self, source: Template) -> Template:
+        """Extract this span from a structurally compatible template."""
+        self.start.validate(source)
+        self.stop.validate(source)
+
+        first_string = self.start.index // 2
+        last_string = self.stop.index // 2
+        strings = list(source.strings[first_string : last_string + 1])
+
+        if self.stop.is_string:
+            strings[-1] = strings[-1][: self.stop.offset]
+
+        if self.start.is_string:
+            strings[0] = strings[0][self.start.offset :]
+        else:
+            strings[0] = ""
+
+        return template_from_parts(
+            strings, source.interpolations[first_string:last_string]
+        )

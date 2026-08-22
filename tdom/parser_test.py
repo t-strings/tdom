@@ -4,7 +4,7 @@ import pytest
 
 from .parser import TemplateParser, configure_source_tracker
 from .placeholders import make_placeholder_config
-from .template_utils import PartPosition, TemplateRef
+from .template_utils import PartPosition, TemplateRef, TemplateSpan
 from .tnodes import (
     TComment,
     TComponent,
@@ -23,6 +23,21 @@ from .tnodes import (
 def parse_root(t: Template) -> TNode:
     """Parse template to ttree and then return the root tnode."""
     return TemplateParser.parse(t).root
+
+
+def literal_template_span(template: Template, text: str) -> TemplateSpan:
+    """Return the span of a unique literal substring in a template."""
+    matches = [
+        (index, string.index(text))
+        for index, string in enumerate(template.strings)
+        if text in string
+    ]
+    assert len(matches) == 1
+    string_index, offset = matches[0]
+    return TemplateSpan(
+        start=PartPosition(2 * string_index, offset),
+        stop=PartPosition(2 * string_index, offset + len(text)),
+    )
 
 
 def test_parse_mixed_literal_content():
@@ -397,11 +412,12 @@ def test_component_element_with_children():
     def Component(children):
         return t"{children}"
 
-    node = parse_root(t"<{Component}><div>Hello, World!</div></{Component}>")
+    template = t"<{Component}><div>Hello, World!</div></{Component}>"
+    node = parse_root(template)
     assert node == TComponent(
         start_i_index=0,
         end_i_index=1,
-        children_ref=TemplateRef.literal("<div>Hello, World!</div>"),
+        children_span=literal_template_span(template, "<div>Hello, World!</div>"),
     )
 
 
@@ -418,7 +434,11 @@ def test_component_element_with_closing_tag():
         pass
 
     node = parse_root(t"<{Component}></{Component}>")
-    assert node == TComponent(start_i_index=0, end_i_index=1)
+    assert node == TComponent(
+        start_i_index=0,
+        end_i_index=1,
+        children_span=TemplateSpan(PartPosition(2, 1), PartPosition(2, 1)),
+    )
 
 
 def test_component_element_special_case_mismatched_closing_tag_still_parses():
@@ -429,7 +449,11 @@ def test_component_element_special_case_mismatched_closing_tag_still_parses():
         pass
 
     node = parse_root(t"<{Component1}></{Component2}>")
-    assert node == TComponent(start_i_index=0, end_i_index=1)
+    assert node == TComponent(
+        start_i_index=0,
+        end_i_index=1,
+        children_span=TemplateSpan(PartPosition(2, 1), PartPosition(2, 1)),
+    )
 
 
 def test_component_element_invalid_closing_tag():
@@ -477,7 +501,8 @@ def test_placeholder_collision_avoidance():
     tnode = parse_root(template)
     value_ref = TemplateRef(strings=(config.prefix, config.suffix))
     assert tnode == TElement(
-        "div", attrs=(TTemplatedAttribute(name="data-tricky", value_ref=value_ref),)
+        "div",
+        attrs=(TTemplatedAttribute(name="data-tricky", value_ref=value_ref),),
     )
 
 
@@ -547,7 +572,7 @@ class TestIncompleteParsing:
             _ = parse_root(t'<div a="{None}')
 
 
-class TestComponentExtractChildrenTemplate:
+class TestComponentChildrenSpan:
     @pytest.fixture
     def Component(self):
         def Component(children: Template, **attrs: str) -> Template:
@@ -560,7 +585,7 @@ class TestComponentExtractChildrenTemplate:
         assert node == TComponent(
             start_i_index=0,
             end_i_index=1,
-            children_ref=TemplateRef.empty(),
+            children_span=TemplateSpan(PartPosition(2, 1), PartPosition(2, 1)),
         )
 
     def test_extract_startend(self, Component):
@@ -568,49 +593,49 @@ class TestComponentExtractChildrenTemplate:
         assert node == TComponent(
             start_i_index=0,
             end_i_index=None,
-            children_ref=TemplateRef.empty(),
+            children_span=None,
         )
 
     def test_extract(self, Component):
-        node = parse_root(t"<{Component}><div>Hello, World!</div></{Component}>")
+        template = t"<{Component}><div>Hello, World!</div></{Component}>"
+        node = parse_root(template)
         assert node == TComponent(
             start_i_index=0,
             end_i_index=1,
-            children_ref=TemplateRef.literal("<div>Hello, World!</div>"),
+            children_span=literal_template_span(template, "<div>Hello, World!</div>"),
         )
 
     def test_extract_with_attr_interpolation(self, Component):
         # Unquoted ...
-        node = parse_root(
-            t"<{Component} title={'Skip over this.'}><div>Hello, World!</div></{Component}>"
-        )
+        template = t"<{Component} title={'Skip over this.'}><div>Hello, World!</div></{Component}>"
+        node = parse_root(template)
         assert node == TComponent(
             start_i_index=0,
             end_i_index=2,
             attrs=(TInterpolatedAttribute(name="title", value_i_index=1),),
-            children_ref=TemplateRef.literal("<div>Hello, World!</div>"),
+            children_span=literal_template_span(template, "<div>Hello, World!</div>"),
         )
         # Quoted...
         node2 = parse_root(
             t'<{Component} title="{"Skip over this."}"><div>Hello, World!</div></{Component}>'
         )
-        assert node2 == node
+        assert isinstance(node2, TComponent)
+        assert node2.attrs == (TInterpolatedAttribute(name="title", value_i_index=1),)
+        assert node2.children_span is not None
 
     def test_extract_with_literal_attr_gt_char(self, Component):
-        node = parse_root(
-            t'<{Component} title="1 > 0"><div>Hello, World!</div></{Component}>'
-        )
+        template = t'<{Component} title="1 > 0"><div>Hello, World!</div></{Component}>'
+        node = parse_root(template)
         assert node == TComponent(
             start_i_index=0,
             end_i_index=1,
             attrs=(TLiteralAttribute("title", "1 > 0"),),
-            children_ref=TemplateRef.literal("<div>Hello, World!</div>"),
+            children_span=literal_template_span(template, "<div>Hello, World!</div>"),
         )
 
     def test_extract_with_interpolated_attr_literal_attr_gt_char(self, Component):
-        node = parse_root(
-            t'<{Component} id={"simple"} title="1 > 0"><div>Hello, World!</div></{Component}>'
-        )
+        template = t'<{Component} id={"simple"} title="1 > 0"><div>Hello, World!</div></{Component}>'
+        node = parse_root(template)
         assert node == TComponent(
             start_i_index=0,
             end_i_index=2,
@@ -618,13 +643,12 @@ class TestComponentExtractChildrenTemplate:
                 TInterpolatedAttribute(name="id", value_i_index=1),
                 TLiteralAttribute("title", "1 > 0"),
             ),
-            children_ref=TemplateRef.literal("<div>Hello, World!</div>"),
+            children_span=literal_template_span(template, "<div>Hello, World!</div>"),
         )
 
     def test_extract_with_templated_attr_gt_char(self, Component):
-        node = parse_root(
-            t'<{Component} id="{"header"}_{"container"}" title="1 > 0"><div>Hello, World!</div></{Component}>'
-        )
+        template = t'<{Component} id="{"header"}_{"container"}" title="1 > 0"><div>Hello, World!</div></{Component}>'
+        node = parse_root(template)
         assert node == TComponent(
             start_i_index=0,
             end_i_index=3,
@@ -634,8 +658,22 @@ class TestComponentExtractChildrenTemplate:
                 ),
                 TLiteralAttribute("title", "1 > 0"),
             ),
-            children_ref=TemplateRef.literal("<div>Hello, World!</div>"),
+            children_span=literal_template_span(template, "<div>Hello, World!</div>"),
         )
+
+    def test_extract_with_interpolated_children_after_attribute(self, Component):
+        child = "child"
+        template = (
+            t"<{Component} title={'attribute'}>before {child} after</{Component}>"
+        )
+
+        node = parse_root(template)
+
+        assert isinstance(node, TComponent)
+        assert node.children_span is not None
+        children = node.children_span.extract(template)
+        assert children.strings == ("before ", " after")
+        assert children.values == (child,)
 
 
 class TestSourcePos:
@@ -729,7 +767,9 @@ class TestSourceInfo:
         assert sinfo.starttag_pos == PartPosition(
             0, 0
         ) and sinfo.endtag_pos == PartPosition(0, len("<div>"))
-        assert sinfo.starttag_ref.strings == ("<div>",)
+        assert sinfo.starttag_span == TemplateSpan(
+            PartPosition(0, 0), PartPosition(0, len("<div>"))
+        )
 
     def test_el_self_closed(self):
         ttree = TemplateParser.parse(t"<div />")
@@ -744,7 +784,9 @@ class TestSourceInfo:
         sinfo = sinfo_table[node.source_pos]
         assert sinfo.startend == True
         assert sinfo.starttag_pos == PartPosition(0, 0) and sinfo.endtag_pos is None
-        assert sinfo.starttag_ref.strings == ("<div />",)
+        assert sinfo.starttag_span == TemplateSpan(
+            PartPosition(0, 0), PartPosition(0, len("<div />"))
+        )
 
     def test_component(self):
         def Comp() -> Template:
@@ -764,7 +806,9 @@ class TestSourceInfo:
         assert sinfo.starttag_pos == PartPosition(
             0, 0
         ) and sinfo.endtag_pos == PartPosition(2, len(">"))
-        assert sinfo.starttag_ref.strings == ("<", ">")
+        assert sinfo.starttag_span == TemplateSpan(
+            PartPosition(0, 0), PartPosition(2, len(">"))
+        )
 
     def test_component_self_closed(self):
         def Comp() -> Template:
@@ -782,7 +826,28 @@ class TestSourceInfo:
         sinfo = sinfo_table[node.source_pos]
         assert sinfo.startend == True
         assert sinfo.starttag_pos == PartPosition(0, 0) and sinfo.endtag_pos is None
-        assert sinfo.starttag_ref.strings == ("<", " />")
+        assert sinfo.starttag_span == TemplateSpan(
+            PartPosition(0, 0), PartPosition(2, len(" />"))
+        )
+
+    def test_multiline_component_spans(self):
+        def Component(children):
+            return children
+
+        template = t'<{Component}\n title="literal"\n>child</{Component}>'
+        ttree = TemplateParser.parse(template)
+        node = ttree.root
+        assert isinstance(node, TComponent)
+        assert node.children_span is not None
+        assert node.source_pos is not None
+
+        sinfo = ttree.unpack_sinfo_table()[node.source_pos]
+        extracted_starttag = sinfo.starttag_span.extract(template)
+        extracted_children = node.children_span.extract(template)
+
+        assert extracted_starttag.strings == ("<", '\n title="literal"\n>')
+        assert extracted_starttag.values == (Component,)
+        assert extracted_children.strings == ("child",)
 
     def test_empty_sinfo_table(self):
         ttree = TemplateParser.parse(t"<!doctype html>ABC")

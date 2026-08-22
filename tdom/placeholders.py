@@ -36,7 +36,7 @@ class PlaceholderConfig:
         """
         Find all placeholders in a string and return a TemplateRef.
 
-        If no placeholders are found, returns a static TemplateRef.
+        If no placeholders are found, returns a literal TemplateRef.
         """
         matches = self.match_placeholders(s)
         if not matches:
@@ -79,7 +79,7 @@ class PlaceholderState:
 
         If unknown placeholders are found, raises ValueError.
 
-        If no placeholders are found, returns a static PlaceholderRef.
+        If no placeholders are found, returns a literal TemplateRef.
         """
         pt = self.config.find_placeholders(text)
         for index in range(pt.i_start, pt.i_stop):

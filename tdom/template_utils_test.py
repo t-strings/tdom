@@ -5,7 +5,7 @@ import pytest
 from .template_utils import (
     PartPosition,
     TemplateRef,
-    slice_to_tref,
+    TemplateSpan,
     template_from_parts,
 )
 
@@ -19,27 +19,27 @@ def test_template_from_parts() -> None:
 
 
 def test_template_ref_is_literal() -> None:
-    literal_ref = TemplateRef.literal("Hello")
-    assert literal_ref.is_literal
+    literal = TemplateRef.literal("Hello")
+    assert literal.is_literal
 
-    non_literal_ref = TemplateRef(("", ""))
-    assert not non_literal_ref.is_literal
+    non_literal = TemplateRef(("", ""))
+    assert not non_literal.is_literal
 
 
 def test_template_ref_is_empty() -> None:
-    empty_ref = TemplateRef.empty()
-    assert empty_ref.is_empty
+    empty = TemplateRef.empty()
+    assert empty.is_empty
 
-    non_empty_ref = TemplateRef.literal("Hello")
-    assert not non_empty_ref.is_empty
+    non_empty = TemplateRef.literal("Hello")
+    assert not non_empty.is_empty
 
 
 def test_template_ref_is_singleton() -> None:
-    singleton_ref = TemplateRef.singleton(0)
-    assert singleton_ref.is_singleton
+    singleton = TemplateRef.singleton(0)
+    assert singleton.is_singleton
 
-    non_singleton_ref = TemplateRef.literal("Hello")
-    assert not non_singleton_ref.is_singleton
+    non_singleton = TemplateRef.literal("Hello")
+    assert not non_singleton.is_singleton
 
 
 def test_template_ref_interpolation_range() -> None:
@@ -59,14 +59,14 @@ def test_template_ref_post_init_validation() -> None:
 
 
 def test_template_ref_concat():
-    template_refs = (
+    refs = (
         TemplateRef.literal("ab"),
         TemplateRef(("c", "d")),
         TemplateRef(("ef", ""), i_start=1),
         TemplateRef(("", "ghi"), i_start=2),
     )
-    combined = template_refs[0]
-    for ref in template_refs[1:]:
+    combined = refs[0]
+    for ref in refs[1:]:
         combined = combined.concat(ref)
 
     assert combined == TemplateRef(("abc", "def", "", "ghi"))
@@ -130,15 +130,32 @@ def test_template_ref_iter_complete():
     ]
 
 
-def test_template_ref_resolve():
+def test_template_ref_bind():
     src_t = t"{'a'}b{'c'}d{'e'}f"
-    src_ref = TemplateRef(strings=src_t.strings)
-    resolved_t = src_ref.resolve(src_t.interpolations)
-    assert resolved_t.values == ("a", "c", "e")
-    assert resolved_t.strings == ("", "b", "d", "f")
+    ref = TemplateRef(strings=("before ", " after"), i_start=1)
+    bound = ref.bind(src_t)
+    assert bound.values == ("c",)
+    assert bound.strings == ref.strings
 
 
 class TestPartPosition:
+    @pytest.mark.parametrize(
+        ("position", "is_string", "is_interpolation"),
+        (
+            (PartPosition(0), True, False),
+            (PartPosition(1), False, True),
+            (PartPosition(2), True, False),
+        ),
+    )
+    def test_part_type(
+        self,
+        position: PartPosition,
+        is_string: bool,
+        is_interpolation: bool,
+    ) -> None:
+        assert position.is_string is is_string
+        assert position.is_interpolation is is_interpolation
+
     @pytest.mark.parametrize(
         ("index", "offset", "message"),
         (
@@ -163,20 +180,7 @@ class TestPartPosition:
         assert earlier < later
 
 
-class TestTemplateRefSlice:
-    def test_preserves_interpolation_indexes(self) -> None:
-        ref = TemplateRef(strings=("A", "B", "C"), i_start=3)
-
-        assert ref.slice() == ref
-        assert ref.slice(start=PartPosition(1), stop=PartPosition(2, 1)) == TemplateRef(
-            strings=("", "B"), i_start=3
-        )
-
-    def test_literal_slice_normalizes_interpolation_start(self) -> None:
-        ref = TemplateRef(strings=("A", "B"), i_start=3)
-
-        assert ref.slice(start=PartPosition(2)) == TemplateRef.literal("B")
-
+class TestTemplateSpan:
     @pytest.mark.parametrize(
         ("start", "stop"),
         (
@@ -185,31 +189,37 @@ class TestTemplateRefSlice:
         ),
     )
     def test_reversed_range(self, start: PartPosition, stop: PartPosition) -> None:
-        with pytest.raises(
-            ValueError, match="Start position must not be after stop position"
-        ):
-            _ = TemplateRef(strings=("ABC", "DEF"), i_start=3).slice(
-                start=start, stop=stop
-            )
+        with pytest.raises(ValueError, match="start must not be after stop"):
+            _ = TemplateSpan(start=start, stop=stop)
 
     @pytest.mark.parametrize(
-        ("start", "stop", "bound"),
+        "span",
         (
-            (PartPosition(3), None, "Start"),
-            (None, PartPosition(3), "Stop"),
+            TemplateSpan(PartPosition(3), PartPosition(3)),
+            TemplateSpan(PartPosition(0), PartPosition(3)),
         ),
     )
-    def test_position_outside_template(
-        self,
-        start: PartPosition | None,
-        stop: PartPosition | None,
-        bound: str,
-    ) -> None:
-        with pytest.raises(ValueError, match=f"{bound} position index"):
-            _ = TemplateRef.literal("ABC").slice(start=start, stop=stop)
+    def test_position_outside_template(self, span: TemplateSpan) -> None:
+        with pytest.raises(ValueError, match="PartPosition index"):
+            _ = span.extract(t"ABC")
+
+    def test_offset_outside_template_string(self) -> None:
+        span = TemplateSpan(PartPosition(0, 4), PartPosition(0, 4))
+
+        with pytest.raises(ValueError, match="PartPosition offset"):
+            _ = span.extract(t"ABC")
+
+    def test_retains_original_interpolation_objects(self) -> None:
+        source = t"before {object()} after"
+        span = TemplateSpan(PartPosition(0, 7), PartPosition(2, 0))
+
+        extracted = span.extract(source)
+
+        assert extracted.strings == ("", "")
+        assert extracted.interpolations[0] is source.interpolations[0]
 
 
-class TestSliceToTRef:
+class TestTemplateSpanExtract:
     @pytest.mark.parametrize(
         ("t", "start", "stop", "result"),
         (
@@ -253,12 +263,24 @@ class TestSliceToTRef:
         stop: PartPosition | None,
         result: tuple[str | int, ...],
     ) -> None:
-        parts = tuple(slice_to_tref(t, start=start, stop=stop))
-        assert parts == result
+        span = TemplateSpan(
+            start=start or PartPosition(0),
+            stop=stop or PartPosition(2 * len(t.strings) - 2, len(t.strings[-1])),
+        )
+        extracted = span.extract(t)
+        parts: list[str | object] = []
+        for index, string in enumerate(extracted.strings):
+            if string:
+                parts.append(string)
+            if index < len(extracted.values):
+                parts.append(extracted.values[index])
+        assert tuple(parts) == result
 
     def test_interpolation_interval(self) -> None:
-        assert slice_to_tref(
-            t"<div>{0}</div>",
+        extracted = TemplateSpan(
             start=PartPosition(1),
             stop=PartPosition(2),
-        ) == TemplateRef(strings=("", ""))
+        ).extract(t"<div>{0}</div>")
+
+        assert extracted.strings == ("", "")
+        assert extracted.values == (0,)
