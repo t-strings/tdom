@@ -1,8 +1,14 @@
-from string.templatelib import Interpolation
+from string.templatelib import Interpolation, Template
 
 import pytest
 
-from .template_utils import TemplateRef, combine_template_refs, template_from_parts
+from .template_utils import (
+    PartPosition,
+    TemplateRef,
+    combine_template_refs,
+    slice_to_tref,
+    template_from_parts,
+)
 
 
 def test_template_from_parts() -> None:
@@ -101,3 +107,84 @@ def test_template_ref_resolve():
     resolved_t = src_ref.resolve(src_t.interpolations)
     assert resolved_t.values == ("a", "c", "e")
     assert resolved_t.strings == ("", "b", "d", "f")
+
+
+class TestSliceToTRef:
+    @pytest.mark.parametrize(
+        ("t", "start", "stop", "result"),
+        (
+            (t"<div></div>", None, PartPosition(0, offset=5), ("<div>",)),
+            (t"<div></div>", PartPosition(0, offset=5), None, ("</div>",)),
+            (
+                t"<div></div>",
+                PartPosition(0, offset=4),
+                PartPosition(0, offset=6),
+                ("><",),
+            ),
+            (t"<div></div>", PartPosition(0, offset=5), PartPosition(0, offset=5), ()),
+            (t"<div>{0}</div>", None, PartPosition(1, offset=0), ("<div>",)),
+            (t"<div>{0}</div>", PartPosition(1, offset=0), None, (0, "</div>")),
+            (t"<div>{0}</div>", PartPosition(2, offset=0), None, ("</div>",)),
+            (t"<div>{0}</div>", None, PartPosition(2, offset=0), ("<div>", 0)),
+            (
+                t"<div>{0}</div>",
+                PartPosition(1, offset=0),
+                PartPosition(2, offset=0),
+                (0,),
+            ),
+            (
+                t"<div>{0}</div>",
+                PartPosition(1, offset=0),
+                PartPosition(1, offset=0),
+                (),
+            ),
+            (t"", None, PartPosition(0, offset=0), ()),
+            (t"", PartPosition(0, offset=0), None, ()),
+            (t"", None, None, ()),
+            (t"{0}", None, PartPosition(2, offset=0), (0,)),
+            (t"{0}", PartPosition(0, offset=0), None, (0,)),
+            (t"{0}", None, None, (0,)),
+        ),
+    )
+    def test_interval(
+        self,
+        t: Template,
+        start: PartPosition | None,
+        stop: PartPosition | None,
+        result: tuple[str | int, ...],
+    ) -> None:
+        parts = tuple(slice_to_tref(t, start=start, stop=stop))
+        assert parts == result
+
+    def test_bad_interpolation_target(self) -> None:
+        with pytest.raises(
+            AssertionError,
+            match="Interpolation part positions must always have offset 0",
+        ):
+            _ = slice_to_tref(
+                t"<div>{0}</div>",
+                start=None,
+                stop=PartPosition(1, 20),
+            )
+
+
+class TestTemplateRefSlice:
+    def test_shifted_indexes(self):
+        # We start with the normal template where the interpolation values
+        # match their corresponding (non-unified) index: 0->0, 1->1, etc.
+        # Then use slice_to_tref to setup TemplateRef with shifted indexes.
+        tref = slice_to_tref(
+            t"<div>{0}<span>{1}</span>{2}</div>", PartPosition(2, 0), None
+        )
+        # After slicing from <span> the i_indexes are now shifted, ie. 0->1, 1->2
+        assert tref.i_indexes == (1, 2), "0 should be removed, "
+        # @NOTE: These parts are now relative to the new slice.
+        # The unified index 3 is the interpolation with value == 2.
+        sliced_from_interpolation = tref.slice(start=PartPosition(3, 0))
+        assert sliced_from_interpolation.i_indexes == (2,), "only 2 should remain"
+        assert tuple(sliced_from_interpolation) == (2, "</div>")
+        # @NOTE: Again, this position is relative.
+        # The unified index 2 is the string "</span>".
+        sliced_from_str = tref.slice(start=PartPosition(2, 0))
+        assert sliced_from_str.i_indexes == (2,), "only 2 should remain"
+        assert tuple(sliced_from_str) == ("</span>", 2, "</div>")
