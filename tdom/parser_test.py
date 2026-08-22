@@ -4,7 +4,7 @@ import pytest
 
 from .parser import TemplateParser, configure_source_tracker
 from .placeholders import make_placeholder_config
-from .template_utils import TemplateRef
+from .template_utils import PartPosition, TemplateRef
 from .tnodes import (
     TComment,
     TComponent,
@@ -13,14 +13,20 @@ from .tnodes import (
     TFragment,
     TInterpolatedAttribute,
     TLiteralAttribute,
+    TNode,
     TSpreadAttribute,
     TTemplatedAttribute,
     TText,
 )
 
 
+def parse_root(t: Template) -> TNode:
+    """Parse template to ttree and then return the root tnode."""
+    return TemplateParser.parse(t).root
+
+
 def test_parse_mixed_literal_content():
-    node = TemplateParser.parse(
+    node = parse_root(
         t"<!DOCTYPE html>"
         t"<!-- Comment -->"
         t'<div class="container">'
@@ -50,17 +56,17 @@ def test_parse_mixed_literal_content():
 # Text
 #
 def test_parse_empty():
-    node = TemplateParser.parse(t"")
+    node = parse_root(t"")
     assert node == TFragment()
 
 
 def test_parse_text():
-    node = TemplateParser.parse(t"Hello, world!")
+    node = parse_root(t"Hello, world!")
     assert node == TText.literal("Hello, world!")
 
 
 def test_parse_text_multiline():
-    node = TemplateParser.parse(t"""Hello, world!
+    node = parse_root(t"""Hello, world!
   Hello, moon!
 Hello, sun!
 """)
@@ -71,19 +77,19 @@ Hello, sun!
 
 
 def test_parse_text_with_entities():
-    node = TemplateParser.parse(t"a &lt; b")
+    node = parse_root(t"a &lt; b")
     assert node == TText.literal("a < b")
 
 
 def test_parse_text_with_template_singleton():
     greeting = "Hello, World!"
-    node = TemplateParser.parse(t"{greeting}")
+    node = parse_root(t"{greeting}")
     assert node == TText(ref=TemplateRef(strings=("", ""), i_indexes=(0,)))
 
 
 def test_parse_text_with_template():
     who = "World"
-    node = TemplateParser.parse(t"Hello, {who}!")
+    node = parse_root(t"Hello, {who}!")
     assert node == TText(ref=TemplateRef(strings=("Hello, ", "!"), i_indexes=(0,)))
 
 
@@ -91,27 +97,27 @@ def test_parse_text_with_template():
 # Elements
 #
 def test_parse_void_element():
-    node = TemplateParser.parse(t"<br>")
+    node = parse_root(t"<br>")
     assert node == TElement("br")
 
 
 def test_parse_void_element_self_closed():
-    node = TemplateParser.parse(t"<br />")
+    node = parse_root(t"<br />")
     assert node == TElement("br")
 
 
 def test_parse_uppercase_void_element():
-    node = TemplateParser.parse(t"<BR>")
+    node = parse_root(t"<BR>")
     assert node == TElement("br")
 
 
 def test_parse_standard_element_with_text():
-    node = TemplateParser.parse(t"<div>Hello, world!</div>")
+    node = parse_root(t"<div>Hello, world!</div>")
     assert node == TElement("div", children=(TText.literal("Hello, world!"),))
 
 
 def test_parse_nested_elements():
-    node = TemplateParser.parse(t"<div><span>Nested</span> content</div>")
+    node = parse_root(t"<div><span>Nested</span> content</div>")
     assert node == TElement(
         "div",
         children=(
@@ -123,7 +129,7 @@ def test_parse_nested_elements():
 
 def test_parse_element_with_template():
     who = "World"
-    node = TemplateParser.parse(t"<div>Hello, {who}!</div>")
+    node = parse_root(t"<div>Hello, {who}!</div>")
     assert node == TElement(
         "div",
         children=(TText(ref=TemplateRef(strings=("Hello, ", "!"), i_indexes=(0,))),),
@@ -132,14 +138,14 @@ def test_parse_element_with_template():
 
 def test_parse_element_with_template_singleton():
     greeting = "Hello, World!"
-    node = TemplateParser.parse(t"<div>{greeting}</div>")
+    node = parse_root(t"<div>{greeting}</div>")
     assert node == TElement(
         "div", children=(TText(ref=TemplateRef(strings=("", ""), i_indexes=(0,))),)
     )
 
 
 def test_parse_multiple_voids():
-    node = TemplateParser.parse(t"<br><hr><hr /><hr /><br /><br><br>")
+    node = parse_root(t"<br><hr><hr /><hr /><br /><br><br>")
     assert node == TFragment(
         children=(
             TElement("br"),
@@ -154,7 +160,7 @@ def test_parse_multiple_voids():
 
 
 def test_parse_text_entities():
-    node = TemplateParser.parse(t"<p>&lt;/p&gt;</p>")
+    node = parse_root(t"<p>&lt;/p&gt;</p>")
     assert node == TElement(
         "p",
         children=(TText.literal("</p>"),),
@@ -162,9 +168,7 @@ def test_parse_text_entities():
 
 
 def test_parse_script_tag_content():
-    node = TemplateParser.parse(
-        t"<script>if (a < b && c > d) {{ alert('wow'); }}</script>"
-    )
+    node = parse_root(t"<script>if (a < b && c > d) {{ alert('wow'); }}</script>")
     assert node == TElement(
         "script",
         children=(TText.literal("if (a < b && c > d) { alert('wow'); }"),),
@@ -173,7 +177,7 @@ def test_parse_script_tag_content():
 
 def test_parse_script_with_entities():
     # The <script> tag (and <style>) tag uses the CDATA content model.
-    node = TemplateParser.parse(t"<script>var x = 'a &amp; b';</script>")
+    node = parse_root(t"<script>var x = 'a &amp; b';</script>")
     assert node == TElement(
         "script",
         children=(TText.literal("var x = 'a &amp; b';"),),
@@ -181,9 +185,7 @@ def test_parse_script_with_entities():
 
 
 def test_parse_textarea_tag_content():
-    node = TemplateParser.parse(
-        t"<textarea>if (a < b && c > d) {{ alert('wow'); }}</textarea>"
-    )
+    node = parse_root(t"<textarea>if (a < b && c > d) {{ alert('wow'); }}</textarea>")
     assert node == TElement(
         "textarea",
         children=(TText.literal("if (a < b && c > d) { alert('wow'); }"),),
@@ -192,7 +194,7 @@ def test_parse_textarea_tag_content():
 
 def test_parse_textarea_with_entities():
     # The <textarea> (and <title>) tag uses the RCDATA content model.
-    node = TemplateParser.parse(t"<textarea>var x = 'a &amp; b';</textarea>")
+    node = parse_root(t"<textarea>var x = 'a &amp; b';</textarea>")
     assert node == TElement(
         "textarea",
         children=(TText.literal("var x = 'a & b';"),),
@@ -200,7 +202,7 @@ def test_parse_textarea_with_entities():
 
 
 def test_parse_title_unusual():
-    node = TemplateParser.parse(t"<title>My & Awesome <Site></title>")
+    node = parse_root(t"<title>My & Awesome <Site></title>")
     assert node == TElement(
         "title",
         children=(TText.literal("My & Awesome <Site>"),),
@@ -209,21 +211,21 @@ def test_parse_title_unusual():
 
 def test_parse_mismatched_tags():
     with pytest.raises(ValueError):
-        _ = TemplateParser.parse(t"<div><span>Mismatched</div></span>")
+        _ = parse_root(t"<div><span>Mismatched</div></span>")
 
 
 def test_parse_unclosed_tag():
     with pytest.raises(ValueError):
-        _ = TemplateParser.parse(t"<div>Unclosed")
+        _ = parse_root(t"<div>Unclosed")
 
 
 def test_parse_unexpected_closing_tag():
     with pytest.raises(ValueError):
-        _ = TemplateParser.parse(t"Unopened</div>")
+        _ = parse_root(t"Unopened</div>")
 
 
 def test_self_closing_tags():
-    node = TemplateParser.parse(t"<div/><p></p>")
+    node = parse_root(t"<div/><p></p>")
     assert node == TFragment(
         children=(
             TElement("div"),
@@ -233,29 +235,29 @@ def test_self_closing_tags():
 
 
 def test_nested_self_closing_tags():
-    node = TemplateParser.parse(t"<div><br><div /><br></div>")
+    node = parse_root(t"<div><br><div /><br></div>")
     assert node == TElement(
         "div", children=(TElement("br"), TElement("div"), TElement("br"))
     )
-    node = TemplateParser.parse(t"<div><div /></div>")
+    node = parse_root(t"<div><div /></div>")
     assert node == TElement("div", children=(TElement("div"),))
 
 
 def test_self_closing_tags_unexpected_closing_tag():
     with pytest.raises(ValueError):
-        _ = TemplateParser.parse(t"<div /></div>")
+        _ = parse_root(t"<div /></div>")
 
 
 def test_self_closing_void_tags_unexpected_closing_tag():
     with pytest.raises(ValueError):
-        _ = TemplateParser.parse(t"<input /></input>")
+        _ = parse_root(t"<input /></input>")
 
 
 #
 # Attributes
 #
 def test_literal_attrs():
-    node = TemplateParser.parse(
+    node = parse_root(
         t"<a"
         t" id=example_link"  # no quotes allowed without spaces
         t" autofocus"  # bare / boolean
@@ -277,7 +279,7 @@ def test_literal_attrs():
 
 
 def test_literal_attr_entities():
-    node = TemplateParser.parse(t'<a title="&lt;">Link</a>')
+    node = parse_root(t'<a title="&lt;">Link</a>')
     assert node == TElement(
         "a",
         attrs=(TLiteralAttribute("title", "<"),),
@@ -286,7 +288,7 @@ def test_literal_attr_entities():
 
 
 def test_literal_attr_order():
-    node = TemplateParser.parse(t'<a title="a" href="b" title="c"></a>')
+    node = parse_root(t'<a title="a" href="b" title="c"></a>')
     assert isinstance(node, TElement)
     assert node.attrs == (
         TLiteralAttribute("title", "a"),
@@ -298,7 +300,7 @@ def test_literal_attr_order():
 def test_interpolated_attr():
     value1 = 42
     value2 = 99
-    node = TemplateParser.parse(t'<div value1="{value1}" value2={value2} />')
+    node = parse_root(t'<div value1="{value1}" value2={value2} />')
     assert node == TElement(
         "div",
         attrs=(
@@ -312,9 +314,7 @@ def test_interpolated_attr():
 def test_templated_attr():
     value1 = 42
     value2 = 99
-    node = TemplateParser.parse(
-        t'<div value1="{value1}-burrito" value2="neato-{value2}-wow" />'
-    )
+    node = parse_root(t'<div value1="{value1}-burrito" value2="neato-{value2}-wow" />')
     value1_ref = TemplateRef(strings=("", "-burrito"), i_indexes=(0,))
     value2_ref = TemplateRef(strings=("neato-", "-wow"), i_indexes=(1,))
     assert node == TElement(
@@ -329,7 +329,7 @@ def test_templated_attr():
 
 def test_spread_attr():
     spread_attrs = {}
-    node = TemplateParser.parse(t"<div {spread_attrs} />")
+    node = parse_root(t"<div {spread_attrs} />")
     assert node == TElement(
         "div",
         attrs=(TSpreadAttribute(i_index=0),),
@@ -340,34 +340,34 @@ def test_spread_attr():
 def test_templated_attribute_name_error():
     with pytest.raises(ValueError):
         attr_name = "some-attr"
-        _ = TemplateParser.parse(t'<div {attr_name}="value" />')
+        _ = parse_root(t'<div {attr_name}="value" />')
 
 
 def test_templated_attribute_name_and_value_error():
     with pytest.raises(ValueError):
         attr_name = "some-attr"
         value = "value"
-        _ = TemplateParser.parse(t'<div {attr_name}="{value}" />')
+        _ = parse_root(t'<div {attr_name}="{value}" />')
 
 
 def test_adjacent_spread_attrs_error():
     with pytest.raises(ValueError):
         attrs1 = {}
         attrs2 = {}
-        _ = TemplateParser.parse(t"<div {attrs1}{attrs2} />")
+        _ = parse_root(t"<div {attrs1}{attrs2} />")
 
 
 #
 # Comments
 #
 def test_parse_comment():
-    node = TemplateParser.parse(t"<!-- This is a comment -->")
+    node = parse_root(t"<!-- This is a comment -->")
     assert node == TComment.literal(" This is a comment ")
 
 
 def test_parse_comment_interpolation():
     text = "comment"
-    node = TemplateParser.parse(t"<!-- This is a {text} -->")
+    node = parse_root(t"<!-- This is a {text} -->")
     assert node == TComment(
         ref=TemplateRef(strings=(" This is a ", " "), i_indexes=(0,))
     )
@@ -377,21 +377,21 @@ def test_parse_comment_interpolation():
 # Doctypes
 #
 def test_parse_doctype():
-    node = TemplateParser.parse(t"<!DOCTYPE html>")
+    node = parse_root(t"<!DOCTYPE html>")
     assert node == TDocumentType("html")
 
 
 def test_parse_doctype_interpolation_error():
     extra = "SYSTEM"
     with pytest.raises(ValueError):
-        _ = TemplateParser.parse(t"<!DOCTYPE html {extra}>")
+        _ = parse_root(t"<!DOCTYPE html {extra}>")
 
 
 def test_unsupported_decl_error():
     with pytest.raises(NotImplementedError):
-        _ = TemplateParser.parse(t"<!doctype-alt html500>")  # Unknown declaration
+        _ = parse_root(t"<!doctype-alt html500>")  # Unknown declaration
     with pytest.raises(NotImplementedError):
-        _ = TemplateParser.parse(t"<!doctype>")  # missing DTD
+        _ = parse_root(t"<!doctype>")  # missing DTD
 
 
 #
@@ -401,7 +401,7 @@ def test_component_element_with_children():
     def Component(children):
         return t"{children}"
 
-    node = TemplateParser.parse(t"<{Component}><div>Hello, World!</div></{Component}>")
+    node = parse_root(t"<{Component}><div>Hello, World!</div></{Component}>")
     assert node == TComponent(
         start_i_index=0,
         end_i_index=1,
@@ -413,7 +413,7 @@ def test_component_element_self_closing():
     def Component():
         pass
 
-    node = TemplateParser.parse(t"<{Component} />")
+    node = parse_root(t"<{Component} />")
     assert node == TComponent(start_i_index=0)
 
 
@@ -421,7 +421,7 @@ def test_component_element_with_closing_tag():
     def Component():
         pass
 
-    node = TemplateParser.parse(t"<{Component}></{Component}>")
+    node = parse_root(t"<{Component}></{Component}>")
     assert node == TComponent(start_i_index=0, end_i_index=1)
 
 
@@ -432,7 +432,7 @@ def test_component_element_special_case_mismatched_closing_tag_still_parses():
     def Component2():
         pass
 
-    node = TemplateParser.parse(t"<{Component1}></{Component2}>")
+    node = parse_root(t"<{Component1}></{Component2}>")
     assert node == TComponent(start_i_index=0, end_i_index=1)
 
 
@@ -441,7 +441,7 @@ def test_component_element_invalid_closing_tag():
         pass
 
     with pytest.raises(ValueError):
-        _ = TemplateParser.parse(t"<{Component}></div>")
+        _ = parse_root(t"<{Component}></div>")
 
 
 def test_component_element_invalid_opening_tag():
@@ -449,7 +449,7 @@ def test_component_element_invalid_opening_tag():
         pass
 
     with pytest.raises(ValueError):
-        _ = TemplateParser.parse(t"<div></{Component}>")
+        _ = parse_root(t"<div></{Component}>")
 
 
 def test_adjacent_start_component_tag_error():
@@ -457,7 +457,7 @@ def test_adjacent_start_component_tag_error():
         pass
 
     with pytest.raises(ValueError):
-        _ = TemplateParser.parse(t"<{Component}{Component}></{Component}>")
+        _ = parse_root(t"<{Component}{Component}></{Component}>")
 
 
 def test_adjacent_end_component_tag_error():
@@ -465,7 +465,7 @@ def test_adjacent_end_component_tag_error():
         pass
 
     with pytest.raises(ValueError):
-        _ = TemplateParser.parse(t"<{Component}></{Component}{Component}>")
+        _ = parse_root(t"<{Component}></{Component}{Component}>")
 
 
 def test_placeholder_collision_avoidance():
@@ -478,7 +478,7 @@ def test_placeholder_collision_avoidance():
         Interpolation(tricky, "tricky", None, ""),
         f'{config.suffix}"></div>',
     )
-    tnode = TemplateParser.parse(template)
+    tnode = parse_root(template)
     value_ref = TemplateRef(strings=(config.prefix, config.suffix), i_indexes=(0,))
     assert tnode == TElement(
         "div", attrs=(TTemplatedAttribute(name="data-tricky", value_ref=value_ref),)
@@ -538,17 +538,17 @@ class TestSourceTracker:
 class TestIncompleteParsing:
     def test_dangling_quotes(self):
         with pytest.raises(ValueError, match="Parser expects more data"):
-            _ = TemplateParser.parse(t"<div a='")
+            _ = parse_root(t"<div a='")
         with pytest.raises(ValueError, match="Parser expects more data"):
-            _ = TemplateParser.parse(t'<div a="')
+            _ = parse_root(t'<div a="')
 
     def test_unfinished_attribute(self):
         with pytest.raises(ValueError, match="Parser expects more data"):
-            _ = TemplateParser.parse(t"<div a=")
+            _ = parse_root(t"<div a=")
 
     def test_placeholder_missing_from_dangling_quote(self):
         with pytest.raises(ValueError, match="Parser expects more data"):
-            _ = TemplateParser.parse(t'<div a="{None}')
+            _ = parse_root(t'<div a="{None}')
 
 
 class TestComponentExtractChildrenTemplate:
@@ -560,7 +560,7 @@ class TestComponentExtractChildrenTemplate:
         return Component
 
     def test_extract_no_content(self, Component):
-        node = TemplateParser.parse(t"<{Component}></{Component}>")
+        node = parse_root(t"<{Component}></{Component}>")
         assert node == TComponent(
             start_i_index=0,
             end_i_index=1,
@@ -568,7 +568,7 @@ class TestComponentExtractChildrenTemplate:
         )
 
     def test_extract_startend(self, Component):
-        node = TemplateParser.parse(t"<{Component} />")
+        node = parse_root(t"<{Component} />")
         assert node == TComponent(
             start_i_index=0,
             end_i_index=None,
@@ -576,9 +576,7 @@ class TestComponentExtractChildrenTemplate:
         )
 
     def test_extract(self, Component):
-        node = TemplateParser.parse(
-            t"<{Component}><div>Hello, World!</div></{Component}>"
-        )
+        node = parse_root(t"<{Component}><div>Hello, World!</div></{Component}>")
         assert node == TComponent(
             start_i_index=0,
             end_i_index=1,
@@ -589,7 +587,7 @@ class TestComponentExtractChildrenTemplate:
 
     def test_extract_with_attr_interpolation(self, Component):
         # Unquoted ...
-        node = TemplateParser.parse(
+        node = parse_root(
             t"<{Component} title={'Skip over this.'}><div>Hello, World!</div></{Component}>"
         )
         assert node == TComponent(
@@ -601,13 +599,13 @@ class TestComponentExtractChildrenTemplate:
             ),
         )
         # Quoted...
-        node2 = TemplateParser.parse(
+        node2 = parse_root(
             t'<{Component} title="{"Skip over this."}"><div>Hello, World!</div></{Component}>'
         )
         assert node2 == node
 
     def test_extract_with_literal_attr_gt_char(self, Component):
-        node = TemplateParser.parse(
+        node = parse_root(
             t'<{Component} title="1 > 0"><div>Hello, World!</div></{Component}>'
         )
         assert node == TComponent(
@@ -620,7 +618,7 @@ class TestComponentExtractChildrenTemplate:
         )
 
     def test_extract_with_interpolated_attr_literal_attr_gt_char(self, Component):
-        node = TemplateParser.parse(
+        node = parse_root(
             t'<{Component} id={"simple"} title="1 > 0"><div>Hello, World!</div></{Component}>'
         )
         assert node == TComponent(
@@ -636,7 +634,7 @@ class TestComponentExtractChildrenTemplate:
         )
 
     def test_extract_with_templated_attr_gt_char(self, Component):
-        node = TemplateParser.parse(
+        node = parse_root(
             t'<{Component} id="{"header"}_{"container"}" title="1 > 0"><div>Hello, World!</div></{Component}>'
         )
         assert node == TComponent(
@@ -652,3 +650,155 @@ class TestComponentExtractChildrenTemplate:
                 strings=("<div>Hello, World!</div>",), i_indexes=()
             ),
         )
+
+
+class TestSourcePos:
+    """
+    Test that common nodes have a source position translated and set during parsing.
+    """
+
+    @pytest.mark.parametrize(
+        ("t", "part_pos"),
+        (
+            (t"ABC<div></div>", PartPosition(0, offset=len("ABC"))),
+            (t"{' '}<div></div>", PartPosition(2, offset=0)),
+        ),
+    )
+    def test_el(self, t: Template, part_pos: PartPosition):
+        root = parse_root(t)
+        assert isinstance(root, TFragment)
+        node = root.children[1]
+        assert isinstance(node, TElement) and node.source_pos == part_pos
+
+    @pytest.mark.parametrize(
+        ("t", "part_pos"),
+        (
+            (t"<div></div>ABC", PartPosition(0, offset=len("<div></div>"))),
+            (t"<div>{' '}</div>ABC", PartPosition(2, offset=len("</div>"))),
+        ),
+    )
+    def test_text(self, t: Template, part_pos: PartPosition):
+        root = parse_root(t)
+        assert isinstance(root, TFragment)
+        node = root.children[1]
+        assert isinstance(node, TText) and node.source_pos == part_pos
+
+    @pytest.mark.parametrize(
+        ("t", "part_pos"),
+        (
+            (t"  <!doctype html>", PartPosition(0, offset=2)),
+            (t"{' '}<!doctype html>", PartPosition(2, 0)),
+        ),
+    )
+    def test_doctype(self, t: Template, part_pos: PartPosition):
+        root = parse_root(t)
+        assert isinstance(root, TFragment)
+        node = root.children[1]
+        assert isinstance(node, TDocumentType) and node.source_pos == part_pos
+
+    @pytest.mark.parametrize(
+        ("t", "part_pos"),
+        (
+            (t"  <!--comment-->", PartPosition(0, offset=2)),
+            (t"<div>{'ABC'}</div><!--comment-->", PartPosition(2, len("</div>"))),
+        ),
+    )
+    def test_comment(self, t: Template, part_pos: PartPosition):
+        root = parse_root(t)
+        assert isinstance(root, TFragment)
+        node = root.children[1]
+        assert isinstance(node, TComment) and node.source_pos == part_pos
+
+    def test_component(self):
+        def Comp() -> Template:
+            return t""
+
+        for t, part_pos in (
+            (t"  <{Comp} />", PartPosition(0, offset=len("  "))),
+            (t"  {'ABC'}DEF<{Comp} />", PartPosition(2, offset=len("DEF"))),
+        ):
+            root = parse_root(t)
+            assert isinstance(root, TFragment)
+            node = root.children[1]
+            assert isinstance(node, TComponent) and node.source_pos == part_pos
+
+
+class TestSourceInfo:
+    """
+    Test that elements and components have correct entries in the sinfo_table after parsing.
+    """
+
+    def test_el(self):
+        ttree = TemplateParser.parse(t"<div></div>")
+        sinfo_table = ttree.unpack_sinfo_table()
+        node = ttree.root
+        assert (
+            isinstance(node, TElement)
+            and sinfo_table
+            and node.source_pos is not None
+            and node.source_pos in sinfo_table
+        )
+        sinfo = sinfo_table[node.source_pos]
+        assert sinfo.startend == False
+        assert sinfo.starttag_pos == PartPosition(
+            0, 0
+        ) and sinfo.endtag_pos == PartPosition(0, len("<div>"))
+        assert sinfo.starttag_ref.strings == ("<div>",)
+
+    def test_el_self_closed(self):
+        ttree = TemplateParser.parse(t"<div />")
+        sinfo_table = ttree.unpack_sinfo_table()
+        node = ttree.root
+        assert (
+            isinstance(node, TElement)
+            and sinfo_table
+            and node.source_pos is not None
+            and node.source_pos in sinfo_table
+        )
+        sinfo = sinfo_table[node.source_pos]
+        assert sinfo.startend == True
+        assert sinfo.starttag_pos == PartPosition(0, 0) and sinfo.endtag_pos is None
+        assert sinfo.starttag_ref.strings == ("<div />",)
+
+    def test_component(self):
+        def Comp() -> Template:
+            return t""
+
+        ttree = TemplateParser.parse(t"<{Comp}></{Comp}>")
+        sinfo_table = ttree.unpack_sinfo_table()
+        node = ttree.root
+        assert (
+            isinstance(node, TComponent)
+            and sinfo_table
+            and node.source_pos is not None
+            and node.source_pos in sinfo_table
+        )
+        sinfo = sinfo_table[node.source_pos]
+        assert sinfo.startend == False
+        assert sinfo.starttag_pos == PartPosition(
+            0, 0
+        ) and sinfo.endtag_pos == PartPosition(2, len(">"))
+        assert sinfo.starttag_ref.strings == ("<", ">")
+
+    def test_component_self_closed(self):
+        def Comp() -> Template:
+            return t""
+
+        ttree = TemplateParser.parse(t"<{Comp} />")
+        sinfo_table = ttree.unpack_sinfo_table()
+        node = ttree.root
+        assert (
+            isinstance(node, TComponent)
+            and sinfo_table
+            and node.source_pos is not None
+            and node.source_pos in sinfo_table
+        )
+        sinfo = sinfo_table[node.source_pos]
+        assert sinfo.startend == True
+        assert sinfo.starttag_pos == PartPosition(0, 0) and sinfo.endtag_pos is None
+        assert sinfo.starttag_ref.strings == ("<", " />")
+
+    def test_empty_sinfo_table(self):
+        ttree = TemplateParser.parse(t"<!doctype html>ABC")
+        sinfo_table = ttree.unpack_sinfo_table()
+        assert not sinfo_table

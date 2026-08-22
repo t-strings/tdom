@@ -91,3 +91,45 @@ class TemplateRef:
         """Use the given interpolations to resolve this reference template into a Template."""
         resolved = [interpolations[i_index] for i_index in self.i_indexes]
         return template_from_parts(self.strings, resolved)
+
+
+@dataclass(slots=True, frozen=True)
+class PartPosition:
+    """
+    A unified template part position.
+
+    Translate indexes into strings by multiplying by 2.
+    ie. 0->0, 1->2, 2->4, etc.
+    Reverse by dividing by 2.
+
+    Translate indexes into interpolations by multiplying by 2 and then adding 1.
+    ie. 0->1, 1->3, 2->5, etc.
+    Reverse by subtracting 1 and dividing by 2.
+
+    Using unified indexes allows for simpler iteration as well as starting
+    or stopping at either type of part more seamlessly.
+    """
+
+    index: int
+    " Index of the template parts, translate for strings/interpolations. "
+
+    offset: int = 0
+    " Offset from the start of the template part. "
+
+
+def validate_part_position(part_pos: PartPosition) -> None:
+    """
+    Basic part position validation for parts that are converted to template
+    source `LinePosition`.
+
+    @TODO: This might move into the constructor eventually depending on usage.
+    """
+    if part_pos.index % 2 != 0 and part_pos.offset != 0:
+        # You can only land on the start of an interpolation
+        raise ValueError(
+            "Invalid part position, interpolations are not divisible, offset must be 0."
+        )
+    if not (part_pos.offset >= 0):
+        raise ValueError("Offset must always be positive or zero.")
+    if not (part_pos.index >= 0):
+        raise ValueError("Index must always be positive or zero.")
