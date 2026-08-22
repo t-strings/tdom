@@ -114,38 +114,21 @@ class TemplateRef:
         if start is not None and stop is not None and start > stop:
             raise ValueError("Start position must not be after stop position.")
 
-        strings = []
-        i_indexes = []
-        if first == last:
-            if first % 2 == 0:
-                strings.append(self.strings[first // 2][offset:limit])
-            else:
-                # offset == 0, so this is the equivalent of an empty interval
-                # therefore we should exclude this interpolation but
-                # template-ify with empty string.
-                strings.append("")
-            return TemplateRef(strings=tuple(strings), i_indexes=tuple(i_indexes))
-        else:
-            if first % 2 == 0:
-                strings.append(self.strings[first // 2][offset:])
-            else:
-                # offset == 0, so template-ify with empty string but start by
-                # including this interpolation.
-                strings.append("")
-                i_indexes.append(self.i_indexes[(first - 1) // 2])
+        first_string = first // 2
+        last_string = last // 2
+        strings = list(self.strings[first_string : last_string + 1])
+        i_indexes = self.i_indexes[first_string:last_string]
 
-        for index in range(first + 1, last + 1):
-            if index % 2 == 0:
-                if index == last:
-                    strings.append(self.strings[index // 2][:limit])
-                else:
-                    strings.append(self.strings[index // 2])
-            else:
-                if index == last:
-                    break  # offset == 0, so exclude this interpolation.
-                else:
-                    i_indexes.append(self.i_indexes[(index - 1) // 2])
-        return TemplateRef(strings=tuple(strings), i_indexes=tuple(i_indexes))
+        # Apply the stop first because both positions may be in the same string.
+        if last % 2 == 0:
+            strings[-1] = strings[-1][:limit]
+
+        if first % 2 == 0:
+            strings[0] = strings[0][offset:]
+        else:
+            strings[0] = ""
+
+        return TemplateRef(strings=tuple(strings), i_indexes=i_indexes)
 
 
 def slice_to_tref(
