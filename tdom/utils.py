@@ -3,7 +3,7 @@ from string.templatelib import Template
 
 
 class LastUpdatedOrderedDict(OrderedDict):
-    "Store items in the order the keys were last updated."
+    """Store items in the order the keys were last updated."""
 
     def __setitem__(self, key, value):
         super().__setitem__(key, value)

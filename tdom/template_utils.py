@@ -186,10 +186,10 @@ class PartPosition:
     """
 
     index: int
-    " Index of the template parts, translate for strings/interpolations. "
+    """Index of the template parts, translate for strings/interpolations."""
 
     offset: int = 0
-    " Offset from the start of the template part. "
+    """Offset from the start of the template part."""
 
 
 def validate_part_position(part_pos: PartPosition) -> None:

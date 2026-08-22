@@ -46,11 +46,11 @@ class OpenTagSourceInfo:
     """
 
     starttag_ref: TemplateRef
-    " Entire starttag as parsed except placeholders are replaced by references. "
+    """Entire starttag as parsed except placeholders are replaced by references."""
     startend: bool
-    " Was parsed as startend tag, ie. <tag />. "
+    """Was parsed as startend tag, ie. <tag />."""
     starttag_pos: PartPosition
-    " Template part position of the starttag. "
+    """Template part position of the starttag."""
 
     def close(self, endtag_pos: PartPosition | None = None) -> TagSourceInfo:
         return TagSourceInfo(
@@ -124,10 +124,10 @@ class SourceTracker:
     placeholders: PlaceholderState
 
     parser_pos_translator: ParserPositionTranslator
-    "Translator from parser position to template part position. "
+    """Translator from parser position to template part position."""
 
     index: int = -1
-    " Unified template index that moves over interpolations and strings. "
+    """Unified template index that moves over interpolations and strings."""
 
     def __iter__(self):
         #
@@ -196,7 +196,7 @@ class TemplateParser(HTMLParser):
     source: SourceTracker | None
 
     sinfo_table: dict[PartPosition, TagSourceInfo]
-    " Tags with more source info than just a position are tracked in this mapping. "
+    """Tags with more source info than just a position are tracked in this mapping."""
 
     def __init__(self, *, convert_charrefs: bool = True):
         # This calls HTMLParser.reset() which we override to set up our state.
@@ -227,7 +227,7 @@ class TemplateParser(HTMLParser):
         return LinePosition(line=line, offset=offset)
 
     def get_source_pos(self, parser_pos: LinePosition | None = None) -> PartPosition:
-        "Translate the parser position into a part position in the source template."
+        """Translate the parser position into a part position in the source template."""
         source = self.get_source()
         return source.translate_parser_pos(
             self.get_parser_pos() if parser_pos is None else parser_pos
