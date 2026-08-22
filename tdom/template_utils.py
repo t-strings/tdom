@@ -111,13 +111,7 @@ class TemplateRef:
                 f"Stop position index falls outside the template: {last} >= {size}."
             )
         limit = stop.offset if stop else None
-        if first > last or (
-            first == last
-            and first % 2 == 0
-            and offset is not None
-            and limit is not None
-            and offset > limit
-        ):
+        if start is not None and stop is not None and start > stop:
             raise ValueError("Start position must not be after stop position.")
 
         strings = []
@@ -168,7 +162,7 @@ def slice_to_tref(
     return tref.slice(start=start, stop=stop)
 
 
-@dataclass(slots=True, frozen=True)
+@dataclass(slots=True, frozen=True, order=True)
 class PartPosition:
     """
     A unified template part position.

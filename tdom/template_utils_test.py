@@ -122,6 +122,17 @@ class TestPartPosition:
         with pytest.raises(ValueError, match=message):
             _ = PartPosition(index, offset)
 
+    @pytest.mark.parametrize(
+        ("earlier", "later"),
+        (
+            (PartPosition(0), PartPosition(0, 1)),
+            (PartPosition(0, 1), PartPosition(1)),
+            (PartPosition(1), PartPosition(2)),
+        ),
+    )
+    def test_ordering(self, earlier: PartPosition, later: PartPosition) -> None:
+        assert earlier < later
+
 
 class TestTemplateRefSlice:
     def test_preserves_interpolation_indexes(self) -> None:
