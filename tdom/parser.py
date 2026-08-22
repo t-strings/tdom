@@ -411,18 +411,7 @@ class TemplateParser(HTMLParser):
             raise AssertionError("Expected the parser to have starttag_text set.")
 
         parser_start = self.get_parser_pos()
-        line_count = starttag_text.count("\n")
-        parser_stop = (
-            LinePosition(
-                line=parser_start.line + line_count,
-                offset=len(starttag_text.rsplit("\n", 1)[-1]),
-            )
-            if line_count
-            else LinePosition(
-                line=parser_start.line,
-                offset=parser_start.offset + len(starttag_text),
-            )
-        )
+        parser_stop = parser_start.advance_over(starttag_text)
         return TemplateSpan(
             start=self.get_source_pos(parser_start),
             stop=self.get_source_pos(parser_stop),
