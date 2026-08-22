@@ -1560,6 +1560,54 @@ class TestPrepComponentKwargs:
                 callable_info, {"children": t""}, children=t"<span></span>"
             )
 
+    def test_to_snake(self):
+        def Wrapper(mw_em, **kwargs):
+            pass
+
+        callable_info = get_callable_info(Wrapper)
+        assert prep_component_kwargs(callable_info, {"mw-em": 20}, children=t"") == {
+            "mw_em": 20
+        }
+
+    def test_to_snake_pass_through(self):
+        def Wrapper(mw_em, **kwargs):
+            pass
+
+        callable_info = get_callable_info(Wrapper)
+        assert prep_component_kwargs(
+            callable_info,
+            {"mw-em": 20, "hx-on:click": "alert('Clicked!')"},
+            children=t"",
+        ) == {
+            "mw_em": 20,  # mangled, passed as named param
+            "hx-on:click": "alert('Clicked!')",  # not mangled, will go in kwargs
+        }
+
+    @pytest.mark.parametrize(
+        "attrs",
+        [
+            (
+                ("prefix_attr_value", 10),
+                ("prefix_attr-value", 20),
+            ),  # exact and not exact match
+            (
+                ("prefix-attr_value", 10),
+                ("prefix_attr-value", 20),
+            ),  # both not exact match
+        ],
+    )
+    def test_to_snake_ambiguous_collision(self, attrs):
+        def Wrapper(prefix_attr_value, **kwargs):
+            pass
+
+        callable_info = get_callable_info(Wrapper)
+        with pytest.raises(ValueError, match="Ambiguous attribute "):
+            _ = prep_component_kwargs(
+                callable_info,
+                dict(attrs),
+                children=t"",
+            )
+
 
 class TestFunctionComponent:
     @staticmethod

@@ -432,10 +432,16 @@ def _prep_component_kwargs(
     # Add all supported attributes
     for attr_name, attr_value in attrs.items():
         snake_name = _kebab_to_snake(attr_name)
-        if snake_name in callable_info.named_params or callable_info.kwargs:
+        if snake_name in callable_info.named_params:
+            if snake_name in kwargs:
+                raise ValueError(
+                    f"Ambiguous attribute {attr_name}: Two attributes resolved to the same named param {snake_name}."
+                )
             kwargs[snake_name] = attr_value
+        elif callable_info.kwargs:
+            kwargs[attr_name] = attr_value  # Retain original attribute name
         else:
-            raise ValueError(f"Unexpected attribute {snake_name}.")
+            raise ValueError(f"Unexpected attribute {attr_name}.")
 
     if "children" in kwargs:
         raise ValueError("The children attribute is reserved for component children.")
