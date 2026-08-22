@@ -166,3 +166,25 @@ class TestSliceToTRef:
                 start=None,
                 stop=PartPosition(1, 20),
             )
+
+
+class TestTemplateRefSlice:
+    def test_shifted_indexes(self):
+        # We start with the normal template where the interpolation values
+        # match their corresponding (non-unified) index: 0->0, 1->1, etc.
+        # Then use slice_to_tref to setup TemplateRef with shifted indexes.
+        tref = slice_to_tref(
+            t"<div>{0}<span>{1}</span>{2}</div>", PartPosition(2, 0), None
+        )
+        # After slicing from <span> the i_indexes are now shifted, ie. 0->1, 1->2
+        assert tref.i_indexes == (1, 2), "0 should be removed, "
+        # @NOTE: These parts are now relative to the new slice.
+        # The unified index 3 is the interpolation with value == 2.
+        sliced_from_interpolation = tref.slice(start=PartPosition(3, 0))
+        assert sliced_from_interpolation.i_indexes == (2,), "only 2 should remain"
+        assert tuple(sliced_from_interpolation) == (2, "</div>")
+        # @NOTE: Again, this position is relative.
+        # The unified index 2 is the string "</span>".
+        sliced_from_str = tref.slice(start=PartPosition(2, 0))
+        assert sliced_from_str.i_indexes == (2,), "only 2 should remain"
+        assert tuple(sliced_from_str) == ("</span>", 2, "</div>")

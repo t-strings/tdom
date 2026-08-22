@@ -138,7 +138,7 @@ class TemplateRef:
                 # offset == 0, so template-ify with empty string but start by
                 # including this interpolation.
                 strings.append("")
-                i_indexes.append((first - 1) // 2)
+                i_indexes.append(self.i_indexes[(first - 1) // 2])
 
         for index in range(first + 1, last + 1):
             if index % 2 == 0:
@@ -150,7 +150,7 @@ class TemplateRef:
                 if index == last:
                     break  # offset == 0, so exclude this interpolation.
                 else:
-                    i_indexes.append((index - 1) // 2)
+                    i_indexes.append(self.i_indexes[(index - 1) // 2])
         return TemplateRef(strings=tuple(strings), i_indexes=tuple(i_indexes))
 
 
