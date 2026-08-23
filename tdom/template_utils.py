@@ -97,10 +97,10 @@ class TemplateRef:
             i_start=other.i_start if self.is_literal else self.i_start,
         )
 
-    def bind(self, source: Template) -> Template:
-        """Bind interpolation objects from a structurally compatible template."""
+    def bind(self, interpolations: Sequence[Interpolation]) -> Template:
+        """Bind this reference's strings to the corresponding interpolations."""
         return template_from_parts(
-            self.strings, source.interpolations[self.i_start : self.i_stop]
+            self.strings, interpolations[self.i_start : self.i_stop]
         )
 
 

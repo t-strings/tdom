@@ -133,7 +133,7 @@ def test_template_ref_iter_complete():
 def test_template_ref_bind():
     src_t = t"{'a'}b{'c'}d{'e'}f"
     ref = TemplateRef(strings=("before ", " after"), i_start=1)
-    bound = ref.bind(src_t)
+    bound = ref.bind(src_t.interpolations)
     assert bound.values == ("c",)
     assert bound.strings == ref.strings
 

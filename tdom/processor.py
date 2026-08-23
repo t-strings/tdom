@@ -335,7 +335,7 @@ def _resolve_t_attrs(attrs: Sequence[TAttribute], template: Template) -> Attribu
                 else:
                     new_attrs[name] = attr_value
             case TTemplatedAttribute(name=name, value_ref=ref):
-                attr_t = ref.bind(template)
+                attr_t = ref.bind(template.interpolations)
                 attr_value = format_template(attr_t)
                 if name in ATTR_ACCUMULATOR_MAKERS:
                     if name not in attr_accs:
