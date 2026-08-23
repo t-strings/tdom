@@ -849,6 +849,26 @@ class TestSourceInfo:
         assert extracted_starttag.values == (Component,)
         assert extracted_children.strings == ("child",)
 
+    def test_component_spans_with_attribute_entity(self):
+        def Component(children):
+            return children
+
+        template = t'<{Component} title="&lt;">child</{Component}>'
+        ttree = TemplateParser.parse(template)
+        node = ttree.root
+        assert isinstance(node, TComponent)
+        assert node.attrs == (TLiteralAttribute("title", "<"),)
+        assert node.children_span is not None
+        assert node.source_pos is not None
+
+        sinfo = ttree.unpack_sinfo_table()[node.source_pos]
+        extracted_starttag = sinfo.starttag_span.extract(template)
+        extracted_children = node.children_span.extract(template)
+
+        assert extracted_starttag.strings == ("<", ' title="&lt;">')
+        assert extracted_starttag.values == (Component,)
+        assert extracted_children.strings == ("child",)
+
     def test_empty_sinfo_table(self):
         ttree = TemplateParser.parse(t"<!doctype html>ABC")
         sinfo_table = ttree.unpack_sinfo_table()

@@ -175,6 +175,16 @@ class SourceTracker:
         """
         return self.parser_pos_translator.translate(raw_parser_pos)
 
+    def translate_parser_span(
+        self,
+        raw_parser_start: LinePosition,
+        raw_parser_length: int,
+    ) -> TemplateSpan:
+        """Translate a span in parser input into a span in the source template."""
+        return self.parser_pos_translator.translate_span(
+            raw_parser_start, raw_parser_length
+        )
+
     def get_expression(
         self, i_index: int, fallback_prefix: str = "interpolation"
     ) -> str:
@@ -407,15 +417,13 @@ class TemplateParser(HTMLParser):
     def get_starttag_span(self) -> TemplateSpan:
         """Return the source span occupied by the current start tag."""
         starttag_text = self.get_starttag_text()
-        if starttag_text is None:
-            raise AssertionError("Expected the parser to have starttag_text set.")
-
-        parser_start = self.get_parser_pos()
-        parser_stop = parser_start.advance_over(starttag_text)
-        return TemplateSpan(
-            start=self.get_source_pos(parser_start),
-            stop=self.get_source_pos(parser_stop),
+        assert starttag_text is not None, (
+            "Expected the parser to have starttag_text set."
         )
+
+        source = self.get_source()
+        line_pos = self.get_parser_pos()
+        return source.translate_parser_span(line_pos, len(starttag_text))
 
     # ------------------------------------------
     # HTMLParser tag callbacks
