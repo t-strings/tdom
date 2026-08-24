@@ -57,6 +57,9 @@ class SourceReader:
 
         @NOTE: This is meant to be used for reporting *better* error messages
         after an error has already occurred.
+
+        @TODO: Consider pulling this into another helper class with other
+        "inspection" type methods.
         """
         return (
             self.template.interpolations[i_index1].value
