@@ -139,41 +139,28 @@ def test_template_ref_bind():
 
 
 class TestPartPosition:
-    @pytest.mark.parametrize(
-        ("position", "is_string", "is_interpolation"),
-        (
-            (PartPosition(0), True, False),
-            (PartPosition(1), False, True),
-            (PartPosition(2), True, False),
-        ),
-    )
-    def test_part_type(
-        self,
-        position: PartPosition,
-        is_string: bool,
-        is_interpolation: bool,
-    ) -> None:
-        assert position.is_string is is_string
-        assert position.is_interpolation is is_interpolation
+    def test_is_relative_to_static_string(self) -> None:
+        position = PartPosition(s_index=1, offset=2)
+
+        assert position.s_index == 1
+        assert position.offset == 2
 
     @pytest.mark.parametrize(
-        ("index", "offset", "message"),
+        ("s_index", "offset", "message"),
         (
-            (-1, 0, "Index must always be positive or zero"),
+            (-1, 0, "String index must always be positive or zero"),
             (0, -1, "Offset must always be positive or zero"),
-            (1, 1, "Interpolation part positions must always have offset 0"),
         ),
     )
-    def test_invalid(self, index: int, offset: int, message: str) -> None:
+    def test_invalid(self, s_index: int, offset: int, message: str) -> None:
         with pytest.raises(ValueError, match=message):
-            _ = PartPosition(index, offset)
+            _ = PartPosition(s_index, offset)
 
     @pytest.mark.parametrize(
         ("earlier", "later"),
         (
             (PartPosition(0), PartPosition(0, 1)),
             (PartPosition(0, 1), PartPosition(1)),
-            (PartPosition(1), PartPosition(2)),
         ),
     )
     def test_ordering(self, earlier: PartPosition, later: PartPosition) -> None:
@@ -184,7 +171,7 @@ class TestTemplateSpan:
     @pytest.mark.parametrize(
         ("start", "stop"),
         (
-            (PartPosition(2), PartPosition(0)),
+            (PartPosition(1), PartPosition(0)),
             (PartPosition(0, 2), PartPosition(0, 1)),
         ),
     )
@@ -195,12 +182,12 @@ class TestTemplateSpan:
     @pytest.mark.parametrize(
         "span",
         (
-            TemplateSpan(PartPosition(3), PartPosition(3)),
-            TemplateSpan(PartPosition(0), PartPosition(3)),
+            TemplateSpan(PartPosition(1), PartPosition(1)),
+            TemplateSpan(PartPosition(0), PartPosition(1)),
         ),
     )
     def test_position_outside_template(self, span: TemplateSpan) -> None:
-        with pytest.raises(ValueError, match="PartPosition index"):
+        with pytest.raises(ValueError, match="PartPosition string index"):
             _ = span.extract(t"ABC")
 
     def test_offset_outside_template_string(self) -> None:
@@ -211,7 +198,7 @@ class TestTemplateSpan:
 
     def test_retains_original_interpolation_objects(self) -> None:
         source = t"before {object()} after"
-        span = TemplateSpan(PartPosition(0, 7), PartPosition(2, 0))
+        span = TemplateSpan(PartPosition(0, 7), PartPosition(1, 0))
 
         extracted = span.extract(source)
 
@@ -232,26 +219,31 @@ class TestTemplateSpanExtract:
                 ("><",),
             ),
             (t"<div></div>", PartPosition(0, offset=5), PartPosition(0, offset=5), ()),
-            (t"<div>{0}</div>", None, PartPosition(1, offset=0), ("<div>",)),
-            (t"<div>{0}</div>", PartPosition(1, offset=0), None, (0, "</div>")),
-            (t"<div>{0}</div>", PartPosition(2, offset=0), None, ("</div>",)),
-            (t"<div>{0}</div>", None, PartPosition(2, offset=0), ("<div>", 0)),
+            (t"<div>{0}</div>", None, PartPosition(0, offset=5), ("<div>",)),
             (
                 t"<div>{0}</div>",
+                PartPosition(0, offset=5),
+                None,
+                (0, "</div>"),
+            ),
+            (t"<div>{0}</div>", PartPosition(1, offset=0), None, ("</div>",)),
+            (t"<div>{0}</div>", None, PartPosition(1, offset=0), ("<div>", 0)),
+            (
+                t"<div>{0}</div>",
+                PartPosition(0, offset=5),
                 PartPosition(1, offset=0),
-                PartPosition(2, offset=0),
                 (0,),
             ),
             (
                 t"<div>{0}</div>",
-                PartPosition(1, offset=0),
-                PartPosition(1, offset=0),
+                PartPosition(0, offset=5),
+                PartPosition(0, offset=5),
                 (),
             ),
             (t"", None, PartPosition(0, offset=0), ()),
             (t"", PartPosition(0, offset=0), None, ()),
             (t"", None, None, ()),
-            (t"{0}", None, PartPosition(2, offset=0), (0,)),
+            (t"{0}", None, PartPosition(1, offset=0), (0,)),
             (t"{0}", PartPosition(0, offset=0), None, (0,)),
             (t"{0}", None, None, (0,)),
         ),
@@ -265,7 +257,7 @@ class TestTemplateSpanExtract:
     ) -> None:
         span = TemplateSpan(
             start=start or PartPosition(0),
-            stop=stop or PartPosition(2 * len(t.strings) - 2, len(t.strings[-1])),
+            stop=stop or PartPosition(len(t.strings) - 1, len(t.strings[-1])),
         )
         extracted = span.extract(t)
         parts: list[str | object] = []
@@ -278,8 +270,8 @@ class TestTemplateSpanExtract:
 
     def test_interpolation_interval(self) -> None:
         extracted = TemplateSpan(
-            start=PartPosition(1),
-            stop=PartPosition(2),
+            start=PartPosition(0, len("<div>")),
+            stop=PartPosition(1),
         ).extract(t"<div>{0}</div>")
 
         assert extracted.strings == ("", "")

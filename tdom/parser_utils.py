@@ -90,9 +90,10 @@ class ParserPositionTranslator:
         """
         Translate an absolute position into a template part position.
 
-        A position exactly between parts belongs to the following part. EOF is the
-        exception: a template always ends with a string part, and EOF belongs to the
-        end of that final string.
+        Positions at a placeholder's start and end are represented by the end of
+        its preceding string and the start of its following string, respectively.
+        Positions inside placeholders cannot be translated because interpolations
+        are atomic.
         """
         source_length = self.part_end_positions[-1]
         if not 0 <= abs_pos <= source_length:
@@ -100,18 +101,21 @@ class ParserPositionTranslator:
                 f"Absolute position falls outside the input: {abs_pos} not in [0, {source_length}]"
             )
 
-        last_index = len(self.part_end_positions) - 1
+        last_part_index = len(self.part_end_positions) - 1
         if abs_pos == source_length:
             final_part_start = (
-                self.part_end_positions[last_index - 1] if last_index else 0
+                self.part_end_positions[last_part_index - 1] if last_part_index else 0
             )
-            return PartPosition(last_index, source_length - final_part_start)
+            return PartPosition(last_part_index // 2, source_length - final_part_start)
 
-        index = bisect_left(self.part_end_positions, abs_pos)
-        part_start = self.part_end_positions[index - 1] if index else 0
-        if abs_pos == self.part_end_positions[index]:
-            return PartPosition(index + 1, 0)
-        return PartPosition(index, abs_pos - part_start)
+        part_index = bisect_left(self.part_end_positions, abs_pos)
+        part_start = self.part_end_positions[part_index - 1] if part_index else 0
+
+        if part_index % 2 == 0:
+            return PartPosition(part_index // 2, abs_pos - part_start)
+        if abs_pos == self.part_end_positions[part_index]:
+            return PartPosition(part_index // 2 + 1, 0)
+        raise ValueError("Positions inside interpolation placeholders are undefined.")
 
     def translate(self, parser_pos: LinePosition) -> PartPosition:
         """
@@ -123,9 +127,7 @@ class ParserPositionTranslator:
             injected for `Interpolation`s.
 
         return:
-            A position in a coordinate system that uses a unified index into
-            the parts of the `Template`.  For interpolations the offset must be
-            `0` but the offset can be a non-zero number for string parts.
+            A position relative to one of the `Template`'s static strings.
         """
         abs_pos = self.line_pos_to_abs_pos(parser_pos)
         return self.abs_pos_to_part_pos(abs_pos)

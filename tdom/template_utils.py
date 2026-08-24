@@ -107,66 +107,44 @@ class TemplateRef:
 @dataclass(slots=True, frozen=True, order=True)
 class PartPosition:
     """
-    A unified template part position.
+    A position relative to one of a template's static strings.
 
-    Translate indexes into strings by multiplying by 2.
-    ie. 0->0, 1->2, 2->4, etc.
-    Reverse by dividing by 2.
-
-    Translate indexes into interpolations by multiplying by 2 and then adding 1.
-    ie. 0->1, 1->3, 2->5, etc.
-    Reverse by subtracting 1 and dividing by 2.
-
-    Using unified indexes allows for simpler iteration as well as starting
-    or stopping at either type of part more seamlessly.
+    The end of a string is immediately before its following interpolation, and
+    the start of the next string is immediately after that interpolation. Thus a
+    span between those positions contains exactly that atomic interpolation.
     """
 
-    index: int
-    """Index of the template parts, translate for strings/interpolations."""
+    s_index: int
+    """Index of the static string relative to which the position is measured."""
 
     offset: int = 0
-    """Offset from the start of the template part."""
-
-    @property
-    def is_string(self) -> bool:
-        """Return True if this position is within a string part."""
-        return self.index % 2 == 0
-
-    @property
-    def is_interpolation(self) -> bool:
-        """Return True if this position is at an interpolation part."""
-        return not self.is_string
+    """Offset from the start of the static string."""
 
     def __post_init__(self) -> None:
-        """Validate invariants shared by every template part position."""
-        if self.index < 0:
-            raise ValueError("Index must always be positive or zero.")
+        """Validate invariants independent of a particular template."""
+        if self.s_index < 0:
+            raise ValueError("String index must always be positive or zero.")
         if self.offset < 0:
             raise ValueError("Offset must always be positive or zero.")
-        if self.is_interpolation and self.offset != 0:
-            # Interpolations are indivisible, so their only position is the start.
-            raise ValueError("Interpolation part positions must always have offset 0.")
 
     def validate(self, source: Template) -> None:
         """Raise if this position falls outside the source template."""
-        part_count = 2 * len(source.strings) - 1
-        if self.index >= part_count:
+        if self.s_index >= len(source.strings):
             raise ValueError(
-                "PartPosition index falls outside the template: "
-                f"{self.index} >= {part_count}."
+                "PartPosition string index falls outside the template: "
+                f"{self.s_index} >= {len(source.strings)}."
             )
-        if self.is_string:
-            string = source.strings[self.index // 2]
-            if self.offset > len(string):
-                raise ValueError(
-                    "PartPosition offset falls outside its string: "
-                    f"{self.offset} > {len(string)}."
-                )
+        string = source.strings[self.s_index]
+        if self.offset > len(string):
+            raise ValueError(
+                "PartPosition offset falls outside its string: "
+                f"{self.offset} > {len(string)}."
+            )
 
 
 @dataclass(slots=True, frozen=True)
 class TemplateSpan:
-    """A half-open span in the global part coordinates of a template."""
+    """A half-open span in the static-string coordinates of a template."""
 
     start: PartPosition
     stop: PartPosition
@@ -180,17 +158,12 @@ class TemplateSpan:
         self.start.validate(source)
         self.stop.validate(source)
 
-        first_string = self.start.index // 2
-        last_string = self.stop.index // 2
+        first_string = self.start.s_index
+        last_string = self.stop.s_index
         strings = list(source.strings[first_string : last_string + 1])
 
-        if self.stop.is_string:
-            strings[-1] = strings[-1][: self.stop.offset]
-
-        if self.start.is_string:
-            strings[0] = strings[0][self.start.offset :]
-        else:
-            strings[0] = ""
+        strings[-1] = strings[-1][: self.stop.offset]
+        strings[0] = strings[0][self.start.offset :]
 
         return template_from_parts(
             strings, source.interpolations[first_string:last_string]
