@@ -8,7 +8,7 @@ from .parser_utils import (
 )
 from .placeholders import PlaceholderConfig, make_placeholder_config
 from .source import LinePosition
-from .template_utils import PartPosition
+from .template_utils import PartPosition, TemplateSpan
 
 
 @pytest.fixture(scope="module")
@@ -44,6 +44,21 @@ class TestParserPositionTranslator:
             ppt.abs_pos_to_part_pos(-1)
         with pytest.raises(ValueError, match="Absolute position falls outside"):
             ppt.abs_pos_to_part_pos(3 + placeholder_length)
+
+    def test_translate_span(self, ph_config):
+        ppt = make_ppt(t"before\n  <{0}\n x>", ph_config)
+        placeholder_length = len(ph_config.make_placeholder(0))
+
+        assert ppt.translate_span(
+            LinePosition(line=2, offset=2),
+            len("<") + placeholder_length + len("\n x>"),
+        ) == TemplateSpan(
+            start=PartPosition(0, len("before\n  ")),
+            stop=PartPosition(2, len("\n x>")),
+        )
+
+        with pytest.raises(ValueError, match="Parser span length must be positive"):
+            ppt.translate_span(LinePosition(), -1)
 
     def test_case_nontailing_string_ends_with_newline(self, ph_config):
         ppt = make_ppt(t"a\n{0}b", ph_config)
@@ -189,12 +204,12 @@ class TestParserPositionTranslator:
 
         with pytest.raises(
             ValueError,
-            match="Invalid part position, interpolations are not divisible, offset must be 0.",
+            match="Interpolation part positions must always have offset 0.",
         ):
             _ = ppt.translate(LinePosition(line=2, offset=1))
         with pytest.raises(
             ValueError,
-            match="Invalid part position, interpolations are not divisible, offset must be 0.",
+            match="Interpolation part positions must always have offset 0.",
         ):
             _ = ppt.translate(
                 LinePosition(line=2, offset=len(ph_config.make_placeholder(0)) - 1)

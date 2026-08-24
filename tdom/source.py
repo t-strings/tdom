@@ -3,7 +3,7 @@ from dataclasses import dataclass
 
 @dataclass(slots=True, frozen=True)
 class LinePosition:
-    """A immutable position in a block of source code."""
+    """An immutable position in a block of source code."""
 
     line: int = 1
     """Line of code, starts at 1."""

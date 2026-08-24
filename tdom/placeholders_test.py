@@ -28,12 +28,20 @@ def test_find_placeholders() -> None:
     s = f"Hello {config.prefix}0{config.suffix}, today is {config.prefix}1{config.suffix}."
     pt = config.find_placeholders(s)
     assert pt.strings == ("Hello ", ", today is ", ".")
-    assert pt.i_indexes == (0, 1)
+    assert (pt.i_start, pt.i_stop) == (0, 2)
 
     literal_s = "No placeholders here."
     literal_pt = config.find_placeholders(literal_s)
     assert literal_pt.strings == (literal_s,)
-    assert literal_pt.i_indexes == ()
+    assert literal_pt.i_count == 0
+
+
+def test_find_placeholders_rejects_discontiguous_indexes() -> None:
+    config = make_placeholder_config()
+    text = f"{config.make_placeholder(1)}{config.make_placeholder(3)}"
+
+    with pytest.raises(ValueError, match="indexes must be contiguous"):
+        _ = config.find_placeholders(text)
 
 
 def test_placeholder_state() -> None:
@@ -51,7 +59,7 @@ def test_placeholder_state() -> None:
     text = f"Values: {p0}, {p1}"
     pt = state.remove_placeholders(text)
     assert pt.strings == ("Values: ", ", ", "")
-    assert pt.i_indexes == (0, 1)
+    assert (pt.i_start, pt.i_stop) == (0, 2)
     assert state.is_empty
 
     with pytest.raises(ValueError):

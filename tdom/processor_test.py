@@ -2016,6 +2016,23 @@ def test_process_template_internal_cache():
     assert cached_tnode1 != cached_tnode4
 
 
+def test_cached_component_span_extracts_current_interpolations():
+    def Component(children):
+        return children
+
+    def make_template(child):
+        return t"<{Component}><tdom-span-cache>{child}</tdom-span-cache></{Component}>"
+
+    process_api = TemplateProcessor(parser_api=CachedTemplateParserProxy())
+
+    assert process_api.process(make_template("first"), ProcessContext()) == (
+        "<tdom-span-cache>first</tdom-span-cache>"
+    )
+    assert process_api.process(make_template("second"), ProcessContext()) == (
+        "<tdom-span-cache>second</tdom-span-cache>"
+    )
+
+
 def test_repeat_calls():
     """Crude check for any unintended state being kept between calls."""
 
