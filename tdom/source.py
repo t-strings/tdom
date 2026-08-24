@@ -15,20 +15,6 @@ class LinePosition:
     """Offset from the start of the line, starts at 0."""
 
 
-@dataclass(slots=True)
-class MutableLinePosition:
-    """A mutable position in a block of source code."""
-
-    line: int = 1
-    """ Line of code, starts at 1. """
-    offset: int = 0
-    """ Offset from the start of the line, starts at 0. """
-
-    def freeze(self) -> LinePosition:
-        """Freeze ourself into an immutable object with the same values."""
-        return LinePosition(line=self.line, offset=self.offset)
-
-
 def template_repr_iter(template: Template) -> t.Generator[str]:
     """
     Yield a string representation of each part of a given template.
@@ -99,17 +85,7 @@ class SourceReader:
         Convert a (template) part position into a line position based on the
         string representation of the template.
         """
-        pos = MutableLinePosition()
         span_up_to_pos = TemplateSpan(start=PartPosition(0, 0), stop=source_pos)
-        for part in span_up_to_pos.extract(self.template):
-            if isinstance(part, str):
-                text = part
-            else:
-                text = interpolation_repr(part)
-            nls = text.count("\n")
-            if nls:
-                pos.offset = len(text) - (text.rfind("\n") + 1)
-                pos.line += nls
-            else:
-                pos.offset += len(text)
-        return pos.freeze()
+        repr_up_to_pos = template_repr(span_up_to_pos.extract(self.template))
+        lines_up_to_pos = repr_up_to_pos.split("\n")
+        return LinePosition(line=len(lines_up_to_pos), offset=len(lines_up_to_pos[-1]))
