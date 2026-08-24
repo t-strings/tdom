@@ -1,3 +1,4 @@
+import typing as t
 from bisect import bisect_left
 from dataclasses import dataclass
 from string.templatelib import Template
@@ -11,45 +12,40 @@ type AbsolutePosition = int
 """Absolute position in the placeholder-expanded template source, starting at 0."""
 
 
-def precompute_line_start_positions(source_text: str) -> tuple[AbsolutePosition, ...]:
-    """
-    Return the absolute positions where each line in the parser input starts.
-
-    The first line always starts at zero. A trailing newline therefore produces
-    one final line start whose absolute position is also the length of the input.
-    """
-    return (0, *(index + 1 for index, char in enumerate(source_text) if char == "\n"))
-
-
 def make_parser_pos_translator(
     template: Template, config: PlaceholderConfig
 ) -> ParserPositionTranslator:
     """
     Configure and return a `ParserPositionTranslator`.
 
-    We precompute a few things to make the translator's job easier.
+    Precompute line and string positions to make translation efficient.
     """
 
-    source_text_parts: list[str] = []
+    line_start_positions: list[AbsolutePosition] = [0]
     string_start_positions: list[AbsolutePosition] = []
     string_end_positions: list[AbsolutePosition] = []
     source_pos: AbsolutePosition = 0
 
+    def line_starts(string: str) -> t.Iterator[AbsolutePosition]:
+        return (
+            source_pos + offset + 1
+            for offset, char in enumerate(string)
+            if char == "\n"
+        )
+
     for s_index, string in enumerate(template.strings):
         string_start_positions.append(source_pos)
-        source_text_parts.append(string)
+        line_start_positions.extend(line_starts(string))
         source_pos += len(string)
         string_end_positions.append(source_pos)
 
         if s_index < len(template.interpolations):
             placeholder = config.make_placeholder(s_index)
-            source_text_parts.append(placeholder)
+            line_start_positions.extend(line_starts(placeholder))
             source_pos += len(placeholder)
 
-    source_text = "".join(source_text_parts)
-
     return ParserPositionTranslator(
-        line_start_positions=precompute_line_start_positions(source_text),
+        line_start_positions=tuple(line_start_positions),
         string_start_positions=tuple(string_start_positions),
         string_end_positions=tuple(string_end_positions),
     )
