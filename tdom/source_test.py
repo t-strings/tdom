@@ -29,7 +29,7 @@ class TestSourceReader:
 
     def test_make_template_pos_msg(self):
         reader = SourceReader(template=t"<div>{'content'}</div>")
-        msg = reader.make_template_pos_msg(source_pos=PartPosition(index=0, offset=1))
+        msg = reader.make_template_pos_msg(source_pos=PartPosition(s_index=0, offset=1))
         assert msg == "line 1 offset 1"
 
     def test_make_interpolation_repr(self):
@@ -38,9 +38,9 @@ class TestSourceReader:
 
     def test_to_template_pos(self):
         reader = SourceReader(template=t"<div>{'content'}</div>")
-        assert reader.to_template_pos(PartPosition(index=1, offset=0)) == LinePosition(
-            line=1, offset=len("<div>")
-        )
+        assert reader.to_template_pos(
+            PartPosition(s_index=0, offset=len("<div>"))
+        ) == LinePosition(line=1, offset=len("<div>"))
 
 
 class TestTemplateRepresentation:
@@ -72,13 +72,13 @@ class TestToTemplatePosition:
     def test_origin(self):
         t = t"<div>{'content'}</div>"
         reader = SourceReader(template=t)
-        source_pos = PartPosition(index=0, offset=0)
+        source_pos = PartPosition(s_index=0, offset=0)
         assert reader.to_template_pos(source_pos) == LinePosition(line=1, offset=0)
 
     def test_offset_no_lines(self):
         t = t"<div>{'content'}</div>"
         reader = SourceReader(template=t)
-        source_pos = PartPosition(index=1, offset=0)
+        source_pos = PartPosition(s_index=0, offset=len(t.strings[0]))
         assert reader.to_template_pos(source_pos) == LinePosition(
             line=1, offset=len(t.strings[0])
         )
@@ -86,7 +86,7 @@ class TestToTemplatePosition:
     def test_offset_full_interpolation(self):
         t = t"<div>{''!s:lower}</div>"  # conversion and formatspec
         reader = SourceReader(template=t)
-        source_pos = PartPosition(index=2, offset=0)
+        source_pos = PartPosition(s_index=1, offset=0)
         assert reader.to_template_pos(source_pos) == LinePosition(
             line=1, offset=len('<div>{""!s:lower}')
         )
@@ -98,7 +98,7 @@ class TestToTemplatePosition:
 {"content"}</div>"""
         # fmt: on
         reader = SourceReader(template=t)
-        source_pos = PartPosition(index=2, offset=0)
+        source_pos = PartPosition(s_index=1, offset=0)
         assert reader.to_template_pos(source_pos) == LinePosition(
             line=2, offset=len('{"content"}')
         )
@@ -112,7 +112,7 @@ content
 '''}</div>"""
         # fmt: on
         reader = SourceReader(template=t)
-        source_pos = PartPosition(index=2, offset=0)
+        source_pos = PartPosition(s_index=1, offset=0)
         assert reader.to_template_pos(source_pos) == LinePosition(
             line=4, offset=len("'''}")
         )
