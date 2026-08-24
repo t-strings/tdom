@@ -1,6 +1,6 @@
+import typing as t
 from bisect import bisect_left
 from dataclasses import dataclass
-from itertools import accumulate
 from string.templatelib import Template
 
 from .placeholders import PlaceholderConfig
@@ -12,36 +12,42 @@ type AbsolutePosition = int
 """Absolute position in the placeholder-expanded template source, starting at 0."""
 
 
-def precompute_line_start_positions(source_text: str) -> tuple[AbsolutePosition, ...]:
-    """
-    Return the absolute positions where each line in the parser input starts.
-
-    The first line always starts at zero. A trailing newline therefore produces
-    one final line start whose absolute position is also the length of the input.
-    """
-    return (0, *(index + 1 for index, char in enumerate(source_text) if char == "\n"))
-
-
 def make_parser_pos_translator(
     template: Template, config: PlaceholderConfig
 ) -> ParserPositionTranslator:
     """
     Configure and return a `ParserPositionTranslator`.
 
-    We precompute a few things to make the translator's job easier.
+    Precompute line and string positions to make translation efficient.
     """
 
-    source_text_parts = tuple(
-        template.strings[index // 2]
-        if index % 2 == 0
-        else config.make_placeholder((index - 1) // 2)
-        for index in range(2 * len(template.strings) - 1)
-    )
-    source_text = "".join(source_text_parts)
+    line_start_positions: list[AbsolutePosition] = [0]
+    string_start_positions: list[AbsolutePosition] = []
+    string_end_positions: list[AbsolutePosition] = []
+    source_pos: AbsolutePosition = 0
+
+    def line_starts(string: str) -> t.Iterator[AbsolutePosition]:
+        return (
+            source_pos + offset + 1
+            for offset, char in enumerate(string)
+            if char == "\n"
+        )
+
+    for s_index, string in enumerate(template.strings):
+        string_start_positions.append(source_pos)
+        line_start_positions.extend(line_starts(string))
+        source_pos += len(string)
+        string_end_positions.append(source_pos)
+
+        if s_index < len(template.interpolations):
+            placeholder = config.make_placeholder(s_index)
+            line_start_positions.extend(line_starts(placeholder))
+            source_pos += len(placeholder)
 
     return ParserPositionTranslator(
-        line_start_positions=precompute_line_start_positions(source_text),
-        part_end_positions=tuple(accumulate(map(len, source_text_parts))),
+        line_start_positions=tuple(line_start_positions),
+        string_start_positions=tuple(string_start_positions),
+        string_end_positions=tuple(string_end_positions),
     )
 
 
@@ -50,8 +56,11 @@ class ParserPositionTranslator:
     line_start_positions: tuple[AbsolutePosition, ...]
     """Absolute positions where lines in the parser input start."""
 
-    part_end_positions: tuple[AbsolutePosition, ...]
-    """Absolute positions where placeholder-expanded template parts end."""
+    string_start_positions: tuple[AbsolutePosition, ...]
+    """Absolute positions where static strings start in the parser input."""
+
+    string_end_positions: tuple[AbsolutePosition, ...]
+    """Absolute positions where static strings end in the parser input."""
 
     def line_pos_to_abs_pos(
         self,
@@ -77,7 +86,7 @@ class ParserPositionTranslator:
         line_end = (
             self.line_start_positions[line] - 1
             if line < line_count
-            else self.part_end_positions[-1]
+            else self.string_end_positions[-1]
         )
         line_length = line_end - line_start
         if offset > line_length:
@@ -90,28 +99,24 @@ class ParserPositionTranslator:
         """
         Translate an absolute position into a template part position.
 
-        A position exactly between parts belongs to the following part. EOF is the
-        exception: a template always ends with a string part, and EOF belongs to the
-        end of that final string.
+        Positions at a placeholder's start and end are represented by the end of
+        its preceding string and the start of its following string, respectively.
+        Positions inside placeholders cannot be translated because interpolations
+        are atomic.
         """
-        source_length = self.part_end_positions[-1]
+        source_length = self.string_end_positions[-1]
         if not 0 <= abs_pos <= source_length:
             raise ValueError(
                 f"Absolute position falls outside the input: {abs_pos} not in [0, {source_length}]"
             )
 
-        last_index = len(self.part_end_positions) - 1
-        if abs_pos == source_length:
-            final_part_start = (
-                self.part_end_positions[last_index - 1] if last_index else 0
+        s_index = bisect_left(self.string_end_positions, abs_pos)
+        string_start = self.string_start_positions[s_index]
+        if abs_pos < string_start:
+            raise ValueError(
+                "Positions inside interpolation placeholders are undefined."
             )
-            return PartPosition(last_index, source_length - final_part_start)
-
-        index = bisect_left(self.part_end_positions, abs_pos)
-        part_start = self.part_end_positions[index - 1] if index else 0
-        if abs_pos == self.part_end_positions[index]:
-            return PartPosition(index + 1, 0)
-        return PartPosition(index, abs_pos - part_start)
+        return PartPosition(s_index, abs_pos - string_start)
 
     def translate(self, parser_pos: LinePosition) -> PartPosition:
         """
@@ -123,9 +128,7 @@ class ParserPositionTranslator:
             injected for `Interpolation`s.
 
         return:
-            A position in a coordinate system that uses a unified index into
-            the parts of the `Template`.  For interpolations the offset must be
-            `0` but the offset can be a non-zero number for string parts.
+            A position relative to one of the `Template`'s static strings.
         """
         abs_pos = self.line_pos_to_abs_pos(parser_pos)
         return self.abs_pos_to_part_pos(abs_pos)

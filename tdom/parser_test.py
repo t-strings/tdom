@@ -35,8 +35,8 @@ def literal_template_span(template: Template, text: str) -> TemplateSpan:
     assert len(matches) == 1
     string_index, offset = matches[0]
     return TemplateSpan(
-        start=PartPosition(2 * string_index, offset),
-        stop=PartPosition(2 * string_index, offset + len(text)),
+        start=PartPosition(string_index, offset),
+        stop=PartPosition(string_index, offset + len(text)),
     )
 
 
@@ -437,7 +437,7 @@ def test_component_element_with_closing_tag():
     assert node == TComponent(
         start_i_index=0,
         end_i_index=1,
-        children_span=TemplateSpan(PartPosition(2, 1), PartPosition(2, 1)),
+        children_span=TemplateSpan(PartPosition(1, 1), PartPosition(1, 1)),
     )
 
 
@@ -452,7 +452,7 @@ def test_component_element_special_case_mismatched_closing_tag_still_parses():
     assert node == TComponent(
         start_i_index=0,
         end_i_index=1,
-        children_span=TemplateSpan(PartPosition(2, 1), PartPosition(2, 1)),
+        children_span=TemplateSpan(PartPosition(1, 1), PartPosition(1, 1)),
     )
 
 
@@ -585,7 +585,7 @@ class TestComponentChildrenSpan:
         assert node == TComponent(
             start_i_index=0,
             end_i_index=1,
-            children_span=TemplateSpan(PartPosition(2, 1), PartPosition(2, 1)),
+            children_span=TemplateSpan(PartPosition(1, 1), PartPosition(1, 1)),
         )
 
     def test_extract_startend(self, Component):
@@ -685,7 +685,7 @@ class TestSourcePos:
         ("t", "part_pos"),
         (
             (t"ABC<div></div>", PartPosition(0, offset=len("ABC"))),
-            (t"{' '}<div></div>", PartPosition(2, offset=0)),
+            (t"{' '}<div></div>", PartPosition(1, offset=0)),
         ),
     )
     def test_el(self, t: Template, part_pos: PartPosition):
@@ -698,7 +698,7 @@ class TestSourcePos:
         ("t", "part_pos"),
         (
             (t"<div></div>ABC", PartPosition(0, offset=len("<div></div>"))),
-            (t"<div>{' '}</div>ABC", PartPosition(2, offset=len("</div>"))),
+            (t"<div>{' '}</div>ABC", PartPosition(1, offset=len("</div>"))),
         ),
     )
     def test_text(self, t: Template, part_pos: PartPosition):
@@ -711,7 +711,7 @@ class TestSourcePos:
         ("t", "part_pos"),
         (
             (t"  <!doctype html>", PartPosition(0, offset=2)),
-            (t"{' '}<!doctype html>", PartPosition(2, 0)),
+            (t"{' '}<!doctype html>", PartPosition(1, 0)),
         ),
     )
     def test_doctype(self, t: Template, part_pos: PartPosition):
@@ -724,7 +724,7 @@ class TestSourcePos:
         ("t", "part_pos"),
         (
             (t"  <!--comment-->", PartPosition(0, offset=2)),
-            (t"<div>{'ABC'}</div><!--comment-->", PartPosition(2, len("</div>"))),
+            (t"<div>{'ABC'}</div><!--comment-->", PartPosition(1, len("</div>"))),
         ),
     )
     def test_comment(self, t: Template, part_pos: PartPosition):
@@ -739,7 +739,7 @@ class TestSourcePos:
 
         for t, part_pos in (
             (t"  <{Comp} />", PartPosition(0, offset=len("  "))),
-            (t"  {'ABC'}DEF<{Comp} />", PartPosition(2, offset=len("DEF"))),
+            (t"  {'ABC'}DEF<{Comp} />", PartPosition(1, offset=len("DEF"))),
         ):
             root = parse_root(t)
             assert isinstance(root, TFragment)
@@ -805,9 +805,9 @@ class TestSourceInfo:
         assert sinfo.startend == False
         assert sinfo.starttag_pos == PartPosition(
             0, 0
-        ) and sinfo.endtag_pos == PartPosition(2, len(">"))
+        ) and sinfo.endtag_pos == PartPosition(1, len(">"))
         assert sinfo.starttag_span == TemplateSpan(
-            PartPosition(0, 0), PartPosition(2, len(">"))
+            PartPosition(0, 0), PartPosition(1, len(">"))
         )
 
     def test_component_self_closed(self):
@@ -827,7 +827,7 @@ class TestSourceInfo:
         assert sinfo.startend == True
         assert sinfo.starttag_pos == PartPosition(0, 0) and sinfo.endtag_pos is None
         assert sinfo.starttag_span == TemplateSpan(
-            PartPosition(0, 0), PartPosition(2, len(" />"))
+            PartPosition(0, 0), PartPosition(1, len(" />"))
         )
 
     def test_multiline_component_spans(self):
