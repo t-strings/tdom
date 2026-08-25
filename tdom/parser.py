@@ -16,7 +16,7 @@ from .placeholders import (
 from .placeholders import (
     make_placeholder_config as default_make_placeholder_config,
 )
-from .source import LinePosition
+from .source import LinePosition, SourceReader
 from .template_utils import PartPosition, TemplateRef, TemplateSpan
 from .tnodes import (
     TagSourceInfo,
@@ -145,6 +145,9 @@ class SourceTracker:
                 return self.placeholders.add_placeholder((self.index - 1) // 2)
         else:
             raise StopIteration
+
+    def get_reader(self) -> SourceReader:
+        return SourceReader(template=self.template)
 
     def remove_placeholders(self, text: str) -> TemplateRef:
         """
