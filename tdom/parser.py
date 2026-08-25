@@ -399,7 +399,9 @@ class TemplateParser(HTMLParser):
                     attrs=attrs,
                     source_pos=source_pos,
                 )
-                # Save children for error handling in the parser.
+                # Save children for introspection after some parsing errors otherwise
+                # they are discarded since we extract the children_span in the processor
+                # for the components.
                 self.tcomponent_children[tnode] = children
                 return tnode
 
@@ -536,10 +538,6 @@ class TemplateParser(HTMLParser):
         if not self.stack:
             source = self.get_source()
             reader = source.get_reader()
-            # @TODO: Not sure if we want the pre-parsed content here but
-            # I'm not sure if we'd be able to easily find the "end" of it
-            # without parsing ourself. So for now we settle with the post-parsed
-            # content and just resolve any interpolation expressions.
             endtag_ref = source.find_placeholders(tag)
             endtag_repr = reader.ref_to_repr(endtag_ref)
             endtag_pos_msg = reader.make_template_pos_msg(endtag_pos)
@@ -638,7 +636,7 @@ class TemplateParser(HTMLParser):
         """
         Check for cases where ambiguous slash might create a confusing error.
 
-        @NOTE: This add exception notes to the exception but does not throw it.
+        @NOTE: This adds exception notes to the exception but does not throw it.
         """
         source = self.get_source()
         reader = source.get_reader()
