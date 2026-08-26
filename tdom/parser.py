@@ -159,9 +159,6 @@ class SourceTracker:
         else:
             raise StopIteration
 
-    def get_reader(self) -> SourceReader:
-        return SourceReader(template=self.template)
-
     def remove_placeholders(self, text: str) -> TemplateRef:
         """
         Find tracked placeholders in text and mark them as found.
@@ -214,6 +211,218 @@ class SourceTracker:
     def format_starttag(self, i_index: int) -> str:
         """Format a component start tag for error messages."""
         return self.get_expression(i_index, fallback_prefix="component-starttag")
+
+
+@dataclass(frozen=True)
+class ParsingErrorHelper:
+    """
+    Helps the parser include extra info in parsing errors.
+
+    This helper *should not* decide what error to raise.
+
+    This helper *should* help to:
+        - include possible reasons (did you forget to close a quote?)
+        - include original template source (the start tag, etc.)
+        - include position info (line #, etc.)
+    """
+
+    parser: TemplateParser
+    """The parser, used for introspection."""
+
+    def get_source_reader(self):
+        return SourceReader(self.parser.get_source().template)
+
+    def run_unclosed_ambiguous_slash_checks(
+        self, parent: OpenTag, e: ParsingError
+    ) -> None:
+        """
+        Check for cases where ambiguous slash might create a confusing error.
+
+        @NOTE: This adds exception notes to the exception but does not throw it.
+        """
+        reader = self.get_source_reader()
+        if isinstance(
+            parent, (OpenTElement, OpenTComponent)
+        ) and self.has_ambiguous_forward_slash(parent.sinfo, parent.attrs):
+            # CASE: t"<{C1} attr={value}/>" -- maybe user meant to self-close?
+            # CASE: t"<div attr={value}/>" -- maybe user meant to self-close?
+            starttag_span = parent.sinfo.starttag_span
+            starttag_repr = reader.span_to_repr(starttag_span)
+            pos_msg = reader.make_template_pos_msg(parent.source_pos)
+            e.add_note(
+                f'Did you mean to quote the last attribute or put a space before "/>" for "{starttag_repr}" at {pos_msg}?'
+            )
+        elif isinstance(parent, OpenTElement):
+            # CASE: t"<div><div attr={value}/></div>" -- maybe user meant to self-close?
+            # looks like user missed a closing </div> but they really meant to
+            # self-close the middle div.
+            children = parent.children[:]
+            while children:
+                child = children.pop(0)
+                if isinstance(child, TElement) and child.tag == parent.tag:
+                    sinfo = (
+                        self.parser.sinfo_table.get(child.source_pos)
+                        if child.source_pos is not None
+                        else None
+                    )
+                    if sinfo and self.has_ambiguous_forward_slash(sinfo, child.attrs):
+                        full_starttag_repr = reader.span_to_repr(sinfo.starttag_span)
+                        e.add_note(
+                            f'Did you mean to quote the last attribute or put a space before "/>" for "{full_starttag_repr}"?'
+                        )
+                    children.extend(child.children)
+        elif isinstance(parent, OpenTComponent):
+            # This is a special case where a component accidentally closes
+            # another component but we don't check the actual values in
+            # the parser so we can't tell until we are generating an error
+            # (when we can check the values).
+            #
+            # CASE: t"<{C2}><{C1} attr=/></{C2}>"
+            # Maybe user meant to self-close <{C1} ...>, but closed by </{C2}> leaving <{C2}...> open?
+            # CASE: t"<{C3}><{C2}><{C1} attr=/></{C2}></{C3}>"
+            for comp in reversed(
+                self.get_closed_tcomps(parent, recurse_component_children=True)
+            ):
+                if (
+                    comp.end_i_index is not None
+                    and comp.start_i_index != comp.end_i_index
+                    and not reader.values_match(comp.start_i_index, comp.end_i_index)
+                ):
+                    starttag_repr = reader.make_interpolation_repr(comp.start_i_index)
+                    endtag_repr = reader.make_interpolation_repr(comp.end_i_index)
+                    e.add_note(
+                        f"Component start tag, <{starttag_repr} ...>, and end tag, </{endtag_repr}>, have values that do not match."
+                    )
+                    sinfo = (
+                        self.parser.sinfo_table.get(comp.source_pos)
+                        if comp.source_pos is not None
+                        else None
+                    )
+                    if sinfo and self.has_ambiguous_forward_slash(sinfo, comp.attrs):
+                        full_starttag_repr = reader.span_to_repr(sinfo.starttag_span)
+                        e.add_note(
+                            f'Did you mean to quote the last attribute or put a space before "/>" for "{full_starttag_repr}"?'
+                        )
+
+    def make_mismatch_error(
+        self,
+        starttag_sinfo: OpenTagSourceInfo,
+        starttag_attrs: tuple[TAttribute, ...],
+        endtag_ref: TemplateRef,
+        endtag_pos: PartPosition,
+    ) -> ParsingError:
+        reader = self.get_source_reader()
+        starttag_repr = reader.span_to_repr(starttag_sinfo.starttag_span)
+        starttag_pos_msg = reader.make_template_pos_msg(starttag_sinfo.starttag_pos)
+        endtag_repr = reader.ref_to_repr(endtag_ref)
+        endtag_pos_msg = reader.make_template_pos_msg(endtag_pos)
+        e = ParsingError(
+            f"Mismatched closing tag </{endtag_repr}> at {endtag_pos_msg} for {starttag_repr} at {starttag_pos_msg}."
+        )
+        if self.has_ambiguous_forward_slash(starttag_sinfo, starttag_attrs):
+            e.add_note(
+                f'Did you mean to quote the last attribute or put a space before "/>" for "{starttag_repr}" at {starttag_pos_msg}?'
+            )
+        return e
+
+    def make_malformed_endtag_error(
+        self, endtag_ref: TemplateRef, endtag_pos: PartPosition
+    ) -> ParsingError:
+        reader = self.get_source_reader()
+        endtag_repr = reader.ref_to_repr(endtag_ref)
+        endtag_pos_msg = reader.make_template_pos_msg(endtag_pos)
+        return ParsingError(
+            f"Component end tags must have exactly one interpolation, {endtag_repr} at {endtag_pos_msg}."
+        )
+
+    def make_unexpected_endtag_error(
+        self, endtag_ref: TemplateRef, endtag_pos: PartPosition
+    ) -> ParsingError:
+        reader = self.get_source_reader()
+        endtag_repr = reader.ref_to_repr(endtag_ref)
+        endtag_pos_msg = reader.make_template_pos_msg(endtag_pos)
+        return ParsingError(
+            f"Unexpected closing tag </{endtag_repr}> with no open tag, {endtag_pos_msg}."
+        )
+
+    def get_closed_tcomps(
+        self, root: OpenTag | None, recurse_component_children: bool = False
+    ) -> list[TComponent]:
+        """
+        Get TComponents that were closed during parsing starting from `root`.
+
+        If `root` is None then use the parser's default `root`.
+
+        TComponents should be returned in the order they were closed in:
+        from first closed to last closed.
+
+        @NOTE: That the root is an `OpenTag` but its `children` are actually `TNode`s.
+        """
+        if root is None:
+            root = self.parser.root
+        tcomps = []
+        nodes = list(root.children)
+        while nodes:
+            node = nodes.pop()
+            if isinstance(node, TComponent):
+                tcomps.append(node)
+                if recurse_component_children:
+                    children = self.parser.tcomponent_children.get(node, [])
+                    nodes.extend(children)
+            elif isinstance(node, (TElement, TFragment)):
+                nodes.extend(node.children)
+        return tcomps
+
+    def has_ambiguous_forward_slash(
+        self,
+        sinfo: OpenTagSourceInfo | TagSourceInfo | None,
+        attrs: tuple[TAttribute, ...],
+    ) -> bool:
+        """
+        Detect when an unquoted attribute value consumes a trailing "/" that
+        *might* have been meant to attempt to self-close a tag, ie. "/>".
+
+        This can come up with literal values or values with interpolations.
+
+        Such as "<div title=test/>" or "<{Component} title=test/>".
+
+        Or more often "<{Component} title={title}/>" which should be corrected
+        with "<{Component} title={title} />".
+        """
+        reader = self.get_source_reader()
+        return (
+            # has source info
+            sinfo is not None
+            # has attributes
+            and len(attrs) > 0
+            # last attribute ends with "/"
+            # @NOTE: spread and interpolated attrs never do
+            and (
+                (
+                    isinstance(attrs[-1], TLiteralAttribute)
+                    and attrs[-1].value is not None
+                    and attrs[-1].value.endswith("/")
+                )
+                or (
+                    isinstance(attrs[-1], TTemplatedAttribute)
+                    and attrs[-1].value_ref.strings[-1].endswith("/")
+                )
+            )
+            # original starttag ends with "/>",
+            and reader.span_to_template(sinfo.starttag_span).strings[-1].endswith("/>")
+            # if parsed AS startend already then its not ambiguous
+            and not sinfo.startend
+        )
+
+    def make_unclosed_starttag_error(self, parent: OpenTElement | OpenTComponent):
+        reader = self.get_source_reader()
+        starttag_repr = reader.span_to_repr(parent.sinfo.starttag_span)
+        pos_msg = reader.make_template_pos_msg(parent.source_pos)
+        e = ParsingError(
+            f"Invalid HTML structure: unclosed tag {starttag_repr} at {pos_msg}."
+        )
+        self.run_unclosed_ambiguous_slash_checks(parent, e)
+        return e
 
 
 class TemplateParser(HTMLParser):
@@ -405,37 +614,6 @@ class TemplateParser(HTMLParser):
                 self.tcomponent_children[tnode] = children
                 return tnode
 
-    def make_mismatch_error(
-        self,
-        starttag_sinfo: OpenTagSourceInfo,
-        starttag_attrs: tuple[TAttribute, ...],
-        endtag_ref: TemplateRef,
-        endtag_pos: PartPosition,
-    ) -> ParsingError:
-        reader = self.get_source().get_reader()
-        starttag_repr = reader.span_to_repr(starttag_sinfo.starttag_span)
-        starttag_pos_msg = reader.make_template_pos_msg(starttag_sinfo.starttag_pos)
-        endtag_repr = reader.ref_to_repr(endtag_ref)
-        endtag_pos_msg = reader.make_template_pos_msg(endtag_pos)
-        e = ParsingError(
-            f"Mismatched closing tag </{endtag_repr}> at {endtag_pos_msg} for {starttag_repr} at {starttag_pos_msg}."
-        )
-        if self.has_ambiguous_forward_slash(starttag_sinfo, starttag_attrs):
-            e.add_note(
-                f'Did you mean to quote the last attribute or put a space before "/>" for "{starttag_repr}" at {starttag_pos_msg}?'
-            )
-        return e
-
-    def make_invalid_endtag_error(
-        self, endtag_ref: TemplateRef, endtag_pos: PartPosition
-    ) -> ParsingError:
-        reader = self.get_source().get_reader()
-        endtag_repr = reader.ref_to_repr(endtag_ref)
-        endtag_pos_msg = reader.make_template_pos_msg(endtag_pos)
-        raise ParsingError(
-            f"Component end tags must have exactly one interpolation, {endtag_repr} at {endtag_pos_msg}."
-        )
-
     def validate_end_tag(self, tag: str, open_tag: OpenTag) -> int | None:
         """Validate that closing tag matches open tag. Return component end index if applicable."""
         source = self.get_source()
@@ -444,21 +622,25 @@ class TemplateParser(HTMLParser):
         match open_tag:
             case OpenTElement():
                 if tag_ref.is_singleton or (tag_ref.is_literal and tag != open_tag.tag):
-                    raise self.make_mismatch_error(
+                    raise ParsingErrorHelper(self).make_mismatch_error(
                         open_tag.sinfo, open_tag.attrs, tag_ref, self.get_source_pos()
                     )
                 elif not tag_ref.is_singleton and not tag_ref.is_literal:
-                    raise self.make_invalid_endtag_error(tag_ref, self.get_source_pos())
+                    raise ParsingErrorHelper(self).make_malformed_endtag_error(
+                        tag_ref, self.get_source_pos()
+                    )
                 return None
             case OpenTFragment():
                 raise ParsingAssertionError("We do not support anonymous fragments.")
             case OpenTComponent():
                 if tag_ref.is_literal:
-                    raise self.make_mismatch_error(
+                    raise ParsingErrorHelper(self).make_mismatch_error(
                         open_tag.sinfo, open_tag.attrs, tag_ref, self.get_source_pos()
                     )
                 if not tag_ref.is_singleton:
-                    raise self.make_invalid_endtag_error(tag_ref, self.get_source_pos())
+                    raise ParsingErrorHelper(self).make_malformed_endtag_error(
+                        tag_ref, self.get_source_pos()
+                    )
                 return tag_ref.i_start
 
     def get_starttag_span(self) -> TemplateSpan:
@@ -472,48 +654,6 @@ class TemplateParser(HTMLParser):
         source = self.get_source()
         line_pos = self.get_parser_pos()
         return source.translate_parser_span(line_pos, len(starttag_text))
-
-    def has_ambiguous_forward_slash(
-        self,
-        sinfo: OpenTagSourceInfo | TagSourceInfo | None,
-        attrs: tuple[TAttribute, ...],
-    ) -> bool:
-        """
-        Detect when an unquoted attribute value consumes a trailing "/" that
-        *might* have been meant to attempt to self-close a tag, ie. "/>".
-
-        This can come up with literal values or values with interpolations.
-
-        Such as "<div title=test/>" or "<{Component} title=test/>".
-
-        Or more often "<{Component} title={title}/>" which should be corrected
-        with "<{Component} title={title} />".
-        """
-        source = self.get_source()
-        reader = source.get_reader()
-        return (
-            # has source info
-            sinfo is not None
-            # has attributes
-            and len(attrs) > 0
-            # last attribute ends with "/"
-            # @NOTE: spread and interpolated attrs never do
-            and (
-                (
-                    isinstance(attrs[-1], TLiteralAttribute)
-                    and attrs[-1].value is not None
-                    and attrs[-1].value.endswith("/")
-                )
-                or (
-                    isinstance(attrs[-1], TTemplatedAttribute)
-                    and attrs[-1].value_ref.strings[-1].endswith("/")
-                )
-            )
-            # original starttag ends with "/>",
-            and reader.span_to_template(sinfo.starttag_span).strings[-1].endswith("/>")
-            # if parsed AS startend already then its not ambiguous
-            and not sinfo.startend
-        )
 
     # ------------------------------------------
     # HTMLParser tag callbacks
@@ -537,16 +677,15 @@ class TemplateParser(HTMLParser):
         endtag_pos = self.get_source_pos()
         if not self.stack:
             source = self.get_source()
-            reader = source.get_reader()
             endtag_ref = source.find_placeholders(tag)
-            endtag_repr = reader.ref_to_repr(endtag_ref)
-            endtag_pos_msg = reader.make_template_pos_msg(endtag_pos)
             if endtag_ref.is_literal or endtag_ref.is_singleton:
-                raise ParsingError(
-                    f"Unexpected closing tag </{endtag_repr}> with no open tag, {endtag_pos_msg}."
+                raise ParsingErrorHelper(self).make_unexpected_endtag_error(
+                    endtag_ref, endtag_pos
                 )
             else:
-                raise self.make_invalid_endtag_error(endtag_ref, endtag_pos)
+                raise ParsingErrorHelper(self).make_malformed_endtag_error(
+                    endtag_ref, endtag_pos
+                )
         open_tag = self.stack.pop()
         endtag_i_index = self.validate_end_tag(tag, open_tag)
         final_tag = self.finalize_tag(
@@ -555,34 +694,6 @@ class TemplateParser(HTMLParser):
             endtag_pos=endtag_pos,
         )
         self.append_child(final_tag)
-
-    def get_closed_tcomps(
-        self, root: OpenTag | None, recurse_component_children: bool = False
-    ) -> list[TComponent]:
-        """
-        Get TComponents that were closed during parsing starting from `root`.
-
-        If `root` is None then use the parser's default `root`.
-
-        TComponents should be returned in the order they were closed in:
-        from first closed to last closed.
-
-        @NOTE: That the root is an `OpenTag` but its `children` are actually `TNode`s.
-        """
-        if root is None:
-            root = self.root
-        tcomps = []
-        nodes = list(root.children)
-        while nodes:
-            node = nodes.pop()
-            if isinstance(node, TComponent):
-                tcomps.append(node)
-                if recurse_component_children:
-                    children = self.tcomponent_children.get(node, [])
-                    nodes.extend(children)
-            elif isinstance(node, (TElement, TFragment)):
-                nodes.extend(node.children)
-        return tcomps
 
     # ------------------------------------------
     # HTMLParser other callbacks
@@ -630,81 +741,7 @@ class TemplateParser(HTMLParser):
         self.sinfo_table = {}
         self.tcomponent_children = {}
 
-    def run_unclosed_ambiguous_slash_checks(
-        self, parent: OpenTag, e: ParsingError
-    ) -> None:
-        """
-        Check for cases where ambiguous slash might create a confusing error.
-
-        @NOTE: This adds exception notes to the exception but does not throw it.
-        """
-        source = self.get_source()
-        reader = source.get_reader()
-        if isinstance(
-            parent, (OpenTElement, OpenTComponent)
-        ) and self.has_ambiguous_forward_slash(parent.sinfo, parent.attrs):
-            # CASE: "<{C1} attr={value}/>" -- maybe user meant to self-close?
-            # CASE: "<div attr={value}/>" -- mayber user meant to self-close?
-            starttag_span = parent.sinfo.starttag_span
-            starttag_repr = reader.span_to_repr(starttag_span)
-            pos_msg = reader.make_template_pos_msg(parent.source_pos)
-            e.add_note(
-                f'Did you mean to quote the last attribute or put a space before "/>" for "{starttag_repr}" at {pos_msg}?'
-            )
-        elif isinstance(parent, OpenTElement):
-            # ie. t"<div><div attr={value}/></div>", looks
-            # like we missed a closing </div> but really we meant to
-            # self-close the middle div.
-            children = parent.children[:]
-            while children:
-                child = children.pop(0)
-                if isinstance(child, TElement) and child.tag == parent.tag:
-                    sinfo = (
-                        self.sinfo_table.get(child.source_pos)
-                        if child.source_pos is not None
-                        else None
-                    )
-                    if sinfo and self.has_ambiguous_forward_slash(sinfo, child.attrs):
-                        full_starttag_repr = reader.span_to_repr(sinfo.starttag_span)
-                        e.add_note(
-                            f'Did you mean to quote the last attribute or put a space before "/>" for "{full_starttag_repr}"?'
-                        )
-                    children.extend(child.children)
-        elif isinstance(parent, OpenTComponent):
-            # This is a special case where a component accidentally closes
-            # another component but we don't check the actual values in
-            # the parser so we can't tell until we are generating an error
-            # (when we can check the values).
-            #
-            # CASE: t"<{C2}><{C1} attr=/></{C2}>"
-            # Maybe user meant to self-close <{C1} ...>, but closed by </{C2}> leaving <{C2}...> open?
-            # CASE: t"<{C3}><{C2}><{C1} attr=/></{C2}></{C3}>"
-            for comp in reversed(
-                self.get_closed_tcomps(parent, recurse_component_children=True)
-            ):
-                if (
-                    comp.end_i_index is not None
-                    and comp.start_i_index != comp.end_i_index
-                    and not reader.values_match(comp.start_i_index, comp.end_i_index)
-                ):
-                    starttag_repr = reader.make_interpolation_repr(comp.start_i_index)
-                    endtag_repr = reader.make_interpolation_repr(comp.end_i_index)
-                    e.add_note(
-                        f"Component start tag, <{starttag_repr} ...>, and end tag, </{endtag_repr}>, have values that do not match."
-                    )
-                    sinfo = (
-                        self.sinfo_table.get(comp.source_pos)
-                        if comp.source_pos is not None
-                        else None
-                    )
-                    if sinfo and self.has_ambiguous_forward_slash(sinfo, comp.attrs):
-                        full_starttag_repr = reader.span_to_repr(sinfo.starttag_span)
-                        e.add_note(
-                            f'Did you mean to quote the last attribute or put a space before "/>" for "{full_starttag_repr}"?'
-                        )
-
     def close(self) -> None:
-        source = self.get_source()
         if self.waiting_for_data():
             # We apply heuristics here to try to guess why the parser didn't finish.
             if self.rawdata.count('"') % 2 == 1 or self.rawdata.count("'") % 2 == 1:
@@ -717,16 +754,11 @@ class TemplateParser(HTMLParser):
                 )
         if self.stack:
             parent = self.stack[-1]
-            if isinstance(parent, (OpenTElement, OpenTComponent)):
-                reader = source.get_reader()
-                starttag_repr = reader.span_to_repr(parent.sinfo.starttag_span)
-                pos_msg = reader.make_template_pos_msg(parent.source_pos)
-                unclosed_msg = f"unclosed tag {starttag_repr} at {pos_msg}"
-            else:
-                unclosed_msg = "unclosed tags remain"
-            e = ParsingError(f"Invalid HTML structure: {unclosed_msg}.")
-            self.run_unclosed_ambiguous_slash_checks(parent, e)
-            raise e
+            if not isinstance(parent, (OpenTElement, OpenTComponent)):
+                raise ParsingAssertionError(
+                    "OpenTFragment or unrecognized OpenTag should not be on the stack."
+                )
+            raise ParsingErrorHelper(self).make_unclosed_starttag_error(parent)
         if self.source and self.source.has_placeholders():
             raise ParsingError("Some placeholders were never resolved.")
         super().close()
