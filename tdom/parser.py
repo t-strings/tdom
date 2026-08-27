@@ -503,7 +503,18 @@ class TemplateParser(HTMLParser):
         self.source = None
         self.sinfo_table = {}
 
+    def flush_pending(self):
+        """ Flush pending into rawdata. """
+        # @BWC: Pending added in 3.14.7+
+        if hasattr(self, '_pending'):
+            if self._pending:
+                self.rawdata += ''.join(self._pending)
+                self._pending.clear()
+                self._pending_len = 0
+            self.goahead(0)
+
     def close(self) -> None:
+        self.flush_pending()
         if self.waiting_for_data():
             # We apply heuristics here to try to guess why the parser didn't finish.
             if self.rawdata.count('"') % 2 == 1 or self.rawdata.count("'") % 2 == 1:
