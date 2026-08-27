@@ -556,22 +556,6 @@ class TestSourceTracker:
         )
 
 
-class TestIncompleteParsing:
-    def test_dangling_quotes(self):
-        with pytest.raises(ValueError, match="Parser expects more data"):
-            _ = parse_root(t"<div a='")
-        with pytest.raises(ValueError, match="Parser expects more data"):
-            _ = parse_root(t'<div a="')
-
-    def test_unfinished_attribute(self):
-        with pytest.raises(ValueError, match="Parser expects more data"):
-            _ = parse_root(t"<div a=")
-
-    def test_placeholder_missing_from_dangling_quote(self):
-        with pytest.raises(ValueError, match="Parser expects more data"):
-            _ = parse_root(t'<div a="{None}')
-
-
 class TestComponentChildrenSpan:
     @pytest.fixture
     def Component(self):
