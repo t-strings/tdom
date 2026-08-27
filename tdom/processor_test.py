@@ -2273,3 +2273,9 @@ def test_mathml():
   is not a decimal number.
 </p>"""
     )
+
+
+def test_issue_166():
+    template = t"<button disabled={True}>x</button><button disabled={True}>y</button>"
+    expected = "<button disabled>x</button><button disabled>y</button>"
+    assert html(template) == expected
