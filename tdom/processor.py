@@ -226,7 +226,7 @@ class StyleAccumulator:
         style_value = "; ".join(
             [f"{pn}: {pv}" for pn, pv in self.styles.items() if pv is not None]
         )
-        return style_value if style_value else None
+        return style_value or None
 
 
 def make_class_accumulator(old_value: object) -> ClassAccumulator:
@@ -235,7 +235,7 @@ def make_class_accumulator(old_value: object) -> ClassAccumulator:
     """
     match old_value:
         case str():
-            toggled_classes = {cn: True for cn in old_value.split()}
+            toggled_classes = dict.fromkeys(old_value.split(), True)
         case True:
             toggled_classes = {}
         case _:
@@ -263,7 +263,7 @@ class ClassAccumulator:
             for item in items:
                 match item:
                     case str():
-                        self.toggled_classes.update({cn: True for cn in item.split()})
+                        self.toggled_classes.update(dict.fromkeys(item.split(), True))
                     case None:
                         pass
                     case _:
@@ -285,7 +285,7 @@ class ClassAccumulator:
         class_value = " ".join(
             [cn for cn, toggle in self.toggled_classes.items() if toggle]
         )
-        return class_value if class_value else None
+        return class_value or None
 
 
 ATTR_ACCUMULATOR_MAKERS = {
@@ -501,28 +501,28 @@ type ComponentObject = Callable[[], Template]
 
 
 type NormalTextInterpolationValue = (
-    None
-    | bool  # to support `showValue and value` idiom
+    bool  # to support `showValue and value` idiom
     | str
     | HasHTMLDunder
     | Template
     | Iterable[NormalTextInterpolationValue]
     | object
+    | None
 )
 # Applies to both escapable raw text and raw text.
 type RawTextExactInterpolationValue = (
-    None
-    | bool  # to support `showValue and value` idiom
+    bool  # to support `showValue and value` idiom
     | str
     | HasHTMLDunder
     | object
+    | None
 )
 # Applies to both escapable raw text and raw text.
 type RawTextInexactInterpolationValue = (
-    None
-    | bool  # to support `showValue and value` idiom
+    bool  # to support `showValue and value` idiom
     | str
     | object
+    | None
 )
 
 
