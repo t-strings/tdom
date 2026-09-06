@@ -351,22 +351,22 @@ def test_spread_attr():
 
 
 def test_templated_attribute_name_error():
+    attr_name = "some-attr"
     with pytest.raises(ValueError):
-        attr_name = "some-attr"
         _ = parse_root(t'<div {attr_name}="value" />')
 
 
 def test_templated_attribute_name_and_value_error():
+    attr_name = "some-attr"
+    value = "value"
     with pytest.raises(ValueError):
-        attr_name = "some-attr"
-        value = "value"
         _ = parse_root(t'<div {attr_name}="{value}" />')
 
 
 def test_adjacent_spread_attrs_error():
+    attrs1 = {}
+    attrs2 = {}
     with pytest.raises(ValueError):
-        attrs1 = {}
-        attrs2 = {}
         _ = parse_root(t"<div {attrs1}{attrs2} />")
 
 

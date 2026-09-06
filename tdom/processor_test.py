@@ -1,4 +1,5 @@
 import datetime
+import math
 import typing as t
 from collections import UserDict
 from collections.abc import Callable
@@ -1007,8 +1008,8 @@ class TestInterpolationFormatSpec:
 
         assert add(1, 2) == 3, "Make sure fixture could work..."
 
-        with pytest.raises(TypeError):
-            for tag in ("p", "script", "style"):
+        for tag in ("p", "script", "style"):
+            with pytest.raises(TypeError):
                 _ = html(
                     Template(f"<{tag}>")
                     + t"The sum is {add:callback}."
@@ -1453,8 +1454,8 @@ class TestSpecialStyleAttribute:
         assert res == '<p style="color: red; font-weight: bold">Warning!</p>'
 
     def test_style_attribute_non_str_non_dict(self):
+        styles = [1, 2]
         with pytest.raises(TypeError):
-            styles = [1, 2]
             _ = html(t"<p style={styles}>Warning!</p>")
 
     def test_style_literal_attr_bypass(self):
@@ -1847,7 +1848,7 @@ def test_attribute_type_component():
     a_true: bool = True
     a_false: bool = False
     a_none: None = None
-    a_float: float = 3.14
+    a_float: float = math.pi
     a_dt: datetime.datetime = datetime.datetime(
         2024, 1, 1, 12, 0, 0, tzinfo=datetime.UTC
     )
@@ -2163,10 +2164,10 @@ class TestInterpolatingHTMLInTemplateWithDynamicParentTag:
         """Type raw text should fail because template is already not allowed."""
         content = '<script>console.log("123!");</script>'
         content_t = t"{content}"
+        content_t = t'<script>console.log("{123}!");</script>'
         with pytest.raises(
             ValueError, match="Recursive includes are not supported within script"
         ):
-            content_t = t'<script>console.log("{123}!");</script>'
             _ = html(t"<script>{content_t}</script>")
 
     def test_dynamic_escapable_raw_text(self):
