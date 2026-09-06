@@ -23,6 +23,19 @@ type_check: type_check_pyright type_check_ty
 test:
     uv run pytest
 
+# Test the CI Python matrix without replacing the development .venv.
+test-matrix:
+    #!/usr/bin/env sh
+    set -eu
+    uv python install --no-bin 3.14.6
+    uv python install --upgrade --no-bin 3.14 3.15
+    result=0
+    # Keep in sync with the CI and PyPI workflow matrices.
+    for version in 3.14.6 3.14 3.15; do
+        uv run --isolated --locked --managed-python --python "$version" pytest -v || result=1
+    done
+    exit "$result"
+
 watch:
     # Watch for changes and run tests.
     uv run ptw tdom/  

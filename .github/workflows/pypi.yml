@@ -11,14 +11,25 @@ permissions:
 
 jobs:
   test_and_build:
+    name: Python ${{ matrix.python-version }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Keep 3.14.6 to cover HTMLParser behavior before the 3.14.7 change.
+        python-version: ["3.14.6", "3.14", "3.15"]
+    env:
+      # Override the local development pin in .python-version.
+      UV_PYTHON: ${{ matrix.python-version }}
     steps:
       - uses: actions/checkout@v7
 
-      - name: Set up Python 3.14.6
+      - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v7
         with:
-          python-version: 3.14.6
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+          check-latest: true
 
       - name: Install uv
         uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
@@ -51,9 +62,12 @@ jobs:
         run: uv run pytest -v
 
       - name: Build
+        # One pure Python wheel works on every supported Python version.
+        if: matrix.python-version == '3.14'
         run: uv build
 
       - name: Store the distribution packages
+        if: matrix.python-version == '3.14'
         uses: actions/upload-artifact@v7
         with:
           name: python-packages
