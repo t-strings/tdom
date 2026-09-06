@@ -84,7 +84,7 @@ SCRIPT_RES = (
 
 
 def escape_html_script(text: str, allow_markup: bool = False) -> str:
-    """
+    r"""
     Escape text injected into an HTML script element.
 
     https://html.spec.whatwg.org/multipage/scripting.html#restrictions-for-contents-of-script-elements

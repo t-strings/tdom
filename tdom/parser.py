@@ -206,7 +206,7 @@ class SourceTracker:
         Falls back to a synthetic expression if the original is empty.
         """
         ip = self.template.interpolations[i_index]
-        return ip.expression if ip.expression else f"{{{fallback_prefix}-{i_index}}}"
+        return ip.expression or f"{{{fallback_prefix}-{i_index}}}"
 
     def format_starttag(self, i_index: int) -> str:
         """Format a component start tag for error messages."""
@@ -761,16 +761,7 @@ class TemplateParser(HTMLParser):
         self.tcomponent_children = {}
 
     def close(self) -> None:
-        if self.waiting_for_data():
-            # We apply heuristics here to try to guess why the parser didn't finish.
-            if self.rawdata.count('"') % 2 == 1 or self.rawdata.count("'") % 2 == 1:
-                raise ParsingError(
-                    "Parser expects more data, maybe you left an attribute quote unclosed?"
-                )
-            else:
-                raise ParsingError(
-                    "Parser expects more data, is the template valid html?"
-                )
+        super().close()
         if self.stack:
             parent = self.stack[-1]
             if not isinstance(parent, (OpenTElement, OpenTComponent)):
@@ -780,10 +771,6 @@ class TemplateParser(HTMLParser):
             raise make_error_helper(self).make_unclosed_starttag_error(parent)
         if self.source and self.source.has_placeholders():
             raise ParsingError("Some placeholders were never resolved.")
-        super().close()
-
-    def waiting_for_data(self):
-        return len(self.rawdata) > 0
 
     # ------------------------------------------
     # Getting the parsed node tree

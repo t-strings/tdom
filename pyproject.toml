@@ -4,7 +4,7 @@ build-backend = "uv_build"
 
 [project]
 name = "tdom"
-version = "0.1.19"
+version = "0.1.20"
 description = "A 🤘 rockin' t-string HTML templating system for Python 3.14."
 readme = "README.md"
 requires-python = ">=3.14"
@@ -24,6 +24,7 @@ classifiers = [
   "Operating System :: OS Independent",
   "Programming Language :: Python :: 3 :: Only",
   "Programming Language :: Python :: 3.14",
+  "Programming Language :: Python :: 3.15",
   "Topic :: Internet :: WWW/HTTP :: Dynamic Content",
   "Topic :: Text Processing :: Markup :: HTML",
   "Typing :: Typed",
@@ -69,6 +70,9 @@ exclude = [
 
 [tool.ruff.lint]
 extend-select = ["D210", "D300", "ICN"]
+extend-ignore = [
+  "PLC2801", # unnecessary-dunder-call flags our correct __html__ invocations
+]
 preview = true
 
 [tool.ruff.lint.flake8-import-conventions]

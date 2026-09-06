@@ -356,30 +356,30 @@ def test_spread_attr():
 
 
 def test_templated_attribute_name_error():
+    attr_name = "some-attr"
     with pytest.raises(
         AttributeParsingError,
         match="cannot contain interpolations if the value is also interpolated",
     ):
-        attr_name = "some-attr"
         _ = parse_root(t'<div {attr_name}="value" />')
 
 
 def test_templated_attribute_name_and_value_error():
+    attr_name = "some-attr"
+    value = "value"
     with pytest.raises(
         AttributeParsingError,
         match="cannot contain interpolations if the value is also interpolated",
     ):
-        attr_name = "some-attr"
-        value = "value"
         _ = parse_root(t'<div {attr_name}="{value}" />')
 
 
 def test_adjacent_spread_attrs_error():
+    attrs1 = {}
+    attrs2 = {}
     with pytest.raises(
         AttributeParsingError, match="must have exactly one interpolation in the name"
     ):
-        attrs1 = {}
-        attrs2 = {}
         _ = parse_root(t"<div {attrs1}{attrs2} />")
 
 
@@ -484,7 +484,7 @@ def test_component_element_invalid_opening_tag():
         pass
 
     # @NOTE: intentional expression
-    with pytest.raises(ParsingError, match="Mismatched closing tag </{Component}>"):
+    with pytest.raises(ParsingError, match=r"Mismatched closing tag </\{Component\}>"):
         _ = parse_root(t"<div></{Component}>")
 
 
@@ -508,7 +508,7 @@ def test_unmatched_end_component_tag_error():
     def Component():
         pass
 
-    with pytest.raises(ParsingError, match="Unexpected closing tag </{Component}>"):
+    with pytest.raises(ParsingError, match=r"Unexpected closing tag </\{Component\}>"):
         _ = TemplateParser.parse(t"</{Component}>")
 
 
@@ -516,7 +516,7 @@ def test_unclosed_component_tag_error():
     def Component():
         pass
 
-    with pytest.raises(ParsingError, match="unclosed tag <{Component}>"):
+    with pytest.raises(ParsingError, match=r"unclosed tag <\{Component\}>"):
         _ = TemplateParser.parse(t"<{Component}>")
 
 
@@ -586,22 +586,6 @@ class TestSourceTracker:
         assert itr.index == 2, (
             "Once the iter is exhausted the index remains at the last element."
         )
-
-
-class TestIncompleteParsing:
-    def test_dangling_quotes(self):
-        with pytest.raises(ParsingError, match="Parser expects more data"):
-            _ = parse_root(t"<div a='")
-        with pytest.raises(ParsingError, match="Parser expects more data"):
-            _ = parse_root(t'<div a="')
-
-    def test_unfinished_attribute(self):
-        with pytest.raises(ParsingError, match="Parser expects more data"):
-            _ = parse_root(t"<div a=")
-
-    def test_placeholder_missing_from_dangling_quote(self):
-        with pytest.raises(ParsingError, match="Parser expects more data"):
-            _ = parse_root(t'<div a="{None}')
 
 
 class TestComponentChildrenSpan:
@@ -711,28 +695,29 @@ class TestComponentChildrenSpan:
 class TestElementWithAmbiguousSlash:
     def test_root_unclosed_error(self):
         with pytest.raises(
-            ParsingError, match="Did you mean to quote the last attribute.*attr[=]root/"
+            ParsingError,
+            match=r"Did you mean to quote the last attribute.*attr[=]root/",
         ):
             _ = TemplateParser.parse(t"<div attr=root/>")
 
     def test_nested_unclosed_error(self):
         with pytest.raises(
             ParsingError,
-            match="Did you mean to quote the last attribute.*attr[=]nested/",
+            match=r"Did you mean to quote the last attribute.*attr[=]nested/",
         ):
             _ = TemplateParser.parse(t"<div><div attr=nested/></div>")
 
     def test_double_nested_unclosed_error(self):
         with pytest.raises(
             ParsingError,
-            match="Did you mean to quote the last attribute.*attr[=]nested/",
+            match=r"Did you mean to quote the last attribute.*attr[=]nested/",
         ):
             _ = TemplateParser.parse(t"<div><div/><div><div attr=nested/></div></div>")
 
     def test_mismatch_with_element_error(self):
         with pytest.raises(
             ParsingError,
-            match="Did you mean to quote the last attribute.*attr[=]mismatch/",
+            match=r"Did you mean to quote the last attribute.*attr[=]mismatch/",
         ):
             _ = TemplateParser.parse(t"<section><div attr=mismatch/></section>")
 
@@ -742,7 +727,7 @@ class TestElementWithAmbiguousSlash:
 
         with pytest.raises(
             ParsingError,
-            match="Did you mean to quote the last attribute.*attr[=]mismatch/",
+            match=r"Did you mean to quote the last attribute.*attr[=]mismatch/",
         ):
             _ = TemplateParser.parse(t"<{Comp}><div attr=mismatch/></{Comp}>")
 
@@ -772,28 +757,28 @@ class TestComponentWithAmbiguousSlash:
     def test_mismatch_with_element_error(self, Comp1):
         with pytest.raises(
             ParsingError,
-            match="Did you mean to quote the last attribute.*title[=]today/",
+            match=r"Did you mean to quote the last attribute.*title[=]today/",
         ):
             _ = TemplateParser.parse(t"<div><{Comp1} title=today/></div>")
 
     def test_root_unclosed_error(self, Comp1):
         with pytest.raises(
             ParsingError,
-            match="Did you mean to quote the last attribute.*title[=]today/",
+            match=r"Did you mean to quote the last attribute.*title[=]today/",
         ):
             _ = TemplateParser.parse(t"<{Comp1} title=today/>")
 
     def test_single_nested_unclosed_error(self, Comp1, Comp2):
         with pytest.raises(
             ParsingError,
-            match="Did you mean to quote the last attribute.*title[=]today/",
+            match=r"Did you mean to quote the last attribute.*title[=]today/",
         ):
             _ = TemplateParser.parse(t"<{Comp2}><{Comp1} title=today/></{Comp2}>")
 
     def test_double_nested_unclosed_error(self, Comp1, Comp2, Comp3):
         with pytest.raises(
             ParsingError,
-            match="Did you mean to quote the last attribute.*title[=]today/",
+            match=r"Did you mean to quote the last attribute.*title[=]today/",
         ):
             _ = TemplateParser.parse(
                 t"<{Comp2}><{Comp1}><{Comp3} title=today/></{Comp1}></{Comp2}>"

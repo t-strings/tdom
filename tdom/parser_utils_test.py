@@ -202,12 +202,12 @@ class TestParserPositionTranslator:
 
         with pytest.raises(
             ValueError,
-            match="Positions inside interpolation placeholders are undefined.",
+            match=r"Positions inside interpolation placeholders are undefined.",
         ):
             _ = ppt.translate(LinePosition(line=2, offset=1))
         with pytest.raises(
             ValueError,
-            match="Positions inside interpolation placeholders are undefined.",
+            match=r"Positions inside interpolation placeholders are undefined.",
         ):
             _ = ppt.translate(
                 LinePosition(line=2, offset=len(ph_config.make_placeholder(0)) - 1)
