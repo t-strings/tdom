@@ -73,6 +73,16 @@ class SourceReader:
         filled_template = ref.bind(self.template.interpolations)
         return template_repr(filled_template)[:limit]
 
+    def span_to_repr(self, span: TemplateSpan, limit: int | None = None) -> str:
+        """
+        Extract template span and convert to string representation.
+        """
+        filled_template = span.extract(self.template)
+        return template_repr(filled_template)[:limit]
+
+    def span_to_template(self, span: TemplateSpan) -> Template:
+        return span.extract(self.template)
+
     def make_template_pos_msg(self, source_pos: PartPosition) -> str:
         """
         Make a message to display the line number and offset number.
