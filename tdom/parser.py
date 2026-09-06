@@ -504,24 +504,11 @@ class TemplateParser(HTMLParser):
         self.sinfo_table = {}
 
     def close(self) -> None:
-        if self.waiting_for_data():
-            # We apply heuristics here to try to guess why the parser didn't finish.
-            if self.rawdata.count('"') % 2 == 1 or self.rawdata.count("'") % 2 == 1:
-                raise ValueError(
-                    "Parser expects more data, maybe you left an attribute quote unclosed?"
-                )
-            else:
-                raise ValueError(
-                    "Parser expects more data, is the template valid html?"
-                )
+        super().close()
         if self.stack:
             raise ValueError("Invalid HTML structure: unclosed tags remain.")
         if self.source and self.source.has_placeholders():
             raise ValueError("Some placeholders were never resolved.")
-        super().close()
-
-    def waiting_for_data(self):
-        return len(self.rawdata) > 0
 
     # ------------------------------------------
     # Getting the parsed node tree
