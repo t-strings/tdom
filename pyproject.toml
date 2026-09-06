@@ -69,6 +69,9 @@ exclude = [
 
 [tool.ruff.lint]
 extend-select = ["D210", "D300", "ICN"]
+extend-ignore = [
+  "PLC2801", # unnecessary-dunder-call flags our correct __html__ invocations
+]
 preview = true
 
 [tool.ruff.lint.flake8-import-conventions]

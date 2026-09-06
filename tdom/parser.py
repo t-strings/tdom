@@ -196,7 +196,7 @@ class SourceTracker:
         Falls back to a synthetic expression if the original is empty.
         """
         ip = self.template.interpolations[i_index]
-        return ip.expression if ip.expression else f"{{{fallback_prefix}-{i_index}}}"
+        return ip.expression or f"{{{fallback_prefix}-{i_index}}}"
 
     def format_starttag(self, i_index: int) -> str:
         """Format a component start tag for error messages."""
