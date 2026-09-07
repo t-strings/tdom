@@ -134,6 +134,3 @@ class TTree:
 
     def unpack_sinfo_table(self) -> dict[PartPosition, TagSourceInfo]:
         return {sinfo.starttag_pos: sinfo for sinfo in self.sinfos}
-
-
-type TTag = TElement | TComponent | TFragment
