@@ -297,9 +297,7 @@ class ParsingErrorHelper:
         self.run_unclosed_ambiguous_slash_checks(parent, e)
         return e
 
-    def get_closed_tcomps(
-        self, root: OpenTComponent, recurse_component_children: bool = False
-    ) -> list[TComponent]:
+    def get_closed_tcomps(self, root: OpenTComponent) -> list[TComponent]:
         """
         Get TComponents that were closed during parsing starting from `root`.
 
@@ -314,9 +312,8 @@ class ParsingErrorHelper:
             node = nodes.pop()
             if isinstance(node, TComponent):
                 tcomps.append(node)
-                if recurse_component_children:
-                    children = self.tcomponent_children.get(node, [])
-                    nodes.extend(children)
+                children = self.tcomponent_children.get(node, [])
+                nodes.extend(children)
             elif isinstance(node, TElement):
                 nodes.extend(node.children)
         return tcomps
@@ -393,9 +390,7 @@ class ParsingErrorHelper:
             # CASE: t"<{C2}><{C1} attr=/></{C2}>"
             # Maybe user meant to self-close <{C1} ...>, but closed by </{C2}> leaving <{C2}...> open?
             # CASE: t"<{C3}><{C2}><{C1} attr=/></{C2}></{C3}>"
-            for comp in reversed(
-                self.get_closed_tcomps(parent, recurse_component_children=True)
-            ):
+            for comp in reversed(self.get_closed_tcomps(parent)):
                 if (
                     comp.end_i_index is not None
                     and comp.start_i_index != comp.end_i_index
