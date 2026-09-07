@@ -78,8 +78,6 @@ class TDocumentType(TNode):
 class TFragment(TNode):
     children: tuple[TNode, ...] = field(default_factory=tuple)
 
-    source_pos: PartPosition | None = field(default=None, compare=False)
-
 
 @dataclass(slots=True, frozen=True)
 class TElement(TNode):

@@ -87,7 +87,6 @@ class OpenTElement:
 
 @dataclass
 class OpenTFragment:
-    source_pos: PartPosition | None = None
     children: list[TNode] = field(default_factory=list)
 
 
