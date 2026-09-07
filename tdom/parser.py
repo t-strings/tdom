@@ -319,8 +319,7 @@ class ParsingErrorHelper:
         return tcomps
 
     def has_ambiguous_forward_slash(
-        self,
-        sinfo: OpenTagSourceInfo | TagSourceInfo | None,
+        self, sinfo: OpenTagSourceInfo | TagSourceInfo
     ) -> bool:
         """
         Detect when an unquoted attribute value consumes a trailing "/" that
@@ -334,8 +333,7 @@ class ParsingErrorHelper:
         with "<{Component} title={title} />".
         """
         return (
-            sinfo is not None
-            and self.reader.span_to_template(sinfo.starttag_span)
+            self.reader.span_to_template(sinfo.starttag_span)
             .strings[-1]
             .endswith("/>")  # ends with trailing slash
             and not sinfo.startend  # but was not parsed as startend
