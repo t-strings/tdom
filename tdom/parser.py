@@ -106,7 +106,7 @@ class OpenTComponent:
     children: list[TNode] = field(default_factory=list)
 
 
-type OpenTag = OpenTElement | OpenTFragment | OpenTComponent
+type OpenTag = OpenTElement | OpenTComponent
 
 
 def configure_source_tracker(
@@ -318,7 +318,7 @@ class ParsingErrorHelper:
                 if recurse_component_children:
                     children = self.tcomponent_children.get(node, [])
                     nodes.extend(children)
-            elif isinstance(node, (TElement, TFragment)):
+            elif isinstance(node, TElement):
                 nodes.extend(node.children)
         return tcomps
 
@@ -444,7 +444,7 @@ class TemplateParser(HTMLParser):
     # Parse state helpers
     # ------------------------------------------
 
-    def get_parent(self) -> OpenTag:
+    def get_parent(self) -> OpenTag | OpenTFragment:
         """Return the current parent node to which new children should be added."""
         return self.stack[-1] if self.stack else self.root
 
@@ -585,8 +585,6 @@ class TemplateParser(HTMLParser):
                     children=tuple(children),
                     source_pos=source_pos,
                 )
-            case OpenTFragment(children=children, source_pos=source_pos):
-                return TFragment(children=tuple(children), source_pos=source_pos)
             case OpenTComponent(
                 start_i_index=start_i_index,
                 children_start=children_start,
@@ -630,8 +628,6 @@ class TemplateParser(HTMLParser):
                         tag_ref, self.get_source_pos()
                     )
                 return None
-            case OpenTFragment():
-                raise ParsingAssertionError("We do not support anonymous fragments.")
             case OpenTComponent():
                 if tag_ref.is_literal:
                     raise make_error_helper(self).make_mismatch_error(
@@ -744,12 +740,7 @@ class TemplateParser(HTMLParser):
     def close(self) -> None:
         super().close()
         if self.stack:
-            parent = self.stack[-1]
-            if not isinstance(parent, (OpenTElement, OpenTComponent)):
-                raise ParsingAssertionError(
-                    "OpenTFragment or unrecognized OpenTag should not be on the stack."
-                )
-            raise make_error_helper(self).make_unclosed_starttag_error(parent)
+            raise make_error_helper(self).make_unclosed_starttag_error(self.stack[-1])
         if self.source and self.source.has_placeholders():
             raise ParsingError("Some placeholders were never resolved.")
 
@@ -759,11 +750,10 @@ class TemplateParser(HTMLParser):
 
     def get_tnode(self) -> TNode:
         """Get the Node tree parsed from the input HTML."""
-        # TODO: consider always returning a TTag?
         if len(self.root.children) > 1:
             # The parse structure results in multiple root elements, so we
             # return a Fragment to hold them all.
-            return self.finalize_tag(self.root)
+            return TFragment(children=tuple(self.root.children))
         elif len(self.root.children) == 1:
             # The parse structure results in a single root element, so we
             # return that element directly. This will be a non-Fragment Node.
@@ -772,7 +762,7 @@ class TemplateParser(HTMLParser):
             # Special case: the parse structure is empty; we treat
             # this as an empty document fragment.
             # CONSIDER: or as an empty text node?
-            return self.finalize_tag(self.root)
+            return TFragment(children=())
 
     def get_ttree(self) -> TTree:
         return TTree(
