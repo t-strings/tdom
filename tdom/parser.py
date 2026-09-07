@@ -265,7 +265,7 @@ class ParsingErrorHelper:
         e = ParsingError(
             f"Mismatched closing tag </{endtag_repr}> at {endtag_pos_msg} for {starttag_repr} at {starttag_pos_msg}."
         )
-        if self.has_ambiguous_forward_slash(starttag_sinfo, starttag_attrs):
+        if self.has_ambiguous_forward_slash(starttag_sinfo):
             e.add_note(
                 f'Did you mean to quote the last attribute or put a space before "/>" for "{starttag_repr}" at {starttag_pos_msg}?'
             )
@@ -325,7 +325,6 @@ class ParsingErrorHelper:
     def has_ambiguous_forward_slash(
         self,
         sinfo: OpenTagSourceInfo | TagSourceInfo | None,
-        attrs: tuple[TAttribute, ...],
     ) -> bool:
         """
         Detect when an unquoted attribute value consumes a trailing "/" that
@@ -339,29 +338,11 @@ class ParsingErrorHelper:
         with "<{Component} title={title} />".
         """
         return (
-            # has source info
             sinfo is not None
-            # has attributes
-            and len(attrs) > 0
-            # last attribute ends with "/"
-            # @NOTE: spread and interpolated attrs never do
-            and (
-                (
-                    isinstance(attrs[-1], TLiteralAttribute)
-                    and attrs[-1].value is not None
-                    and attrs[-1].value.endswith("/")
-                )
-                or (
-                    isinstance(attrs[-1], TTemplatedAttribute)
-                    and attrs[-1].value_ref.strings[-1].endswith("/")
-                )
-            )
-            # original starttag ends with "/>",
             and self.reader.span_to_template(sinfo.starttag_span)
             .strings[-1]
-            .endswith("/>")
-            # if parsed AS startend already then its not ambiguous
-            and not sinfo.startend
+            .endswith("/>")  # ends with trailing slash
+            and not sinfo.startend  # but was not parsed as startend
         )
 
     def run_unclosed_ambiguous_slash_checks(
@@ -374,7 +355,7 @@ class ParsingErrorHelper:
         """
         if isinstance(
             parent, (OpenTElement, OpenTComponent)
-        ) and self.has_ambiguous_forward_slash(parent.sinfo, parent.attrs):
+        ) and self.has_ambiguous_forward_slash(parent.sinfo):
             # CASE: t"<{C1} attr={value}/>" -- maybe user meant to self-close?
             # CASE: t"<div attr={value}/>" -- maybe user meant to self-close?
             starttag_span = parent.sinfo.starttag_span
@@ -396,7 +377,7 @@ class ParsingErrorHelper:
                         if child.source_pos is not None
                         else None
                     )
-                    if sinfo and self.has_ambiguous_forward_slash(sinfo, child.attrs):
+                    if sinfo and self.has_ambiguous_forward_slash(sinfo):
                         full_starttag_repr = self.reader.span_to_repr(
                             sinfo.starttag_span
                         )
@@ -435,7 +416,7 @@ class ParsingErrorHelper:
                         if comp.source_pos is not None
                         else None
                     )
-                    if sinfo and self.has_ambiguous_forward_slash(sinfo, comp.attrs):
+                    if sinfo and self.has_ambiguous_forward_slash(sinfo):
                         full_starttag_repr = self.reader.span_to_repr(
                             sinfo.starttag_span
                         )
