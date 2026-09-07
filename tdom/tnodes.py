@@ -78,8 +78,6 @@ class TDocumentType(TNode):
 class TFragment(TNode):
     children: tuple[TNode, ...] = field(default_factory=tuple)
 
-    source_pos: PartPosition | None = field(default=None, compare=False)
-
 
 @dataclass(slots=True, frozen=True)
 class TElement(TNode):
@@ -136,6 +134,3 @@ class TTree:
 
     def unpack_sinfo_table(self) -> dict[PartPosition, TagSourceInfo]:
         return {sinfo.starttag_pos: sinfo for sinfo in self.sinfos}
-
-
-type TTag = TElement | TComponent | TFragment
