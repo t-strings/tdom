@@ -52,20 +52,6 @@ class SourceReader:
 
     template: Template
 
-    def values_match(self, i_index1: int, i_index2: int) -> bool:
-        """Check if the two interpolation values match.
-
-        @NOTE: This is meant to be used for reporting *better* error messages
-        after an error has already occurred.
-
-        @TODO: Consider pulling this into another helper class with other
-        "inspection" type methods.
-        """
-        return (
-            self.template.interpolations[i_index1].value
-            == self.template.interpolations[i_index2].value
-        )
-
     def ref_to_repr(self, ref: TemplateRef) -> str:
         """
         Convert tref to string representation of the underlying template.

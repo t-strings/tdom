@@ -13,14 +13,6 @@ class TestSourceReader:
     More in depth tests are handled in more specialized test.
     """
 
-    def test_values_match(self):
-        def comp() -> Template:
-            return t""
-
-        reader = SourceReader(template=t"<{comp}></{comp}>{'content'}")
-        assert reader.values_match(0, 1)
-        assert not reader.values_match(0, 2)
-
     def test_ref_to_repr(self):
         reader = SourceReader(template=t"a{'b'!s}c")
         assert (
