@@ -94,13 +94,16 @@ class ProcessingError(TemplatingError):
             TemplateErrorState(
                 template=template,
                 ttree=ttree,
-                tnode=self.nearest_tnode,
+                tnode=self.pop_nearest_tnode(),
             )
         )
-        # RESET
-        self.nearest_tnode = None
 
-    def stash_nearest_tnode(self, tnode: TNode):
+    def pop_nearest_tnode(self) -> TNode | None:
+        t = self.nearest_tnode
+        self.nearest_tnode = None
+        return t
+
+    def stash_nearest_tnode(self, tnode: TNode) -> None:
         if self.nearest_tnode is None:
             self.nearest_tnode = tnode
 
