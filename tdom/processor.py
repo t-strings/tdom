@@ -73,10 +73,17 @@ class ProcessingError(TemplatingError):
     template_e_states: list[TemplateErrorState]
     " Stack of processor template error states if applicable. "
 
+    closed: bool = False
+    " Mark so we don't inadvertantly catch this as just opened. "
+
     def __init__(self, msg: str = "") -> None:
         super().__init__(msg)
         self.template_e_states = []
         self.last_tnode = None
+
+    def close(self):
+        assert not self.closed, "Processing error cannot be closed twice."
+        self.closed = True
 
 
 class AttributeProcessingError(ProcessingError):
@@ -658,13 +665,9 @@ class ComponentProcessor(IComponentProcessor):
             )
         try:
             tattrs = _resolve_t_attrs(attrs, template.interpolations)
-        except ProcessingError:  # @TODO: Is there a native way to guard this?
-            raise
         except Exception as e:
-            # @TODO: Is this an overcatch??
-            # Causes:
-            # - Could be a failed "callback" formatter
-            #
+            if isinstance(e, ProcessingError) and not e.closed:
+                raise  # we raised this ourselves
             raise AttributeProcessingError(
                 "Error occurred processing component attributes"
             ) from e
@@ -811,7 +814,11 @@ class TemplateProcessor(ITemplateProcessor):
         try:
             return self._process_template(root_template, assume_ctx)
         except ProcessingError as e:
+            assert not e.closed, (
+                "Exceptions raised by another processor must be wrapped."
+            )
             self._add_process_error_notes(e)
+            e.close()
             raise
 
     def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
@@ -827,6 +834,7 @@ class TemplateProcessor(ITemplateProcessor):
         try:
             return self._process_tnode(template, last_ctx, ttree.root)
         except ProcessingError as e:
+            assert not e.closed, "A nested closed error should be chained."
             e.template_e_states.append(
                 TemplateErrorState(
                     template=template,
@@ -865,10 +873,20 @@ class TemplateProcessor(ITemplateProcessor):
                         template, last_ctx, tag, attrs, children
                     )
                 case TText(ref):
-                    return self._process_texts(template, last_ctx, ref)
+                    try:
+                        return self._process_texts(template, last_ctx, ref)
+                    except Exception as e:
+                        if isinstance(e, ProcessingError) and not e.closed:
+                            raise
+                        raise TextProcessingError(
+                            "An error occurred processing text."
+                        ) from e
                 case _:
                     raise ValueError(f"Unrecognized tnode: {tnode}")
         except ProcessingError as e:
+            assert not e.closed, (
+                "Exceptions raised by another processor must be wrapped."
+            )
             if e.last_tnode is None:
                 e.last_tnode = tnode
             raise
@@ -977,9 +995,9 @@ class TemplateProcessor(ITemplateProcessor):
         """
         try:
             resolved_attrs = _resolve_t_attrs(attrs, template.interpolations)
-        except ProcessingError:  # @TODO: Is there a native way to guard this?
-            raise
         except Exception as e:
+            if isinstance(e, ProcessingError) and not e.closed:
+                raise
             raise AttributeProcessingError(
                 "Unexpected error occurred while processing element attrs."
             ) from e
@@ -1099,9 +1117,7 @@ class TemplateProcessor(ITemplateProcessor):
         """
         value = format_interpolation(template.interpolations[values_index])
         value = t.cast(NormalTextInterpolationValue, value)  # ty: ignore[redundant-cast]
-        return self._process_normal_text_from_value(
-            template, last_ctx, value
-        )
+        return self._process_normal_text_from_value(template, last_ctx, value)
 
     def _process_normal_text_from_value(
         self,
@@ -1137,11 +1153,7 @@ class TemplateProcessor(ITemplateProcessor):
             # here for completeness.
             # @NOTE: An actual Markup() would actually pass as a str() but a
             # custom object with __html__ might not.
-            try:
-                return Markup(value.__html__())
-            except Exception as e:
-                pe = TextProcessingError("Error occurred when processing text.")
-                raise pe from e
+            return Markup(value.__html__())
         else:
             # @DESIGN: Everything that isn't an object we recognize is
             # coerced to a str() and emitted.

@@ -2381,7 +2381,7 @@ class _BadHTMLDunder:
 
 class TestProcessingException:
     def test_attr_error_has_matching_tnode(self):
-        """AttriubteProcessingError should point to tnode where error first occurred."""
+        """AttributeProcessingError should point to tnode where error first occurred."""
         invalid_t = t"<section><div aria={0}><span></span></div></section>"  # 0 is invalid aria value
         with pytest.raises(AttributeProcessingError) as exc_info:
             _ = html(invalid_t)
@@ -2428,3 +2428,16 @@ class TestProcessingException:
         assert isinstance(exc_info.value.__cause__, ParsingError), (
             "ProcessingError should be chained to parsing error."
         )
+
+    def test_other_processing_errors(self):
+        """Test that a ProcessingError raised by another processor is just a regular exception."""
+        from markupsafe import Markup
+
+        def bad_attr() -> Markup:
+            return Markup(html(t"<div aria={0}></div>"))
+
+        with pytest.raises(ProcessingError) as exc_info:
+            _ = html(t"<div>{bad_attr:callback}</div>")
+        assert isinstance(exc_info.value, ProcessingError)
+        assert isinstance(exc_info.value.__cause__, ProcessingError)
+        assert exc_info.value is not exc_info.value.__cause__
