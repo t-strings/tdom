@@ -67,22 +67,117 @@ class TemplateErrorState:
 class ProcessingError(TemplatingError):
     """General error when processing a template."""
 
-    last_tnode: TNode | None
+    nearest_tnode: TNode | None
     " Nearest tnode from error if applicable. "
 
     template_e_states: list[TemplateErrorState]
     " Stack of processor template error states if applicable. "
 
-    closed: bool = False
+    closed: bool
     " Mark so we don't inadvertantly catch this as just opened. "
 
     def __init__(self, msg: str = "") -> None:
         super().__init__(msg)
         self.template_e_states = []
-        self.last_tnode = None
+        self.nearest_tnode = None
+        self.closed = False
 
-    def close(self):
+    def push_unparsed_template_error(self, template: Template) -> None:
+        assert not self.closed, "Cannot modify once closed."
+        self.template_e_states.append(
+            TemplateErrorState(template=template, ttree=None, tnode=None)
+        )
+
+    def push_template_error(self, template: Template, ttree: TTree) -> None:
+        assert not self.closed, "Cannot modify once closed."
+        self.template_e_states.append(
+            TemplateErrorState(
+                template=template,
+                ttree=ttree,
+                tnode=self.nearest_tnode,
+            )
+        )
+        # RESET
+        self.nearest_tnode = None
+
+    def stash_nearest_tnode(self, tnode: TNode):
+        if self.nearest_tnode is None:
+            self.nearest_tnode = tnode
+
+    def _add_process_error_notes(
+        self,
+    ) -> None:
+        """
+        Add the accumulated notes from unwinding nested processing.
+        """
+        for e_state in reversed(self.template_e_states):
+            if not e_state.ttree:
+                # Just skip this special case where processing could not
+                # even get started because the template wouldn't parse.
+                continue
+            elif not (e_state.tnode and e_state.template):
+                raise AssertionError(
+                    "This should not happen if we have properly contained the error."
+                )
+            else:
+                self._add_tnode_error_note(
+                    e_state.ttree, e_state.tnode, e_state.template
+                )
+
+    def _add_tnode_error_note(
+        self,
+        ttree: TTree,  # The root metadata for the "current" template
+        tnode: TNode,  # The leafmost tnode where the error was caught for the "current" template
+        template: Template,  # The "current" template that was being processed
+    ) -> None:
+        """
+        Add a single note accumulated either at the initial tnode of the error or
+        a subsequent tnode in another template passed through during unwinding
+        from nested processing.
+        """
+        reader = SourceReader(template)
+        source_pos = (
+            tnode.source_pos
+            if isinstance(tnode, (TElement, TComponent, TComment, TDocumentType, TText))
+            else None
+        )
+
+        if isinstance(tnode, (TElement, TComponent)):
+            sinfo_table = ttree.unpack_sinfo_table()
+            sinfo = sinfo_table.get(source_pos, None) if source_pos else None
+            if sinfo:
+                starttag_repr = reader.span_to_repr(sinfo.starttag_span)
+                starttag_pos_msg = reader.make_template_pos_msg(sinfo.starttag_pos)
+            else:
+                if isinstance(tnode, TComponent):
+                    starttag_repr = reader.ref_to_repr(
+                        TemplateRef(strings=("<", "...>"), i_start=tnode.start_i_index)
+                    )
+                elif isinstance(tnode, TElement):
+                    starttag_repr = f"<{tnode.tag} ...>"
+                else:
+                    starttag_repr = "unknown source"  # This would likely be a bug.
+        else:
+            if isinstance(tnode, TText):
+                starttag_repr = reader.ref_to_repr(tnode.ref)
+            elif isinstance(tnode, TComment):
+                starttag_repr = f"<!--{reader.ref_to_repr(tnode.ref)}-->"
+            elif isinstance(tnode, TDocumentType):
+                starttag_repr = f"<!DOCTYPE {tnode.text}>"
+            else:
+                # @TODO: TFragment or TNode/?
+                starttag_repr = tnode.__class__.__name__.upper()
+
+        if source_pos:
+            starttag_pos_msg = reader.make_template_pos_msg(source_pos)
+        else:
+            starttag_pos_msg = "unknown location"  # source_pos is optional right now
+
+        self.add_note(f"Error occurred at {starttag_repr} at {starttag_pos_msg}.")
+
+    def close(self) -> None:
         assert not self.closed, "Processing error cannot be closed twice."
+        self._add_process_error_notes()
         self.closed = True
 
 
@@ -730,79 +825,6 @@ class TemplateProcessor(ITemplateProcessor):
 
     uppercase_doctype: bool = False  # DOCTYPE vs doctype
 
-    def _add_process_error_notes(
-        self,
-        e: ProcessingError,
-    ) -> None:
-        """
-        Add the accumulated notes, from unwinding nested processing, into `e`.
-        """
-        for e_state in reversed(e.template_e_states):
-            if not e_state.ttree:
-                # Just skip this special case where processing could not
-                # even get started because the template wouldn't parse.
-                continue
-            elif not (e_state.tnode and e_state.template):
-                raise AssertionError(
-                    "This should not happen if we have properly contained the error."
-                )
-            else:
-                self._add_tnode_error_note(
-                    e, e_state.ttree, e_state.tnode, e_state.template
-                )
-
-    def _add_tnode_error_note(
-        self,
-        e: ProcessingError,
-        ttree: TTree,  # The root metadata for the "current" template
-        tnode: TNode,  # The leafmost tnode where the error was caught for the "current" template
-        template: Template,  # The "current" template that was being processed
-    ) -> None:
-        """
-        Add a single note accumulated either at the initial tnode of the error or
-        a subsequent tnode in another template passed through during unwinding
-        from nested processing.
-        """
-        reader = SourceReader(template)
-        source_pos = (
-            tnode.source_pos
-            if isinstance(tnode, (TElement, TComponent, TComment, TDocumentType, TText))
-            else None
-        )
-
-        if isinstance(tnode, (TElement, TComponent)):
-            sinfo_table = ttree.unpack_sinfo_table()
-            sinfo = sinfo_table.get(source_pos, None) if source_pos else None
-            if sinfo:
-                starttag_repr = reader.span_to_repr(sinfo.starttag_span)
-                starttag_pos_msg = reader.make_template_pos_msg(sinfo.starttag_pos)
-            else:
-                if isinstance(tnode, TComponent):
-                    starttag_repr = reader.ref_to_repr(
-                        TemplateRef(strings=("<", "...>"), i_start=tnode.start_i_index)
-                    )
-                elif isinstance(tnode, TElement):
-                    starttag_repr = f"<{tnode.tag} ...>"
-                else:
-                    starttag_repr = "unknown source"  # This would likely be a bug.
-        else:
-            if isinstance(tnode, TText):
-                starttag_repr = reader.ref_to_repr(tnode.ref)
-            elif isinstance(tnode, TComment):
-                starttag_repr = f"<!--{reader.ref_to_repr(tnode.ref)}-->"
-            elif isinstance(tnode, TDocumentType):
-                starttag_repr = f"<!DOCTYPE {tnode.text}>"
-            else:
-                # @TODO: TFragment or TNode/?
-                starttag_repr = tnode.__class__.__name__.upper()
-
-        if source_pos:
-            starttag_pos_msg = reader.make_template_pos_msg(source_pos)
-        else:
-            starttag_pos_msg = "unknown location"  # source_pos is optional right now
-
-        e.add_note(f"Error occurred at {starttag_repr} at {starttag_pos_msg}.")
-
     def process(
         self,
         root_template: Template,
@@ -817,7 +839,6 @@ class TemplateProcessor(ITemplateProcessor):
             assert not e.closed, (
                 "Exceptions raised by another processor must be wrapped."
             )
-            self._add_process_error_notes(e)
             e.close()
             raise
 
@@ -827,22 +848,13 @@ class TemplateProcessor(ITemplateProcessor):
         except ParsingError as parsing_e:
             # Chain the parsing error into a processing error.
             e = ProcessingError("Failed to parse template.")
-            e.template_e_states.append(
-                TemplateErrorState(template)
-            )  # Special case where nothing is set yet.
+            e.push_unparsed_template_error(template)
             raise e from parsing_e
         try:
             return self._process_tnode(template, last_ctx, ttree.root)
         except ProcessingError as e:
             assert not e.closed, "A nested closed error should be chained."
-            e.template_e_states.append(
-                TemplateErrorState(
-                    template=template,
-                    ttree=ttree,
-                    tnode=e.last_tnode,
-                )
-            )
-            e.last_tnode = None
+            e.push_template_error(template, ttree=ttree)
             raise
 
     def _process_tnode(
@@ -887,8 +899,7 @@ class TemplateProcessor(ITemplateProcessor):
             assert not e.closed, (
                 "Exceptions raised by another processor must be wrapped."
             )
-            if e.last_tnode is None:
-                e.last_tnode = tnode
+            e.stash_nearest_tnode(tnode)
             raise
 
     def _process_document_type(
