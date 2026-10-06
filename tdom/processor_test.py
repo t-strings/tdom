@@ -2441,3 +2441,8 @@ class TestProcessingException:
         assert isinstance(exc_info.value, ProcessingError)
         assert isinstance(exc_info.value.__cause__, ProcessingError)
         assert exc_info.value is not exc_info.value.__cause__
+
+    def test_topmost_parsing_error(self):
+        """Pass a topmost parsing error back to the user."""
+        with pytest.raises(ParsingError, match="Invalid HTML structure"):
+            _ = html(t"<div>")

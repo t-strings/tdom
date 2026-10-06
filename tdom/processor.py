@@ -837,7 +837,7 @@ class TemplateProcessor(ITemplateProcessor):
         Process a TDOM compatible template into a string.
         """
         try:
-            return self._process_template(root_template, assume_ctx)
+            return self._process_template(root_template, assume_ctx, root=True)
         except ProcessingError as e:
             assert not e.closed, (
                 "Exceptions raised by another processor must be wrapped."
@@ -845,10 +845,14 @@ class TemplateProcessor(ITemplateProcessor):
             e.close()
             raise
 
-    def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
+    def _process_template(
+        self, template: Template, last_ctx: ProcessContext, root: bool = False
+    ) -> str:
         try:
             ttree = self.parser_api.to_ttree(template)
         except ParsingError as parsing_e:
+            if root:
+                raise  # Special case where we pass parsing exception straight out
             # Chain the parsing error into a processing error.
             e = ProcessingError("Failed to parse template.")
             e.push_unparsed_template_error(template)
