@@ -62,8 +62,6 @@ class TemplateErrorState:
     template: Template
     ttree: TTree | None = None
     tnode: TNode | None = None
-    values_index: int | None = None
-    iter_index: int | None = None
 
 
 class ProcessingError(TemplatingError):
@@ -75,18 +73,10 @@ class ProcessingError(TemplatingError):
     template_e_states: list[TemplateErrorState]
     " Stack of processor template error states if applicable. "
 
-    values_index: int | None
-    " Index of the last failed interpolation. "
-
-    iter_index: int | None
-    " Iteration of the last failed iterable value. "
-
     def __init__(self, msg: str = "") -> None:
         super().__init__(msg)
         self.template_e_states = []
         self.last_tnode = None
-        self.values_index = None
-        self.iter_index = None
 
 
 class AttributeProcessingError(ProcessingError):
@@ -842,14 +832,9 @@ class TemplateProcessor(ITemplateProcessor):
                     template=template,
                     ttree=ttree,
                     tnode=e.last_tnode,
-                    values_index=e.values_index,
-                    iter_index=e.iter_index,
                 )
             )
-            # Reset everything.
             e.last_tnode = None
-            e.values_index = None
-            e.iter_index = None
             raise
 
     def _process_tnode(
@@ -1115,7 +1100,7 @@ class TemplateProcessor(ITemplateProcessor):
         value = format_interpolation(template.interpolations[values_index])
         value = t.cast(NormalTextInterpolationValue, value)  # ty: ignore[redundant-cast]
         return self._process_normal_text_from_value(
-            template, last_ctx, value, values_index=values_index
+            template, last_ctx, value
         )
 
     def _process_normal_text_from_value(
@@ -1123,8 +1108,6 @@ class TemplateProcessor(ITemplateProcessor):
         template: Template,
         last_ctx: ProcessContext,
         value: NormalTextInterpolationValue,
-        values_index: int | None = None,
-        iter_index: int | None = None,
     ) -> str:
         """
         Process a single value into a string as "normal text".
@@ -1139,23 +1122,15 @@ class TemplateProcessor(ITemplateProcessor):
             # implementing HasHTMLDunder.
             return self.escape_html_text(value)
         elif isinstance(value, Template):
-            try:
-                return self._process_template(value, last_ctx)
-            except ProcessingError as e:
-                assert e.values_index is None and e.iter_index is None
-                e.values_index = values_index
-                e.iter_index = iter_index
-                raise
+            return self._process_template(value, last_ctx)
         elif isinstance(value, Iterable):
             return "".join(
                 self._process_normal_text_from_value(
                     template,
                     last_ctx,
                     v,
-                    iter_index=iter_index,
-                    values_index=values_index,
                 )
-                for iter_index, v in enumerate(value)
+                for v in value
             )
         elif isinstance(value, HasHTMLDunder):
             # @NOTE: markupsafe's escape does this for us but we put this in
@@ -1166,8 +1141,6 @@ class TemplateProcessor(ITemplateProcessor):
                 return Markup(value.__html__())
             except Exception as e:
                 pe = TextProcessingError("Error occurred when processing text.")
-                pe.values_index = values_index
-                pe.iter_index = iter_index
                 raise pe from e
         else:
             # @DESIGN: Everything that isn't an object we recognize is
