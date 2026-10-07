@@ -18,7 +18,7 @@ from .parser import ParsingError
 from .processor import (
     AttributeProcessingError,
     CachedTemplateParserProxy,
-    ComponentInvocationError,
+    ComponentProcessingError,
     ProcessContext,
     ProcessingError,
     TemplateParserProxy,
@@ -1538,7 +1538,7 @@ class TestPrepComponentKwargs:
             pass
 
         callable_info = get_callable_info(InputElement)
-        with pytest.raises(ComponentInvocationError):
+        with pytest.raises(ComponentProcessingError):
             assert (
                 prep_component_kwargs(callable_info, {"type2": 15}, children=t"") == {}
             )
@@ -1583,7 +1583,7 @@ class TestPrepComponentKwargs:
 
         callable_info = get_callable_info(Comp)
         with pytest.raises(
-            ComponentInvocationError, match="The children attribute is reserved"
+            ComponentProcessingError, match="The children attribute is reserved"
         ):
             _ = prep_component_kwargs(
                 callable_info, {"children": t""}, children=t"<span></span>"
@@ -1674,7 +1674,7 @@ class TestFunctionComponent:
         )
 
     def test_missing_props_error(self):
-        with pytest.raises(ComponentInvocationError):
+        with pytest.raises(ComponentProcessingError):
             _ = html(
                 t"<{self.FunctionComponent}>Missing props</{self.FunctionComponent}>"
             )
@@ -1900,7 +1900,7 @@ def test_attribute_type_component():
 
 class TestComponentErrors:
     def test_component_non_callable_fails(self):
-        with pytest.raises(ComponentInvocationError, match="must be callable"):
+        with pytest.raises(ComponentProcessingError, match="must be callable"):
             _ = html(t"<{'not a function'} />")
 
     def test_catchall_for_attr_prep_callback_error(self):
@@ -1930,7 +1930,7 @@ class TestComponentErrors:
             return t"<p>Positional arg: {whoops}</p>"
 
         with pytest.raises(
-            ComponentInvocationError, match="cannot have required positional arguments"
+            ComponentProcessingError, match="cannot have required positional arguments"
         ):
             _ = html(t"<{RequiresPositional} />")
 
@@ -1942,7 +1942,7 @@ class TestComponentErrors:
             return t"<div>close</div>"
 
         with pytest.raises(
-            ComponentInvocationError, match="must match component callable"
+            ComponentProcessingError, match="must match component callable"
         ):
             _ = html(t"<{OpenTag}>Hello</{CloseTag}>")
 
@@ -1951,7 +1951,7 @@ class TestComponentErrors:
             raise ValueError("Failed to build template.")
 
         with pytest.raises(
-            ComponentInvocationError,
+            ComponentProcessingError,
             match=re.escape("Failed when invoking component callable."),
         ) as exc_info:
             _ = html(t"<{RaisesValueError}>Hello</{RaisesValueError}>")
@@ -1967,7 +1967,7 @@ class TestComponentErrors:
             return _RaisesValueError
 
         with pytest.raises(
-            ComponentInvocationError,
+            ComponentProcessingError,
             match=re.escape("Failed when invoking component callable the second time."),
         ) as exc_info:
             _ = html(t"<{RaisesValueError}>Hello</{RaisesValueError}>")
@@ -1983,7 +1983,7 @@ class TestComponentErrors:
             return bad_value
 
         with pytest.raises(
-            ComponentInvocationError,
+            ComponentProcessingError,
             match="Component callable must return Template or Callable:",
         ):
             _ = html(t"<{BadFunctionComp}>Hello</{BadFunctionComp}>")
@@ -1999,7 +1999,7 @@ class TestComponentErrors:
             return component_object
 
         with pytest.raises(
-            ComponentInvocationError,
+            ComponentProcessingError,
             match="Component object must return Template when called:",
         ):
             _ = html(t"<{BadFactoryComp}>Hello</{BadFactoryComp}>")

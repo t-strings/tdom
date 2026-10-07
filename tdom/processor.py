@@ -192,7 +192,7 @@ class TextProcessingError(ProcessingError):
     """Error while processing an element or component attribute."""
 
 
-class ComponentInvocationError(ProcessingError):
+class ComponentProcessingError(ProcessingError):
     """Error while processing an element or component attribute."""
 
 
@@ -552,13 +552,13 @@ def _prep_component_kwargs(
         `attrs` then it takes priority over entries in `provided_attrs`.
 
     `raise_on_requires_positional`:
-        Optionally check and raise `ComponentInvocationError` if the
+        Optionally check and raise `ComponentProcessingError` if the
         `callable_info` requires positional arguments which we cannot fulfill
         normally. An exception might not be desired if the caller will finish
         preparing the arguments after this call.
 
     `raise_on_missing`:
-        Optionally check and raise `ComponentInvocationError` if we are not
+        Optionally check and raise `ComponentProcessingError` if we are not
         able to fulfill all the arguments the `callable_info` expects since
         in the common case this raise an exception whose cause might not be
         clear. An exception might not be desired if the caller will finish
@@ -567,7 +567,7 @@ def _prep_component_kwargs(
 
     # We can't know what kwarg to put here...
     if raise_on_requires_positional and callable_info.requires_positional:
-        raise ComponentInvocationError(
+        raise ComponentProcessingError(
             "Component callables cannot have required positional arguments."
         )
 
@@ -585,10 +585,10 @@ def _prep_component_kwargs(
         elif callable_info.kwargs:
             kwargs[attr_name] = attr_value  # Retain original attribute name
         else:
-            raise ComponentInvocationError(f"Unexpected attribute {attr_name}.")
+            raise ComponentProcessingError(f"Unexpected attribute {attr_name}.")
 
     if "children" in kwargs:
-        raise ComponentInvocationError(
+        raise ComponentProcessingError(
             "The children attribute is reserved for component children."
         )
 
@@ -604,7 +604,7 @@ def _prep_component_kwargs(
     if raise_on_missing:
         missing = callable_info.required_named_params - kwargs.keys()
         if missing:
-            raise ComponentInvocationError(
+            raise ComponentProcessingError(
                 f"Missing required parameters for component: {', '.join(missing)}"
             )
 
@@ -758,7 +758,7 @@ class ComponentProcessor(IComponentProcessor):
         won't construct one directly.
         """
         if not callable(component_callable):
-            raise ComponentInvocationError(
+            raise ComponentProcessingError(
                 f"Component callable must be callable: {type(component_callable)}"
             )
         try:
@@ -780,7 +780,7 @@ class ComponentProcessor(IComponentProcessor):
         try:
             res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
         except Exception as e:
-            raise ComponentInvocationError(
+            raise ComponentProcessingError(
                 "Failed when invoking component callable."
             ) from e
         if isinstance(res1, (Template, ScopedTemplate)):
@@ -789,17 +789,17 @@ class ComponentProcessor(IComponentProcessor):
             try:
                 res2 = res1()  # ty: ignore[call-top-callable]
             except Exception as e:
-                raise ComponentInvocationError(
+                raise ComponentProcessingError(
                     "Failed when invoking component callable the second time."
                 ) from e
             if isinstance(res2, (Template, ScopedTemplate)):
                 return res2
             else:
-                raise ComponentInvocationError(
+                raise ComponentProcessingError(
                     f"Component object must return Template when called: {type(res2)}"
                 )
         else:
-            raise ComponentInvocationError(
+            raise ComponentProcessingError(
                 f"Component callable must return Template or Callable: {type(res1)}"
             )
 
@@ -879,14 +879,21 @@ class TemplateProcessor(ITemplateProcessor):
                 case TFragment(children):
                     return self._process_fragment(template, last_ctx, children)
                 case TComponent(start_i_index, end_i_index, children_span, attrs):
-                    return self._process_component(
-                        template,
-                        last_ctx,
-                        attrs,
-                        start_i_index,
-                        end_i_index,
-                        children_span,
-                    )
+                    try:
+                        return self._process_component(
+                            template,
+                            last_ctx,
+                            attrs,
+                            start_i_index,
+                            end_i_index,
+                            children_span,
+                        )
+                    except Exception as e:
+                        if isinstance(e, ProcessingError) and not e.closed:
+                            raise
+                        raise ComponentProcessingError(
+                            "Failed to process component."
+                        ) from e
                 case TElement(tag, attrs, children):
                     return self._process_element(
                         template, last_ctx, tag, attrs, children
@@ -1052,7 +1059,7 @@ class TemplateProcessor(ITemplateProcessor):
             and template.interpolations[start_i_index].value
             != template.interpolations[end_i_index].value
         ):
-            raise ComponentInvocationError(
+            raise ComponentProcessingError(
                 "Component callable in start tag must match component callable in end tag."
             )
         component_callable = template.interpolations[start_i_index].value
