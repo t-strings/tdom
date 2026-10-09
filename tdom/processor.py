@@ -1209,7 +1209,7 @@ def resolve_text_without_recursion(
             return Markup(value.__html__())
         elif isinstance(value, (Template, Iterable)):
             raise TextProcessingError(
-                f"Recursive includes are not supported within {parent_tag}"
+                f"Template and Iterable interpolation values are not supported within {parent_tag}"
             )
         else:
             return str(value)
@@ -1231,11 +1231,11 @@ def resolve_text_without_recursion(
                     text.append(value)
             elif not isinstance(value, str) and isinstance(value, (Template, Iterable)):
                 raise TextProcessingError(
-                    f"Recursive includes are not supported within {parent_tag}"
+                    f"Template and Iterable interpolation values are not supported within {parent_tag}"
                 )
             elif isinstance(value, HasHTMLDunder):
                 raise TextProcessingError(
-                    f"Non-exact trusted interpolations are not supported within {parent_tag}"
+                    f"Non-exact trusted interpolation values are not supported within {parent_tag}"
                 )
             else:
                 value_str = str(value)
