@@ -2252,7 +2252,7 @@ class TestInterpolatingHTMLInTemplateWithDynamicParentTag:
         content_t = t'<script>console.log("{123}!");</script>'
         with pytest.raises(
             TextProcessingError,
-            match="Recursive includes are not supported within script",
+            match="Template and Iterable interpolation values are not supported within script",
         ):
             _ = html(t"<script>{content_t}</script>")
 
@@ -2262,7 +2262,7 @@ class TestInterpolatingHTMLInTemplateWithDynamicParentTag:
         content_t = t"{content}"
         with pytest.raises(
             TextProcessingError,
-            match="Recursive includes are not supported within textarea",
+            match="Template and Iterable interpolation values are not supported within textarea",
         ):
             _ = html(t"<textarea>{content_t}</textarea>")
 
