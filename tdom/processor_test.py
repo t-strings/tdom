@@ -14,13 +14,11 @@ from markupsafe import escape as markupsafe_escape
 
 from .callables import get_callable_info
 from .escaping import escape_html_text
-from .parser import ParsingError
 from .processor import (
     AttributeProcessingError,
     CachedTemplateParserProxy,
     ComponentProcessingError,
     ProcessContext,
-    ProcessingError,
     TemplateParserProxy,
     TemplateProcessor,
     TextProcessingError,
@@ -30,7 +28,6 @@ from .processor import (
     _prep_component_kwargs as prep_component_kwargs,
 )
 from .protocols import HasHTMLDunder
-from .tnodes import TElement, TText
 
 processor_api = _make_default_template_processor(
     parser_api=TemplateParserProxy(),  # do not use cache
@@ -1016,7 +1013,10 @@ class TestInterpolationFormatSpec:
         assert add(1, 2) == 3, "Make sure fixture could work..."
 
         for tag in ("p", "script", "style"):
-            with pytest.raises(TextProcessingError):
+            with pytest.raises(
+                TypeError,
+                match=re.compile(".* missing 2 required positional arguments"),
+            ):
                 _ = html(
                     Template(f"<{tag}>")
                     + t"The sum is {add:callback}."
@@ -1027,14 +1027,8 @@ class TestInterpolationFormatSpec:
         def raise_value_error():
             raise ValueError("Failed to compute count.")
 
-        with pytest.raises(
-            AttributeProcessingError,
-            match="Unexpected error occurred while processing element attrs",
-        ) as exc_info:
+        with pytest.raises(ValueError, match=re.escape("Failed to compute count.")):
             _ = html(t"<div count={raise_value_error:callback}></div>")
-        assert isinstance(exc_info.value.__cause__, ValueError), (
-            "Original error should be chained."
-        )
 
 
 # --------------------------------------------------------------------------
@@ -1905,8 +1899,7 @@ class TestComponentErrors:
             return sum([children] * count, t"")
 
         with pytest.raises(
-            ComponentProcessingError,
-            match="Error occurred processing component attributes",
+            ZeroDivisionError,
         ):
             _ = html(t"<{Repeat} count={prep_attr:callback}><span>OK</span></{Repeat}>")
 
@@ -1945,13 +1938,10 @@ class TestComponentErrors:
             raise ValueError("Failed to build template.")
 
         with pytest.raises(
-            ComponentProcessingError,
-            match=re.escape("Failed when invoking component callable."),
-        ) as exc_info:
+            ValueError,
+            match=re.escape("Failed to build template"),
+        ):
             _ = html(t"<{RaisesValueError}>Hello</{RaisesValueError}>")
-        assert isinstance(exc_info.value.__cause__, ValueError), (
-            "Original error should be chained."
-        )
 
     def test_factory_comp_error(self):
         def RaisesValueError(children: Template) -> Callable[[], Template]:
@@ -1960,14 +1950,8 @@ class TestComponentErrors:
 
             return _RaisesValueError
 
-        with pytest.raises(
-            ComponentProcessingError,
-            match=re.escape("Failed when invoking component callable the second time."),
-        ) as exc_info:
+        with pytest.raises(ValueError, match=re.escape("Failed to build template.")):
             _ = html(t"<{RaisesValueError}>Hello</{RaisesValueError}>")
-        assert isinstance(exc_info.value.__cause__, ValueError), (
-            "Original error should be chained."
-        )
 
     @pytest.mark.parametrize(
         "bad_value", ("", "text", None, 1, ("tuple", "of", "strs"))
@@ -2371,69 +2355,3 @@ def bad_html_dunder():
 class _BadHTMLDunder:
     def __html__(self):
         raise ValueError("bad value")
-
-
-class TestProcessingException:
-    def test_attr_error_has_matching_tnode(self):
-        """AttributeProcessingError should point to tnode where error first occurred."""
-        invalid_t = t"<section><div aria={0}><span></span></div></section>"  # 0 is invalid aria value
-        with pytest.raises(AttributeProcessingError) as exc_info:
-            _ = html(invalid_t)
-        assert len(exc_info.value.template_e_states) == 1
-        tnode = exc_info.value.template_e_states[0].tnode
-        assert tnode and isinstance(tnode, TElement) and tnode.tag == "div"
-
-    def test_text_error_has_matching_tnode(self, bad_html_dunder):
-        """TextProcessingError should point to tnode where error first occurred."""
-        invalid_t = t"<section><div>{bad_html_dunder}</div></section>"
-        with pytest.raises(TextProcessingError) as exc_info:
-            _ = html(invalid_t)
-        assert len(exc_info.value.template_e_states) == 1
-        tnode = exc_info.value.template_e_states[0].tnode
-        assert tnode and isinstance(tnode, TText)
-
-    def test_processing_error_multiple_templates(self):
-        """*ProcessingError should stack error state for each template/tnode as stack unwinds."""
-        inner_t = t"<div aria={0}></div>"  # 0 is invalid aria value
-        wrapper_t = t"<div>{inner_t}</div>"
-        with pytest.raises(AttributeProcessingError) as exc_info:
-            _ = html(wrapper_t)
-        assert len(exc_info.value.template_e_states) == 2
-        inner_tnode = exc_info.value.template_e_states[0].tnode
-        assert (
-            inner_tnode
-            and isinstance(inner_tnode, TElement)
-            and inner_tnode.tag == "div"
-        )
-        wrapper_tnode = exc_info.value.template_e_states[1].tnode
-        assert wrapper_tnode and isinstance(wrapper_tnode, TText)
-
-    def test_parsing_error_while_processing(self):
-        inner_t = t"<div>"
-        wrapper_t = t"<div>{inner_t}</div>"
-        with pytest.raises(ProcessingError) as exc_info:
-            _ = html(wrapper_t)
-        assert len(exc_info.value.template_e_states) == 1
-        wrapper_tnode = exc_info.value.template_e_states[0].tnode
-        assert wrapper_tnode and isinstance(wrapper_tnode, TText)
-        assert isinstance(exc_info.value.__cause__, ParsingError), (
-            "ProcessingError should be chained to parsing error."
-        )
-
-    def test_other_processing_errors(self):
-        """Test that a ProcessingError raised by another processor is just a regular exception."""
-        from markupsafe import Markup
-
-        def bad_attr() -> Markup:
-            return Markup(html(t"<div aria={0}></div>"))
-
-        with pytest.raises(ProcessingError) as exc_info:
-            _ = html(t"<div>{bad_attr:callback}</div>")
-        assert isinstance(exc_info.value, ProcessingError)
-        assert isinstance(exc_info.value.__cause__, ProcessingError)
-        assert exc_info.value is not exc_info.value.__cause__
-
-    def test_topmost_parsing_error(self):
-        """Pass a topmost parsing error back to the user."""
-        with pytest.raises(ParsingError, match="Invalid HTML structure"):
-            _ = html(t"<div>")

@@ -1,5 +1,6 @@
 import typing as t
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import lru_cache
 from string.templatelib import Interpolation, Template
@@ -67,28 +68,30 @@ class TemplateErrorState:
 class ProcessingError(TemplatingError):
     """General error when processing a template."""
 
-    nearest_tnode: TNode | None
+
+class AttributeProcessingError(ProcessingError):
+    """Error while processing an element or component attribute."""
+
+
+class TextProcessingError(ProcessingError):
+    """Error while processing an element or component attribute."""
+
+
+class ComponentProcessingError(ProcessingError):
+    """Error while processing an element or component attribute."""
+
+
+@dataclass
+class ProcessingErrorHelper:
+    nearest_tnode: TNode | None = None
     " Nearest tnode from error if applicable. "
 
-    template_e_states: list[TemplateErrorState]
+    template_e_states: list[TemplateErrorState] = field(default_factory=list)
     " Stack of processor template error states if applicable. "
-
-    closed: bool
-    " Mark so we don't inadvertantly catch this as just opened. "
-
-    def __init__(self, msg: str = "") -> None:
-        super().__init__(msg)
-        self.template_e_states = []
-        self.nearest_tnode = None
-        self.closed = False
-
-    def _check_closed(self) -> None:
-        assert not self.closed, "Cannot modify once closed."
 
     def push_template_error(
         self, template: Template, ttree: TTree, tnode: TNode
     ) -> None:
-        self._check_closed()
         self.template_e_states.append(
             TemplateErrorState(
                 template=template,
@@ -98,33 +101,23 @@ class ProcessingError(TemplatingError):
         )
 
     def pop_nearest_tnode(self) -> TNode | None:
-        self._check_closed()
         t = self.nearest_tnode
         self.nearest_tnode = None
         return t
 
     def stash_nearest_tnode(self, tnode: TNode) -> None:
-        self._check_closed()
         if self.nearest_tnode is None:
             self.nearest_tnode = tnode
 
-    def close(self) -> None:
-        assert not self.closed, "Processing error cannot be closed twice."
-        self.closed = True
-
-
-@dataclass
-class ProcessingErrorHelper:
     def make_process_error_notes(
         self,
-        template_e_states: list[TemplateErrorState],
     ) -> tuple[str, ...]:
         """
         Add the accumulated notes from unwinding nested processing.
         """
         return tuple(
             self._make_tnode_error_note(e_state.ttree, e_state.tnode, e_state.template)
-            for e_state in reversed(template_e_states)
+            for e_state in reversed(self.template_e_states)
         )
 
     def _make_tnode_error_note(
@@ -179,16 +172,10 @@ class ProcessingErrorHelper:
         return f"Error occurred at {starttag_repr} at {starttag_pos_msg}."
 
 
-class AttributeProcessingError(ProcessingError):
-    """Error while processing an element or component attribute."""
-
-
-class TextProcessingError(ProcessingError):
-    """Error while processing an element or component attribute."""
-
-
-class ComponentProcessingError(ProcessingError):
-    """Error while processing an element or component attribute."""
+ProcessingErrorCtx: ContextVar[ProcessingErrorHelper | None] = ContextVar(
+    "ProcessingErrorCtx", default=None
+)
+""" Context variable to manage template error state after exception occurs. """
 
 
 # --------------------------------------------------------------------------
@@ -756,14 +743,7 @@ class ComponentProcessor(IComponentProcessor):
             raise ComponentProcessingError(
                 f"Component callable must be callable: {type(component_callable)}"
             )
-        try:
-            tattrs = _resolve_t_attrs(attrs, template.interpolations)
-        except Exception as e:
-            if isinstance(e, ProcessingError) and not e.closed:
-                raise  # we raised this ourselves
-            raise ComponentProcessingError(
-                "Error occurred processing component attributes"
-            ) from e
+        tattrs = _resolve_t_attrs(attrs, template.interpolations)
         kwargs = _prep_component_kwargs(
             get_callable_info(component_callable),
             tattrs,
@@ -772,21 +752,11 @@ class ComponentProcessor(IComponentProcessor):
             raise_on_requires_positional=True,
             raise_on_missing=True,
         )
-        try:
-            res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
-        except Exception as e:
-            raise ComponentProcessingError(
-                "Failed when invoking component callable."
-            ) from e
+        res1 = component_callable(**kwargs)  # ty: ignore[call-top-callable]
         if isinstance(res1, (Template, ScopedTemplate)):
             return res1
         elif callable(res1):
-            try:
-                res2 = res1()  # ty: ignore[call-top-callable]
-            except Exception as e:
-                raise ComponentProcessingError(
-                    "Failed when invoking component callable the second time."
-                ) from e
+            res2 = res1()  # ty: ignore[call-top-callable]
             if isinstance(res2, (Template, ScopedTemplate)):
                 return res2
             else:
@@ -831,28 +801,26 @@ class TemplateProcessor(ITemplateProcessor):
         """
         Process a TDOM compatible template into a string.
         """
-        try:
-            return self._process_template(root_template, assume_ctx)
-        except ProcessingError as e:
-            assert not e.closed, (
-                "Exceptions raised by another processor must be wrapped."
-            )
-            helper = ProcessingErrorHelper()
-            notes = helper.make_process_error_notes(e.template_e_states)
-            for note in notes:
-                e.add_note(note)
-            e.close()
-            raise
+        with ProcessingErrorCtx.set(ProcessingErrorHelper()):
+            try:
+                return self._process_template(root_template, assume_ctx)
+            except Exception as e:
+                helper = ProcessingErrorCtx.get()
+                assert helper is not None, "Helper instance must be set in ctx."
+                for note in helper.make_process_error_notes():
+                    e.add_note(note)
+                raise
 
     def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
         ttree = self.parser_api.to_ttree(template)
         try:
             return self._process_tnode(template, last_ctx, ttree.root)
-        except ProcessingError as e:
-            assert not e.closed, "A nested closed error should be chained."
-            tnode = e.pop_nearest_tnode()
+        except Exception:
+            helper = ProcessingErrorCtx.get()
+            assert helper is not None, "Helper instance must be set in ctx."
+            tnode = helper.pop_nearest_tnode()
             assert tnode, "Every error should be linked to a TNode."
-            e.push_template_error(template, ttree, tnode)
+            helper.push_template_error(template, ttree, tnode)
             raise
 
     def _process_tnode(
@@ -870,43 +838,28 @@ class TemplateProcessor(ITemplateProcessor):
                 case TFragment(children):
                     return self._process_fragment(template, last_ctx, children)
                 case TComponent(start_i_index, end_i_index, children_span, attrs):
-                    try:
-                        return self._process_component(
-                            template,
-                            last_ctx,
-                            attrs,
-                            start_i_index,
-                            end_i_index,
-                            children_span,
-                        )
-                    except Exception as e:
-                        if isinstance(e, ProcessingError) and not e.closed:
-                            raise
-                        raise ComponentProcessingError(
-                            "Failed to process component."
-                        ) from e
+                    return self._process_component(
+                        template,
+                        last_ctx,
+                        attrs,
+                        start_i_index,
+                        end_i_index,
+                        children_span,
+                    )
                 case TElement(tag, attrs, children):
                     return self._process_element(
                         template, last_ctx, tag, attrs, children
                     )
                 case TText(ref):
-                    try:
-                        return self._process_texts(template, last_ctx, ref)
-                    except Exception as e:
-                        if isinstance(e, ProcessingError) and not e.closed:
-                            raise
-                        raise TextProcessingError(
-                            "An error occurred processing text."
-                        ) from e
+                    return self._process_texts(template, last_ctx, ref)
                 case _:
                     # @NOTE: This would be an internal error so we use a
                     # native exception.
                     raise TypeError(f"Unrecognized tnode: {tnode}")
-        except ProcessingError as e:
-            assert not e.closed, (
-                "Exceptions raised by another processor must be wrapped."
-            )
-            e.stash_nearest_tnode(tnode)
+        except Exception:
+            helper = ProcessingErrorCtx.get()
+            assert helper is not None, "Helper instance must be set in ctx."
+            helper.stash_nearest_tnode(tnode)
             raise
 
     def _process_document_type(
@@ -1011,14 +964,7 @@ class TemplateProcessor(ITemplateProcessor):
         """
         Process an element's attributes into a string.
         """
-        try:
-            resolved_attrs = _resolve_t_attrs(attrs, template.interpolations)
-        except Exception as e:
-            if isinstance(e, ProcessingError) and not e.closed:
-                raise
-            raise AttributeProcessingError(
-                "Unexpected error occurred while processing element attrs."
-            ) from e
+        resolved_attrs = _resolve_t_attrs(attrs, template.interpolations)
         if last_ctx.ns == "svg":
             attrs_str = serialize_html_attrs(
                 _fix_svg_attrs(_resolve_html_attrs(resolved_attrs))
