@@ -100,7 +100,7 @@ class ComponentProcessingError(ProcessingError):
 @dataclass
 class ProcessingErrorHelper:
     nearest_tnode: TNode | None = None
-    " Nearest tnode from error if applicable. "
+    " Nearest tnode from error if applicable, skip ttext if there is a tag container. "
 
     nearest_tattr: TAttribute | None = None
     " Nearest tattribute from error if applicable. "
@@ -121,7 +121,9 @@ class ProcessingErrorHelper:
         return t
 
     def stash_nearest_tnode(self, tnode: TNode) -> None:
-        if self.nearest_tnode is None:
+        if self.nearest_tnode is None or (
+            isinstance(self.nearest_tnode, TText) and not isinstance(tnode, TText)
+        ):
             self.nearest_tnode = tnode
 
     def pop_nearest_tattr(self) -> TAttribute | None:
