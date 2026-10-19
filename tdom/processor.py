@@ -61,8 +61,13 @@ type AttributesDict = dict[str, object]
 @dataclass(frozen=True)
 class TemplateErrorState:
     template: Template
+    " The nearest template related to the exception. "
     ttree: TTree
+    " TTree parsed from nearest template. "
     tnode: TNode
+    " Nearest tnode. "
+    tattr: TAttribute | None = None
+    " Nearest template attribute, if applicable. "
 
 
 class ProcessingError(TemplatingError):
@@ -76,6 +81,17 @@ class AttributeProcessingError(ProcessingError):
 class TextProcessingError(ProcessingError):
     """Error while processing an element or component attribute."""
 
+    template: Template
+    " Template that contained the text. "
+
+    i_index: int | None = None
+    " Nearest interpolation index, if applicable. "
+
+    def __init__(self, msg: str, template: Template, i_index: int | None = None):
+        super().__init__(msg)
+        self.template = template
+        self.i_index = i_index
+
 
 class ComponentProcessingError(ProcessingError):
     """Error while processing an element or component attribute."""
@@ -86,18 +102,17 @@ class ProcessingErrorHelper:
     nearest_tnode: TNode | None = None
     " Nearest tnode from error if applicable. "
 
+    nearest_tattr: TAttribute | None = None
+    " Nearest tattribute from error if applicable. "
+
     template_e_states: list[TemplateErrorState] = field(default_factory=list)
     " Stack of processor template error states if applicable. "
 
     def push_template_error(
-        self, template: Template, ttree: TTree, tnode: TNode
+        self, template: Template, ttree: TTree, tnode: TNode, tattr: TAttribute | None
     ) -> None:
         self.template_e_states.append(
-            TemplateErrorState(
-                template=template,
-                ttree=ttree,
-                tnode=tnode,
-            )
+            TemplateErrorState(template=template, ttree=ttree, tnode=tnode, tattr=tattr)
         )
 
     def pop_nearest_tnode(self) -> TNode | None:
@@ -109,22 +124,69 @@ class ProcessingErrorHelper:
         if self.nearest_tnode is None:
             self.nearest_tnode = tnode
 
+    def pop_nearest_tattr(self) -> TAttribute | None:
+        t = self.nearest_tattr
+        self.nearest_tattr = None
+        return t
+
+    def stash_nearest_tattr(self, tattr: TAttribute) -> None:
+        if self.nearest_tattr is None:
+            self.nearest_tattr = tattr
+
     def make_process_error_notes(
         self,
+        e: Exception,
     ) -> tuple[str, ...]:
         """
         Add the accumulated notes from unwinding nested processing.
         """
+        error_notes = []
+        if isinstance(e, TextProcessingError) and e.i_index:
+            i_blurb = self.make_interpolation_blurb(e.template, e.i_index)
+            error_notes.append(i_blurb)
         return tuple(
-            self._make_tnode_error_note(e_state.ttree, e_state.tnode, e_state.template)
-            for e_state in reversed(self.template_e_states)
+            error_notes
+            + [
+                self.make_tnode_error_note(
+                    e_state.ttree, e_state.tnode, e_state.template, e_state.tattr
+                )
+                for e_state in reversed(self.template_e_states)
+            ]
         )
 
-    def _make_tnode_error_note(
+    def make_interpolation_blurb(self, template: Template, i_index: int) -> str:
+        """Make a short blurb about which interpolation the error occurred in."""
+        reader = SourceReader(template)
+        i_ref = TemplateRef(strings=("", ""), i_start=i_index)
+        return f"Error occurred in interpolation {reader.ref_to_repr(i_ref)}"
+
+    def make_attribute_blurb(
+        self, template: Template, tattr: TAttribute | None, reader: SourceReader
+    ) -> str:
+        """Make a short blurb about which attribute the error occurred in."""
+        if isinstance(tattr, TSpreadAttribute):
+            value_ref = TemplateRef(strings=("", ""), i_start=tattr.i_index)
+            attr_blurb = f"in spread attribute {reader.ref_to_repr(value_ref)}"
+        elif isinstance(tattr, TLiteralAttribute):
+            attr_blurb = f"in literal attribute {tattr.name}"
+            if tattr.value is not None:
+                attr_blurb += f"={tattr.value}"
+        elif isinstance(tattr, TTemplatedAttribute):
+            attr_blurb = f"in templated attribute {tattr.name}={reader.ref_to_repr(tattr.value_ref)}"
+        elif isinstance(tattr, TInterpolatedAttribute):
+            value_ref = TemplateRef(strings=("", ""), i_start=tattr.value_i_index)
+            attr_blurb = f"in interpolated attribute {tattr.name}={reader.ref_to_repr(value_ref)}"
+        else:
+            assert tattr is None, "Unrecognized tattribute type."
+            attr_blurb = ""
+        return attr_blurb
+
+    def make_tnode_error_note(
         self,
         ttree: TTree,  # The root metadata for the "current" template
         tnode: TNode,  # The leafmost tnode where the error was caught for the "current" template
         template: Template,  # The "current" template that was being processed
+        tattr: TAttribute | None,
     ) -> str:
         """
         Add a single note accumulated either at the initial tnode of the error or
@@ -137,7 +199,7 @@ class ProcessingErrorHelper:
             if isinstance(tnode, (TElement, TComponent, TComment, TDocumentType, TText))
             else None
         )
-
+        attr_blurb = self.make_attribute_blurb(template, tattr, reader)
         if isinstance(tnode, (TElement, TComponent)):
             sinfo_table = ttree.unpack_sinfo_table()
             sinfo = sinfo_table.get(source_pos, None) if source_pos else None
@@ -169,7 +231,19 @@ class ProcessingErrorHelper:
         else:
             starttag_pos_msg = "unknown location"  # source_pos is optional right now
 
-        return f"Error occurred at {starttag_repr} at {starttag_pos_msg}."
+        return " ".join(
+            filter(
+                None,
+                (
+                    "Error occurred",
+                    attr_blurb,
+                    "at",
+                    starttag_repr,
+                    "at",
+                    f"{starttag_pos_msg}.",
+                ),
+            )
+        )
 
 
 ProcessingErrorCtx: ContextVar[ProcessingErrorHelper | None] = ContextVar(
@@ -436,63 +510,71 @@ def _resolve_t_attrs(
     new_attrs: AttributesDict = LastUpdatedOrderedDict()
     attr_accs: dict[str, AttributeValueAccumulator] = {}
     for attr in attrs:
-        match attr:
-            case TLiteralAttribute(name=name, value=value):
-                attr_value = True if value is None else value
-                if name in ATTR_ACCUMULATOR_MAKERS and name in new_attrs:
-                    if name not in attr_accs:
-                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](new_attrs[name])
-                    new_attrs[name] = attr_accs[name].merge_value(attr_value)
-                else:
-                    new_attrs[name] = attr_value
-            case TInterpolatedAttribute(name=name, value_i_index=i_index):
-                interpolation = interpolations[i_index]
-                attr_value = format_interpolation(interpolation)
-                if name in ATTR_ACCUMULATOR_MAKERS:
-                    if name not in attr_accs:
-                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](
-                            new_attrs.get(name, True)
-                        )
-                    new_attrs[name] = attr_accs[name].merge_value(attr_value)
-                elif expander := ATTR_EXPANDERS.get(name):
-                    for sub_k, sub_v in expander(attr_value):
-                        new_attrs[sub_k] = sub_v
-                else:
-                    new_attrs[name] = attr_value
-            case TTemplatedAttribute(name=name, value_ref=ref):
-                attr_t = ref.bind(interpolations)
-                attr_value = format_template(attr_t)
-                if name in ATTR_ACCUMULATOR_MAKERS:
-                    if name not in attr_accs:
-                        attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](
-                            new_attrs.get(name, True)
-                        )
-                    new_attrs[name] = attr_accs[name].merge_value(attr_value)
-                elif expander := ATTR_EXPANDERS.get(name):
-                    raise AttributeProcessingError(
-                        f"{name} attributes cannot be templated"
-                    )
-                else:
-                    new_attrs[name] = attr_value
-            case TSpreadAttribute(i_index=i_index):
-                interpolation = interpolations[i_index]
-                spread_value = format_interpolation(interpolation)
-                for sub_k, sub_v in _substitute_spread_attrs(spread_value):
-                    if sub_k in ATTR_ACCUMULATOR_MAKERS:
-                        if sub_k not in attr_accs:
-                            attr_accs[sub_k] = ATTR_ACCUMULATOR_MAKERS[sub_k](
-                                new_attrs.get(sub_k, True)
+        try:
+            match attr:
+                case TLiteralAttribute(name=name, value=value):
+                    attr_value = True if value is None else value
+                    if name in ATTR_ACCUMULATOR_MAKERS and name in new_attrs:
+                        if name not in attr_accs:
+                            attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](
+                                new_attrs[name]
                             )
-                        new_attrs[sub_k] = attr_accs[sub_k].merge_value(sub_v)
-                    elif expander := ATTR_EXPANDERS.get(sub_k):
-                        for exp_k, exp_v in expander(sub_v):
-                            new_attrs[exp_k] = exp_v
+                        new_attrs[name] = attr_accs[name].merge_value(attr_value)
                     else:
-                        new_attrs[sub_k] = sub_v
-            case _:
-                # @NOTE: This would be an internal error so we use a native
-                # exception.
-                raise TypeError(f"Unknown TAttribute type: {type(attr).__name__}")
+                        new_attrs[name] = attr_value
+                case TInterpolatedAttribute(name=name, value_i_index=i_index):
+                    interpolation = interpolations[i_index]
+                    attr_value = format_interpolation(interpolation)
+                    if name in ATTR_ACCUMULATOR_MAKERS:
+                        if name not in attr_accs:
+                            attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](
+                                new_attrs.get(name, True)
+                            )
+                        new_attrs[name] = attr_accs[name].merge_value(attr_value)
+                    elif expander := ATTR_EXPANDERS.get(name):
+                        for sub_k, sub_v in expander(attr_value):
+                            new_attrs[sub_k] = sub_v
+                    else:
+                        new_attrs[name] = attr_value
+                case TTemplatedAttribute(name=name, value_ref=ref):
+                    attr_t = ref.bind(interpolations)
+                    attr_value = format_template(attr_t)
+                    if name in ATTR_ACCUMULATOR_MAKERS:
+                        if name not in attr_accs:
+                            attr_accs[name] = ATTR_ACCUMULATOR_MAKERS[name](
+                                new_attrs.get(name, True)
+                            )
+                        new_attrs[name] = attr_accs[name].merge_value(attr_value)
+                    elif expander := ATTR_EXPANDERS.get(name):
+                        raise AttributeProcessingError(
+                            f"{name} attributes cannot be templated"
+                        )
+                    else:
+                        new_attrs[name] = attr_value
+                case TSpreadAttribute(i_index=i_index):
+                    interpolation = interpolations[i_index]
+                    spread_value = format_interpolation(interpolation)
+                    for sub_k, sub_v in _substitute_spread_attrs(spread_value):
+                        if sub_k in ATTR_ACCUMULATOR_MAKERS:
+                            if sub_k not in attr_accs:
+                                attr_accs[sub_k] = ATTR_ACCUMULATOR_MAKERS[sub_k](
+                                    new_attrs.get(sub_k, True)
+                                )
+                            new_attrs[sub_k] = attr_accs[sub_k].merge_value(sub_v)
+                        elif expander := ATTR_EXPANDERS.get(sub_k):
+                            for exp_k, exp_v in expander(sub_v):
+                                new_attrs[exp_k] = exp_v
+                        else:
+                            new_attrs[sub_k] = sub_v
+                case _:
+                    # @NOTE: This would be an internal error so we use a native
+                    # exception.
+                    raise TypeError(f"Unknown TAttribute type: {type(attr).__name__}")
+        except Exception:
+            helper = ProcessingErrorCtx.get()
+            assert helper is not None, "Helper instance must be set in ctx."
+            helper.stash_nearest_tattr(attr)
+            raise
     for acc_name, acc in attr_accs.items():
         # Skip "touching" the key here so that the order remains intact.
         super(type(new_attrs), new_attrs).__setitem__(acc_name, acc.to_value())
@@ -807,7 +889,7 @@ class TemplateProcessor(ITemplateProcessor):
             except Exception as e:
                 helper = ProcessingErrorCtx.get()
                 assert helper is not None, "Helper instance must be set in ctx."
-                for note in helper.make_process_error_notes():
+                for note in helper.make_process_error_notes(e):
                     e.add_note(note)
                 raise
 
@@ -820,7 +902,8 @@ class TemplateProcessor(ITemplateProcessor):
             assert helper is not None, "Helper instance must be set in ctx."
             tnode = helper.pop_nearest_tnode()
             assert tnode, "Every error should be linked to a TNode."
-            helper.push_template_error(template, ttree, tnode)
+            tattr = helper.pop_nearest_tattr()
+            helper.push_template_error(template, ttree, tnode, tattr)
             raise
 
     def _process_tnode(
@@ -1035,7 +1118,8 @@ class TemplateProcessor(ITemplateProcessor):
             )
         else:
             raise TextProcessingError(
-                f"Parent tag {last_ctx.parent_tag} is not supported."
+                f"Parent tag {last_ctx.parent_tag} is not supported.",
+                template=template,
             )
 
     def _process_escapable_raw_texts(
@@ -1148,7 +1232,9 @@ def resolve_text_without_recursion(
             return Markup(value.__html__())
         elif isinstance(value, (Template, Iterable)):
             raise TextProcessingError(
-                f"Template and Iterable interpolation values are not supported within {parent_tag}"
+                f"Template and Iterable interpolation values are not supported within {parent_tag}",
+                template=template,
+                i_index=content_ref.i_start,
             )
         else:
             return str(value)
@@ -1170,11 +1256,15 @@ def resolve_text_without_recursion(
                     text.append(value)
             elif not isinstance(value, str) and isinstance(value, (Template, Iterable)):
                 raise TextProcessingError(
-                    f"Template and Iterable interpolation values are not supported within {parent_tag}"
+                    f"Template and Iterable interpolation values are not supported within {parent_tag}",
+                    template=template,
+                    i_index=part,
                 )
             elif isinstance(value, HasHTMLDunder):
                 raise TextProcessingError(
-                    f"Non-exact trusted interpolation values are not supported within {parent_tag}"
+                    f"Non-exact trusted interpolation values are not supported within {parent_tag}",
+                    template=template,
+                    i_index=part,
                 )
             else:
                 value_str = str(value)
