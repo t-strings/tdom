@@ -3,6 +3,7 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import lru_cache
+from itertools import chain
 from string.templatelib import Interpolation, Template
 
 from markupsafe import Markup
@@ -36,8 +37,9 @@ from .parser_utils import HTMLAttribute
 from .protocols import HasHTMLDunder
 from .scope import ScopedTemplate
 from .source import SourceReader
-from .template_utils import TemplateRef, TemplateSpan
+from .template_utils import PartPosition, TemplateRef, TemplateSpan
 from .tnodes import (
+    TagSourceInfo,
     TAttribute,
     TComment,
     TComponent,
@@ -66,8 +68,12 @@ class TemplateErrorState:
     " TTree parsed from nearest template. "
     tnode: TNode
     " Nearest tnode. "
+    parent_tnode: TFragment | TElement | TComponent | None
+    " Nearest parent tnode. "
     tattr: TAttribute | None = None
     " Nearest template attribute, if applicable. "
+    i_index: int | None = None
+    " Nearest interpolation index, if applicable. "
 
 
 class ProcessingError(TemplatingError):
@@ -81,17 +87,6 @@ class AttributeProcessingError(ProcessingError):
 class TextProcessingError(ProcessingError):
     """Error while processing an element or component attribute."""
 
-    template: Template
-    " Template that contained the text. "
-
-    i_index: int | None = None
-    " Nearest interpolation index, if applicable. "
-
-    def __init__(self, msg: str, template: Template, i_index: int | None = None):
-        super().__init__(msg)
-        self.template = template
-        self.i_index = i_index
-
 
 class ComponentProcessingError(ProcessingError):
     """Error while processing an element or component attribute."""
@@ -100,19 +95,38 @@ class ComponentProcessingError(ProcessingError):
 @dataclass
 class ProcessingErrorHelper:
     nearest_tnode: TNode | None = None
-    " Nearest tnode from error if applicable, skip ttext if there is a tag container. "
+    " Nearest tnode from error. "
+
+    nearest_parent_tnode: TFragment | TElement | TComponent | None = None
+    " Nearest parent tnode, helpful for ttext. "
 
     nearest_tattr: TAttribute | None = None
     " Nearest tattribute from error if applicable. "
+
+    nearest_i_index: int | None = None
+    " Nearest interpolation index from error if applicable. "
 
     template_e_states: list[TemplateErrorState] = field(default_factory=list)
     " Stack of processor template error states if applicable. "
 
     def push_template_error(
-        self, template: Template, ttree: TTree, tnode: TNode, tattr: TAttribute | None
+        self,
+        template: Template,
+        ttree: TTree,
+        tnode: TNode,
+        parent_tnode: TFragment | TElement | TComponent | None,
+        tattr: TAttribute | None,
+        i_index: int | None,
     ) -> None:
         self.template_e_states.append(
-            TemplateErrorState(template=template, ttree=ttree, tnode=tnode, tattr=tattr)
+            TemplateErrorState(
+                template=template,
+                ttree=ttree,
+                tnode=tnode,
+                parent_tnode=parent_tnode,
+                tattr=tattr,
+                i_index=i_index,
+            )
         )
 
     def pop_nearest_tnode(self) -> TNode | None:
@@ -121,10 +135,19 @@ class ProcessingErrorHelper:
         return t
 
     def stash_nearest_tnode(self, tnode: TNode) -> None:
-        if self.nearest_tnode is None or (
-            isinstance(self.nearest_tnode, TText) and not isinstance(tnode, TText)
-        ):
+        if self.nearest_tnode is None:
             self.nearest_tnode = tnode
+
+    def pop_nearest_parent_tnode(self) -> TFragment | TElement | TComponent | None:
+        t = self.nearest_parent_tnode
+        self.nearest_parent_tnode = None
+        return t
+
+    def stash_nearest_parent_tnode(self, tnode: TNode) -> None:
+        if self.nearest_parent_tnode is None and isinstance(
+            tnode, (TFragment, TElement, TComponent)
+        ):
+            self.nearest_parent_tnode = tnode
 
     def pop_nearest_tattr(self) -> TAttribute | None:
         t = self.nearest_tattr
@@ -135,6 +158,15 @@ class ProcessingErrorHelper:
         if self.nearest_tattr is None:
             self.nearest_tattr = tattr
 
+    def pop_nearest_i_index(self) -> int | None:
+        t = self.nearest_i_index
+        self.nearest_i_index = None
+        return t
+
+    def stash_nearest_i_index(self, i_index: int) -> None:
+        if self.nearest_i_index is None:
+            self.nearest_i_index = i_index
+
     def make_process_error_notes(
         self,
         e: Exception,
@@ -142,28 +174,20 @@ class ProcessingErrorHelper:
         """
         Add the accumulated notes from unwinding nested processing.
         """
-        error_notes = []
-        if isinstance(e, TextProcessingError) and e.i_index:
-            i_blurb = self.make_interpolation_blurb(e.template, e.i_index)
-            error_notes.append(i_blurb)
         return tuple(
-            error_notes
-            + [
-                self.make_tnode_error_note(
-                    e_state.ttree, e_state.tnode, e_state.template, e_state.tattr
-                )
-                for e_state in reversed(self.template_e_states)
-            ]
+            chain.from_iterable(
+                self.make_template_error_notes(e_state)
+                for e_state in self.template_e_states  # reversed?
+            )
         )
 
-    def make_interpolation_blurb(self, template: Template, i_index: int) -> str:
+    def make_interpolation_blurb(self, reader: SourceReader, i_index: int) -> str:
         """Make a short blurb about which interpolation the error occurred in."""
-        reader = SourceReader(template)
         i_ref = TemplateRef(strings=("", ""), i_start=i_index)
         return f"Error occurred in interpolation {reader.ref_to_repr(i_ref)}"
 
     def make_attribute_blurb(
-        self, template: Template, tattr: TAttribute | None, reader: SourceReader
+        self, reader: SourceReader, tattr: TAttribute | None
     ) -> str:
         """Make a short blurb about which attribute the error occurred in."""
         if isinstance(tattr, TSpreadAttribute):
@@ -183,69 +207,118 @@ class ProcessingErrorHelper:
             attr_blurb = ""
         return attr_blurb
 
-    def make_tnode_error_note(
+    def make_pos_msg(
         self,
-        ttree: TTree,  # The root metadata for the "current" template
-        tnode: TNode,  # The leafmost tnode where the error was caught for the "current" template
-        template: Template,  # The "current" template that was being processed
-        tattr: TAttribute | None,
+        reader: SourceReader,
+        source_pos: PartPosition | None,
+        fallback_msg: str = "unknown location",
     ) -> str:
+        if source_pos is None:
+            return fallback_msg
+        return reader.make_template_pos_msg(source_pos)
+
+    def make_comment_error_notes(
+        self, reader: SourceReader, tnode: TComment
+    ) -> tuple[str, ...]:
+        tnode_repr = f"<!--{reader.ref_to_repr(tnode.ref)}-->"
+        pos_msg = self.make_pos_msg(reader, tnode.source_pos)
+        return (f"Error occurred in {tnode_repr} at {pos_msg}",)
+
+    def make_text_error_notes(
+        self,
+        reader: SourceReader,
+        tnode: TText,
+    ) -> tuple[str, ...]:
+        # @TODO: Do we want a different message for singletons?
+        tnode_repr = reader.ref_to_repr(tnode.ref)
+        pos_msg = self.make_pos_msg(reader, tnode.source_pos)
+        return (f"Error occurred in {tnode_repr} at {pos_msg}",)
+
+    def make_document_type_error_notes(
+        self,
+        reader: SourceReader,
+        tnode: TDocumentType,
+    ) -> tuple[str, ...]:
+        tnode_repr = f"<!DOCTYPE {tnode.text}>"
+        pos_msg = self.make_pos_msg(reader, tnode.source_pos)
+        return (f"Error occurred in {tnode_repr} at {pos_msg}.",)
+
+    def make_tag_error_notes(
+        self,
+        reader: SourceReader,
+        sinfo_table: dict[PartPosition, TagSourceInfo],
+        tnode: TElement | TComponent,
+        tattr: TAttribute | None,
+    ) -> tuple[str, ...]:
+        attr_blurb = self.make_attribute_blurb(reader, tattr)
+        pos_msg = self.make_pos_msg(reader, tnode.source_pos)
+        sinfo = sinfo_table.get(tnode.source_pos, None) if tnode.source_pos else None
+        if sinfo:
+            tnode_repr = reader.span_to_repr(sinfo.starttag_span)
+        else:
+            if isinstance(tnode, TElement):
+                tnode_repr = self.fallback_element_repr(tnode)
+            else:
+                tnode_repr = self.fallback_component_repr(reader, tnode)
+        if attr_blurb:
+            return (f"Error occurred {attr_blurb} for {tnode_repr} at {pos_msg}.",)
+        else:
+            return (f"Error occurred in {tnode_repr} at {pos_msg}.",)
+
+    def fallback_element_repr(self, tnode: TElement) -> str:
+        return f"<{tnode.tag} ...>"
+
+    def fallback_component_repr(
+        self,
+        reader: SourceReader,
+        tnode: TComponent,
+    ) -> str:
+        return reader.ref_to_repr(
+            TemplateRef(strings=("<", "...>"), i_start=tnode.start_i_index)
+        )
+
+    def make_template_error_notes(self, error_markers: TemplateErrorState) -> list[str]:
         """
-        Add a single note accumulated either at the initial tnode of the error or
+        Add notes accumulated either at the initial tnode of the error or
         a subsequent tnode in another template passed through during unwinding
         from nested processing.
         """
-        reader = SourceReader(template)
-        source_pos = (
-            tnode.source_pos
-            if isinstance(tnode, (TElement, TComponent, TComment, TDocumentType, TText))
-            else None
-        )
-        attr_blurb = self.make_attribute_blurb(template, tattr, reader)
-        if isinstance(tnode, (TElement, TComponent)):
-            sinfo_table = ttree.unpack_sinfo_table()
-            sinfo = sinfo_table.get(source_pos, None) if source_pos else None
-            if sinfo:
-                starttag_repr = reader.span_to_repr(sinfo.starttag_span)
-                starttag_pos_msg = reader.make_template_pos_msg(sinfo.starttag_pos)
-            else:
-                if isinstance(tnode, TComponent):
-                    starttag_repr = reader.ref_to_repr(
-                        TemplateRef(strings=("<", "...>"), i_start=tnode.start_i_index)
+        reader = SourceReader(error_markers.template)
+        error_notes = []
+        if error_markers.i_index is not None:
+            i_blurb = self.make_interpolation_blurb(reader, error_markers.i_index)
+            error_notes.append(i_blurb)
+        sinfo_table = error_markers.ttree.unpack_sinfo_table()
+        match error_markers.tnode:
+            case TElement() | TComponent():
+                error_notes.extend(
+                    self.make_tag_error_notes(
+                        reader, sinfo_table, error_markers.tnode, error_markers.tattr
+                    ),
+                )
+            case TText():
+                error_notes.extend(
+                    self.make_text_error_notes(reader, error_markers.tnode)
+                )
+                if isinstance(error_markers.parent_tnode, (TElement, TComponent)):
+                    error_notes.extend(
+                        self.make_tag_error_notes(
+                            reader, sinfo_table, error_markers.parent_tnode, tattr=None
+                        )
                     )
-                elif isinstance(tnode, TElement):
-                    starttag_repr = f"<{tnode.tag} ...>"
-                else:
-                    starttag_repr = "unknown source"  # This would likely be a bug.
-        else:
-            if isinstance(tnode, TText):
-                starttag_repr = reader.ref_to_repr(tnode.ref)
-            elif isinstance(tnode, TComment):
-                starttag_repr = f"<!--{reader.ref_to_repr(tnode.ref)}-->"
-            elif isinstance(tnode, TDocumentType):
-                starttag_repr = f"<!DOCTYPE {tnode.text}>"
-            else:
-                # @TODO: TFragment or TNode/?
-                starttag_repr = tnode.__class__.__name__.upper()
-
-        if source_pos:
-            starttag_pos_msg = reader.make_template_pos_msg(source_pos)
-        else:
-            starttag_pos_msg = "unknown location"  # source_pos is optional right now
-
-        return " ".join(
-            filter(
-                None,
-                (
-                    "Error occurred",
-                    attr_blurb,
-                    "at",
-                    starttag_repr,
-                    "at",
-                    f"{starttag_pos_msg}.",
-                ),
-            )
-        )
+            case TComment():
+                error_notes.extend(
+                    self.make_comment_error_notes(reader, error_markers.tnode),
+                )
+            case TDocumentType():
+                error_notes.extend(
+                    self.make_document_type_error_notes(reader, error_markers.tnode),
+                )
+            case TFragment():
+                pass
+            case _:
+                assert error_markers.tnode is not None
+        return error_notes
 
 
 ProcessingErrorCtx: ContextVar[ProcessingErrorHelper | None] = ContextVar(
@@ -904,8 +977,12 @@ class TemplateProcessor(ITemplateProcessor):
             assert helper is not None, "Helper instance must be set in ctx."
             tnode = helper.pop_nearest_tnode()
             assert tnode, "Every error should be linked to a TNode."
+            parent_tnode = helper.pop_nearest_parent_tnode()
             tattr = helper.pop_nearest_tattr()
-            helper.push_template_error(template, ttree, tnode, tattr)
+            i_index = helper.pop_nearest_i_index()
+            helper.push_template_error(
+                template, ttree, tnode, parent_tnode, tattr, i_index
+            )
             raise
 
     def _process_tnode(
@@ -945,6 +1022,7 @@ class TemplateProcessor(ITemplateProcessor):
             helper = ProcessingErrorCtx.get()
             assert helper is not None, "Helper instance must be set in ctx."
             helper.stash_nearest_tnode(tnode)
+            helper.stash_nearest_parent_tnode(tnode)
             raise
 
     def _process_document_type(
@@ -1121,7 +1199,6 @@ class TemplateProcessor(ITemplateProcessor):
         else:
             raise TextProcessingError(
                 f"Parent tag {last_ctx.parent_tag} is not supported.",
-                template=template,
             )
 
     def _process_escapable_raw_texts(
@@ -1165,9 +1242,15 @@ class TemplateProcessor(ITemplateProcessor):
 
         @NOTE: This is an interpolation that must be formatted to get the value.
         """
-        value = format_interpolation(template.interpolations[values_index])
-        value = t.cast(NormalTextInterpolationValue, value)  # ty: ignore[redundant-cast]
-        return self._process_normal_text_from_value(template, last_ctx, value)
+        try:
+            value = format_interpolation(template.interpolations[values_index])
+            value = t.cast(NormalTextInterpolationValue, value)  # ty: ignore[redundant-cast]
+            return self._process_normal_text_from_value(template, last_ctx, value)
+        except Exception:
+            helper = ProcessingErrorCtx.get()
+            assert helper is not None, "Helper instance must be set in ctx."
+            helper.stash_nearest_i_index(values_index)
+            raise
 
     def _process_normal_text_from_value(
         self,
@@ -1222,24 +1305,28 @@ def resolve_text_without_recursion(
     across the boundary between other content and the pass-through content.
     """
     if content_ref.is_singleton:
-        value = format_interpolation(template.interpolations[content_ref.i_start])
-        value = t.cast(RawTextExactInterpolationValue, value)  # ty: ignore[redundant-cast]
-        if value is None or isinstance(value, bool):
-            return ""
-        elif isinstance(value, str):
-            return value
-        elif isinstance(value, HasHTMLDunder):
-            # @DESIGN: We could also force callers to use `:safe` to trigger
-            # the interpolation in this special case.
-            return Markup(value.__html__())
-        elif isinstance(value, (Template, Iterable)):
-            raise TextProcessingError(
-                f"Template and Iterable interpolation values are not supported within {parent_tag}",
-                template=template,
-                i_index=content_ref.i_start,
-            )
-        else:
-            return str(value)
+        try:
+            value = format_interpolation(template.interpolations[content_ref.i_start])
+            value = t.cast(RawTextExactInterpolationValue, value)  # ty: ignore[redundant-cast]
+            if value is None or isinstance(value, bool):
+                return ""
+            elif isinstance(value, str):
+                return value
+            elif isinstance(value, HasHTMLDunder):
+                # @DESIGN: We could also force callers to use `:safe` to trigger
+                # the interpolation in this special case.
+                return Markup(value.__html__())
+            elif isinstance(value, (Template, Iterable)):
+                raise TextProcessingError(
+                    f"Template and Iterable interpolation values are not supported within {parent_tag}",
+                )
+            else:
+                return str(value)
+        except Exception:
+            helper = ProcessingErrorCtx.get()
+            assert helper is not None, "Helper instance must be set in ctx."
+            helper.stash_nearest_i_index(content_ref.i_start)
+            raise
     else:
         text = []
         for part in content_ref:
@@ -1247,31 +1334,36 @@ def resolve_text_without_recursion(
                 if part:
                     text.append(part)
                 continue
-            value = format_interpolation(template.interpolations[part])
-            value = t.cast(RawTextInexactInterpolationValue, value)  # ty: ignore[redundant-cast]
-            if value is None or isinstance(value, bool):
-                continue
-            elif (
-                type(value) is str
-            ):  # type() check to avoid subclasses, probably something smarter here
-                if value:
-                    text.append(value)
-            elif not isinstance(value, str) and isinstance(value, (Template, Iterable)):
-                raise TextProcessingError(
-                    f"Template and Iterable interpolation values are not supported within {parent_tag}",
-                    template=template,
-                    i_index=part,
-                )
-            elif isinstance(value, HasHTMLDunder):
-                raise TextProcessingError(
-                    f"Non-exact trusted interpolation values are not supported within {parent_tag}",
-                    template=template,
-                    i_index=part,
-                )
-            else:
-                value_str = str(value)
-                if value_str:
-                    text.append(value_str)
+            try:
+                value = format_interpolation(template.interpolations[part])
+                value = t.cast(RawTextInexactInterpolationValue, value)  # ty: ignore[redundant-cast]
+                if value is None or isinstance(value, bool):
+                    continue
+                elif (
+                    type(value) is str
+                ):  # type() check to avoid subclasses, probably something smarter here
+                    if value:
+                        text.append(value)
+                elif not isinstance(value, str) and isinstance(
+                    value, (Template, Iterable)
+                ):
+                    raise TextProcessingError(
+                        f"Template and Iterable interpolation values are not supported within {parent_tag}",
+                    )
+                elif isinstance(value, HasHTMLDunder):
+                    raise TextProcessingError(
+                        f"Non-exact trusted interpolation values are not supported within {parent_tag}",
+                    )
+                else:
+                    value_str = str(value)
+                    if value_str:
+                        text.append(value_str)
+            except Exception:
+                helper = ProcessingErrorCtx.get()
+                assert helper is not None, "Helper instance must be set in ctx."
+                helper.stash_nearest_i_index(part)
+                raise
+
         return "".join(text)
 
 
