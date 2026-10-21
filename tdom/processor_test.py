@@ -2355,3 +2355,43 @@ def bad_html_dunder():
 class _BadHTMLDunder:
     def __html__(self):
         raise ValueError("bad value")
+
+
+@pytest.fixture
+def cb_value_error():
+    """Callback that just raises value error."""
+
+    def _cb_value_error():
+        raise ValueError("Failed.")
+
+    return _cb_value_error
+
+
+class TestProcessingErrorAttributeNotes:
+    def test_interpolated_attribute_error(self):
+        with pytest.raises(Exception) as exc_info:
+            _ = html(t"<div aria={0}></div>")
+        assert exc_info.value.__notes__ == [
+            "Error occurred in interpolated attribute aria={0} for <div aria={0}> at line 1 offset 0."
+        ]
+
+    def test_templated_attribute_error(self, cb_value_error):
+        with pytest.raises(Exception) as exc_info:
+            _ = html(t'<div label="label_{cb_value_error:callback}"></div>')
+        assert exc_info.value.__notes__ == [
+            'Error occurred in templated attribute label=label_{cb_value_error:callback} for <div label="label_{cb_value_error:callback}"> at line 1 offset 0.'
+        ]
+
+    def test_spread_attribute_error(self):
+        with pytest.raises(Exception) as exc_info:
+            _ = html(t"<div {0}></div>")
+        assert exc_info.value.__notes__ == [
+            "Error occurred in spread attribute {0} for <div {0}> at line 1 offset 0."
+        ]
+
+    def test_literal_attribute_error(self):
+        with pytest.raises(Exception) as exc_info:
+            _ = html(t'<div style="status:great" style="status:"></div>')
+        assert exc_info.value.__notes__ == [
+            'Error occurred in literal attribute style=status: for <div style="status:great" style="status:"> at line 1 offset 0.'
+        ]
