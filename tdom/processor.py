@@ -184,7 +184,7 @@ class ProcessingErrorHelper:
     def make_interpolation_blurb(self, reader: SourceReader, i_index: int) -> str:
         """Make a short blurb about which interpolation the error occurred in."""
         i_ref = TemplateRef(strings=("", ""), i_start=i_index)
-        return f"Error occurred in interpolation {reader.ref_to_repr(i_ref)}"
+        return f"... in interpolation {reader.ref_to_repr(i_ref)}"
 
     def make_attribute_blurb(
         self, reader: SourceReader, tattr: TAttribute | None
@@ -222,7 +222,7 @@ class ProcessingErrorHelper:
     ) -> tuple[str, ...]:
         tnode_repr = f"<!--{reader.ref_to_repr(tnode.ref)}-->"
         pos_msg = self.make_pos_msg(reader, tnode.source_pos)
-        return (f"Error occurred in {tnode_repr} at {pos_msg}",)
+        return (f"... in {tnode_repr} at {pos_msg}",)
 
     def make_text_error_notes(
         self,
@@ -232,7 +232,7 @@ class ProcessingErrorHelper:
         # @TODO: Do we want a different message for singletons?
         tnode_repr = reader.ref_to_repr(tnode.ref)
         pos_msg = self.make_pos_msg(reader, tnode.source_pos)
-        return (f"Error occurred in {tnode_repr} at {pos_msg}",)
+        return (f"... in {tnode_repr} at {pos_msg}",)
 
     def make_document_type_error_notes(
         self,
@@ -241,7 +241,7 @@ class ProcessingErrorHelper:
     ) -> tuple[str, ...]:
         tnode_repr = f"<!DOCTYPE {tnode.text}>"
         pos_msg = self.make_pos_msg(reader, tnode.source_pos)
-        return (f"Error occurred in {tnode_repr} at {pos_msg}.",)
+        return (f"... in {tnode_repr} at {pos_msg}.",)
 
     def make_tag_error_notes(
         self,
@@ -261,9 +261,9 @@ class ProcessingErrorHelper:
             else:
                 tnode_repr = self.fallback_component_repr(reader, tnode)
         if attr_blurb:
-            return (f"Error occurred {attr_blurb} for {tnode_repr} at {pos_msg}.",)
+            return (f"... {attr_blurb} for {tnode_repr} at {pos_msg}.",)
         else:
-            return (f"Error occurred in {tnode_repr} at {pos_msg}.",)
+            return (f"... in {tnode_repr} at {pos_msg}.",)
 
     def fallback_element_repr(self, tnode: TElement) -> str:
         return f"<{tnode.tag} ...>"
