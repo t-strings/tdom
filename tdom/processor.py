@@ -181,11 +181,6 @@ class ProcessingErrorHelper:
             )
         )
 
-    def make_interpolation_blurb(self, reader: SourceReader, i_index: int) -> str:
-        """Make a short blurb about which interpolation the error occurred in."""
-        i_ref = TemplateRef(strings=("", ""), i_start=i_index)
-        return f"in {reader.ref_to_repr(i_ref)}"
-
     def make_attribute_blurb(
         self, reader: SourceReader, tattr: TAttribute | None
     ) -> str:
@@ -217,25 +212,24 @@ class ProcessingErrorHelper:
             return fallback_msg
         return reader.make_template_pos_msg(source_pos)
 
-    def make_comment_error_notes(
-        self, reader: SourceReader, tnode: TComment, i_index: int | None
-    ) -> tuple[str, ...]:
-        tnode_repr = f"<!--{reader.ref_to_repr(tnode.ref)}-->"
-        pos_msg = self.make_pos_msg(reader, tnode.source_pos)
-        if i_index is not None and not tnode.ref.is_singleton:
-            i_blurb = self.make_interpolation_blurb(reader, i_index)
-            return (f"... {i_blurb} within {tnode_repr} at {pos_msg}",)
-        else:
-            return (f"... in {tnode_repr} at {pos_msg}",)
+    def make_tcomment_repr(self, reader: SourceReader, tnode: TComment) -> str:
+        return f"<!--{reader.ref_to_repr(tnode.ref)}-->"
 
-    def make_text_error_notes(
+    def make_ttext_repr(self, reader: SourceReader, tnode: TText) -> str:
+        return reader.ref_to_repr(tnode.ref)
+
+    def make_interpolation_blurb(self, reader: SourceReader, i_index: int) -> str:
+        """Make a short blurb about which interpolation the error occurred in."""
+        i_ref = TemplateRef(strings=("", ""), i_start=i_index)
+        return f"in {reader.ref_to_repr(i_ref)}"
+
+    def make_common_text_error_notes(
         self,
         reader: SourceReader,
-        tnode: TText,
+        tnode: TText | TComment,
         i_index: int | None,
+        tnode_repr: str,
     ) -> tuple[str, ...]:
-        # @TODO: Do we want a different message for singletons?
-        tnode_repr = reader.ref_to_repr(tnode.ref)
         pos_msg = self.make_pos_msg(reader, tnode.source_pos)
         if i_index is not None and not tnode.ref.is_singleton:
             i_blurb = self.make_interpolation_blurb(reader, i_index)
@@ -304,8 +298,11 @@ class ProcessingErrorHelper:
                 )
             case TText():
                 error_notes.extend(
-                    self.make_text_error_notes(
-                        reader, error_markers.tnode, error_markers.i_index
+                    self.make_common_text_error_notes(
+                        reader,
+                        error_markers.tnode,
+                        error_markers.i_index,
+                        tnode_repr=self.make_ttext_repr(reader, error_markers.tnode),
                     )
                 )
                 if isinstance(error_markers.parent_tnode, (TElement, TComponent)):
@@ -316,8 +313,11 @@ class ProcessingErrorHelper:
                     )
             case TComment():
                 error_notes.extend(
-                    self.make_comment_error_notes(
-                        reader, error_markers.tnode, error_markers.i_index
+                    self.make_common_text_error_notes(
+                        reader,
+                        error_markers.tnode,
+                        error_markers.i_index,
+                        tnode_repr=self.make_tcomment_repr(reader, error_markers.tnode),
                     ),
                 )
             case TDocumentType():
