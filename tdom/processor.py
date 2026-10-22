@@ -241,7 +241,7 @@ class ProcessingErrorHelper:
     ) -> tuple[str, ...]:
         tnode_repr = f"<!DOCTYPE {tnode.text}>"
         pos_msg = self.make_pos_msg(reader, tnode.source_pos)
-        return (f"... in {tnode_repr} at {pos_msg}.",)
+        return (f"... in {tnode_repr} at {pos_msg}",)
 
     def make_tag_error_notes(
         self,
@@ -261,9 +261,9 @@ class ProcessingErrorHelper:
             else:
                 tnode_repr = self.fallback_component_repr(reader, tnode)
         if attr_blurb:
-            return (f"... {attr_blurb} for {tnode_repr} at {pos_msg}.",)
+            return (f"... {attr_blurb} for {tnode_repr} at {pos_msg}",)
         else:
-            return (f"... in {tnode_repr} at {pos_msg}.",)
+            return (f"... in {tnode_repr} at {pos_msg}",)
 
     def fallback_element_repr(self, tnode: TElement) -> str:
         return f"<{tnode.tag} ...>"
