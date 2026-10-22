@@ -37,7 +37,7 @@ def cb_value_error():
     return _cb_value_error
 
 
-class TestProcessingErrorAttributeNotes:
+class TestAttributeErrors:
     def test_interpolated_attribute_error(self):
         with pytest.raises(Exception) as exc_info:
             _ = html(t"<div aria={0}></div>")
@@ -67,8 +67,8 @@ class TestProcessingErrorAttributeNotes:
         ]
 
 
-class TestProcessingErrorInterpolationNotes:
-    def test_text_interpolation(self, cb_value_error):
+class TestTextInterpolationNotes:
+    def test_singleton(self, cb_value_error):
         with pytest.raises(Exception) as exc_info:
             _ = html(t"<div>{cb_value_error:callback}</div>")
         assert exc_info.value.__notes__ == [
@@ -76,7 +76,7 @@ class TestProcessingErrorInterpolationNotes:
             "... in <div> at line 1 offset 0",
         ]
 
-    def test_text_interpolation_multiline(self, cb_value_error):
+    def test_mixed_multiline(self, cb_value_error):
         def nofmt():
             # fmt: off
             return t"""<div>\n    {cb_value_error:callback}\n</div>"""
@@ -88,9 +88,7 @@ class TestProcessingErrorInterpolationNotes:
             "... in <div> at line 1 offset 0",
         ]
 
-    def test_singleton_text_interpolation_with_nested_ambig_template(
-        self, cb_value_error
-    ):
+    def test_singleton_with_singleton_template(self, cb_value_error):
         def outer_t():  # avoidqa: RUF027
             inner_t = t"{cb_value_error:callback}"
             return t"<div>{inner_t}</div>"
@@ -103,29 +101,42 @@ class TestProcessingErrorInterpolationNotes:
             "... in <div> at line 1 offset 0",
         ]
 
-    def test_multiple_text_interpolation_with_nested_ambig_template(
-        self, cb_value_error
-    ):
+    def test_mixed_with_singleton_template(self, cb_value_error):
         def outer_t():  # avoidqa: RUF027
             inner_t = t"{cb_value_error:callback}"
-            return t"<div>{'ok'} {inner_t}</div>"
+            return t"<div>ok {inner_t}</div>"
 
         with pytest.raises(Exception) as exc_info:
             _ = html(outer_t())
         assert exc_info.value.__notes__ == [
             "... in {cb_value_error:callback} at line 1 offset 0",
-            "... in {inner_t} within {'ok'} {inner_t} at line 1 offset 5",
+            "... in {inner_t} within ok {inner_t} at line 1 offset 5",
             "... in <div> at line 1 offset 0",
         ]
 
-    def test_comment_singleton_interpolation(self, cb_value_error):
+    def test_singleton_with_mixed_template(self, cb_value_error):
+        def outer_t():  # avoidqa: RUF027
+            inner_t = t"ok {cb_value_error:callback}"
+            return t"<div>{inner_t}</div>"
+
+        with pytest.raises(Exception) as exc_info:
+            _ = html(outer_t())
+        assert exc_info.value.__notes__ == [
+            "... in {cb_value_error:callback} within ok {cb_value_error:callback} at line 1 offset 0",
+            "... in {inner_t} at line 1 offset 5",
+            "... in <div> at line 1 offset 0",
+        ]
+
+
+class TestCommentInterpolationNotes:
+    def test_singleton(self, cb_value_error):
         with pytest.raises(Exception) as exc_info:
             _ = html(t"<!--{cb_value_error:callback}-->")
         assert exc_info.value.__notes__ == [
             "... in <!--{cb_value_error:callback}--> at line 1 offset 0",
         ]
 
-    def test_comment_mixed_interpolation(self, cb_value_error):
+    def test_mixed(self, cb_value_error):
         with pytest.raises(Exception) as exc_info:
             _ = html(t"<!--ok {cb_value_error:callback}-->")
         assert exc_info.value.__notes__ == [
