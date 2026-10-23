@@ -194,3 +194,41 @@ class TestCommentInterpolationNotes:
         )
 
 
+class TestComponentNotes:
+    def Wrapper(self, children: Template) -> Template:
+        return t"<div>{children}</div>"
+
+    def test_children_mixed_interpolation(self, cb_value_error):
+        def nofmt() -> Template:
+            # fmt: off
+            return t"""<{self.Wrapper}>ok? {cb_value_error:callback}</{self.Wrapper}>"""
+
+        with pytest.raises(ValueError) as exc_info:
+            _ = html(nofmt())
+        assert_notes(
+            exc_info.value.__notes__,
+            [
+                # @TODO: Should location be location of interpolation itself?
+                "... in {cb_value_error:callback} within ok? {cb_value_error:callback} at line 1 offset 0",
+                "... in {children} at line 1 offset 5",  # @TODO: Should this be inlined into the parent tag?
+                "... in <div> at line 1 offset 0",
+                "... in <{self.Wrapper}> at line 1 offset 0",
+            ],
+        )
+
+    def test_children_singleton_interpolation(self, cb_value_error):
+        def nofmt() -> Template:
+            # fmt: off
+            return t"""<{self.Wrapper}>{cb_value_error:callback}</{self.Wrapper}>"""
+
+        with pytest.raises(ValueError) as exc_info:
+            _ = html(nofmt())
+        assert_notes(
+            exc_info.value.__notes__,
+            [
+                "... in {cb_value_error:callback} at line 1 offset 0",
+                "... in {children} at line 1 offset 5",
+                "... in <div> at line 1 offset 0",
+                "... in <{self.Wrapper}> at line 1 offset 0",
+            ],
+        )
