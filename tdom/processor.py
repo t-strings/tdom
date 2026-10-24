@@ -76,6 +76,29 @@ class TemplateErrorState:
     " Nearest interpolation index, if applicable. "
 
 
+@dataclass()
+class OpenTemplateErrorState:
+    tnode: TNode | None = None
+    " Nearest tnode. "
+    parent_tnode: TFragment | TElement | TComponent | None = None
+    " Nearest parent tnode. "
+    tattr: TAttribute | None = None
+    " Nearest template attribute, if applicable. "
+    i_index: int | None = None
+    " Nearest interpolation index, if applicable. "
+
+    def close(self, template: Template, ttree: TTree) -> TemplateErrorState:
+        assert self.tnode is not None, "Every template error should have a tnode. "
+        return TemplateErrorState(
+            template=template,
+            ttree=ttree,
+            tnode=self.tnode,
+            parent_tnode=self.parent_tnode,
+            tattr=self.tattr,
+            i_index=self.i_index,
+        )
+
+
 class ProcessingError(TemplatingError):
     """General error when processing a template."""
 
@@ -94,78 +117,42 @@ class ComponentProcessingError(ProcessingError):
 
 @dataclass
 class ProcessingErrorHelper:
-    nearest_tnode: TNode | None = None
-    " Nearest tnode from error. "
+    open_error_state: OpenTemplateErrorState = field(
+        default_factory=OpenTemplateErrorState
+    )
+    " Currently tracked template error state. "
 
-    nearest_parent_tnode: TFragment | TElement | TComponent | None = None
-    " Nearest parent tnode, helpful for ttext. "
-
-    nearest_tattr: TAttribute | None = None
-    " Nearest tattribute from error if applicable. "
-
-    nearest_i_index: int | None = None
-    " Nearest interpolation index from error if applicable. "
-
-    template_e_states: list[TemplateErrorState] = field(default_factory=list)
+    error_states: list[TemplateErrorState] | None = None
     " Stack of processor template error states if applicable. "
 
-    def push_template_error(
+    def push_error_state(
         self,
         template: Template,
         ttree: TTree,
-        tnode: TNode,
-        parent_tnode: TFragment | TElement | TComponent | None,
-        tattr: TAttribute | None,
-        i_index: int | None,
     ) -> None:
-        self.template_e_states.append(
-            TemplateErrorState(
-                template=template,
-                ttree=ttree,
-                tnode=tnode,
-                parent_tnode=parent_tnode,
-                tattr=tattr,
-                i_index=i_index,
-            )
-        )
-
-    def pop_nearest_tnode(self) -> TNode | None:
-        t = self.nearest_tnode
-        self.nearest_tnode = None
-        return t
+        closed_state = self.open_error_state.close(template, ttree)
+        self.open_error_state = OpenTemplateErrorState()
+        if self.error_states is None:
+            self.error_states = []
+        self.error_states.append(closed_state)
 
     def stash_nearest_tnode(self, tnode: TNode) -> None:
-        if self.nearest_tnode is None:
-            self.nearest_tnode = tnode
+        if self.open_error_state.tnode is None:
+            self.open_error_state.tnode = tnode
 
-    def pop_nearest_parent_tnode(self) -> TFragment | TElement | TComponent | None:
-        t = self.nearest_parent_tnode
-        self.nearest_parent_tnode = None
-        return t
-
-    def stash_nearest_parent_tnode(self, tnode: TNode) -> None:
-        if self.nearest_parent_tnode is None and isinstance(
-            tnode, (TFragment, TElement, TComponent)
+    def stash_nearest_parent_tnode(self, parent_tnode: TNode) -> None:
+        if self.open_error_state.parent_tnode is None and isinstance(
+            parent_tnode, (TFragment, TElement, TComponent)
         ):
-            self.nearest_parent_tnode = tnode
-
-    def pop_nearest_tattr(self) -> TAttribute | None:
-        t = self.nearest_tattr
-        self.nearest_tattr = None
-        return t
+            self.open_error_state.parent_tnode = parent_tnode
 
     def stash_nearest_tattr(self, tattr: TAttribute) -> None:
-        if self.nearest_tattr is None:
-            self.nearest_tattr = tattr
-
-    def pop_nearest_i_index(self) -> int | None:
-        t = self.nearest_i_index
-        self.nearest_i_index = None
-        return t
+        if self.open_error_state.tattr is None:
+            self.open_error_state.tattr = tattr
 
     def stash_nearest_i_index(self, i_index: int) -> None:
-        if self.nearest_i_index is None:
-            self.nearest_i_index = i_index
+        if self.open_error_state.i_index is None:
+            self.open_error_state.i_index = i_index
 
     def make_process_error_notes(
         self,
@@ -174,10 +161,11 @@ class ProcessingErrorHelper:
         """
         Add the accumulated notes from unwinding nested processing.
         """
+        error_states = self.error_states if self.error_states is not None else []
         return tuple(
             chain.from_iterable(
                 self.make_template_error_notes(e_state)
-                for e_state in self.template_e_states  # reversed?
+                for e_state in error_states  # reversed?
             )
         )
 
@@ -985,14 +973,7 @@ class TemplateProcessor(ITemplateProcessor):
         except Exception:
             helper = ProcessingErrorCtx.get()
             assert helper is not None, "Helper instance must be set in ctx."
-            tnode = helper.pop_nearest_tnode()
-            assert tnode, "Every error should be linked to a TNode."
-            parent_tnode = helper.pop_nearest_parent_tnode()
-            tattr = helper.pop_nearest_tattr()
-            i_index = helper.pop_nearest_i_index()
-            helper.push_template_error(
-                template, ttree, tnode, parent_tnode, tattr, i_index
-            )
+            helper.push_error_state(template, ttree)
             raise
 
     def _process_tnode(
