@@ -62,6 +62,13 @@ type AttributesDict = dict[str, object]
 
 @dataclass(frozen=True)
 class TemplateErrorState:
+    """
+    Accumulated and frozen template processing state after exception occurred.
+
+    *EACH* template could have a different state as the recursion is unwound from
+    the original source of the exception.
+    """
+
     template: Template
     " The nearest template related to the exception. "
     ttree: TTree
@@ -78,6 +85,10 @@ class TemplateErrorState:
 
 @dataclass()
 class OpenTemplateErrorState:
+    """
+    Scratchpad to record state during egress through try/except blocks from source of exception.
+    """
+
     tnode: TNode | None = None
     " Nearest tnode. "
     parent_tnode: TFragment | TElement | TComponent | None = None
@@ -88,6 +99,9 @@ class OpenTemplateErrorState:
     " Nearest interpolation index, if applicable. "
 
     def close(self, template: Template, ttree: TTree) -> TemplateErrorState:
+        """
+        Finalize this "scratchpad" into a frozen version to store.
+        """
         assert self.tnode is not None, "Every template error should have a tnode. "
         return TemplateErrorState(
             template=template,
@@ -130,6 +144,7 @@ class ProcessingErrorHelper:
         template: Template,
         ttree: TTree,
     ) -> None:
+        """Close currently tracked template error state and push on stack."""
         closed_state = self.open_error_state.close(template, ttree)
         self.open_error_state = OpenTemplateErrorState()
         if self.error_states is None:
