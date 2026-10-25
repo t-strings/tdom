@@ -28,7 +28,6 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-          allow-prereleases: true
           check-latest: true
 
       - name: Install uv
