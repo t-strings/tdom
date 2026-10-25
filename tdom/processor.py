@@ -135,16 +135,6 @@ class ProcessingErrorHelper:
     )
     " Currently tracked template error state. "
 
-    def pop_error_state(
-        self,
-        template: Template,
-        ttree: TTree,
-    ) -> TemplateErrorState:
-        """Close currently tracked template error state and push on stack."""
-        closed_state = self.open_error_state.close(template, ttree)
-        self.open_error_state = OpenTemplateErrorState()
-        return closed_state
-
     def stash_nearest_tnode(self, tnode: TNode) -> None:
         if self.open_error_state.tnode is None:
             self.open_error_state.tnode = tnode
@@ -163,7 +153,7 @@ class ProcessingErrorHelper:
         if self.open_error_state.i_index is None:
             self.open_error_state.i_index = i_index
 
-    def pop_process_error_notes(
+    def pop_error_notes(
         self,
         template: Template,
         ttree: TTree,
@@ -171,10 +161,20 @@ class ProcessingErrorHelper:
         """
         Add the accumulated notes from unwinding nested processing.
         """
-        error_state = self.pop_error_state(template, ttree)
-        return tuple(self.make_template_error_notes(error_state))
+        error_state = self._pop_error_state(template, ttree)
+        return tuple(self._make_template_error_notes(error_state))
 
-    def make_attribute_blurb(
+    def _pop_error_state(
+        self,
+        template: Template,
+        ttree: TTree,
+    ) -> TemplateErrorState:
+        """Close and return currently tracked template error state."""
+        closed_state = self.open_error_state.close(template, ttree)
+        self.open_error_state = OpenTemplateErrorState()
+        return closed_state
+
+    def _make_attribute_blurb(
         self, reader: SourceReader, tattr: TAttribute | None
     ) -> str:
         """Make a short blurb about which attribute the error occurred in."""
@@ -195,7 +195,7 @@ class ProcessingErrorHelper:
             attr_blurb = ""
         return attr_blurb
 
-    def make_pos_msg(
+    def _make_pos_msg(
         self,
         reader: SourceReader,
         source_pos: PartPosition | None,
@@ -205,66 +205,66 @@ class ProcessingErrorHelper:
             return fallback_msg
         return reader.make_template_pos_msg(source_pos)
 
-    def make_tcomment_repr(self, reader: SourceReader, tnode: TComment) -> str:
+    def _make_tcomment_repr(self, reader: SourceReader, tnode: TComment) -> str:
         return f"<!--{reader.ref_to_repr(tnode.ref)}-->"
 
-    def make_ttext_repr(self, reader: SourceReader, tnode: TText) -> str:
+    def _make_ttext_repr(self, reader: SourceReader, tnode: TText) -> str:
         return reader.ref_to_repr(tnode.ref)
 
-    def make_interpolation_blurb(self, reader: SourceReader, i_index: int) -> str:
+    def _make_interpolation_blurb(self, reader: SourceReader, i_index: int) -> str:
         """Make a short blurb about which interpolation the error occurred in."""
         i_ref = TemplateRef(strings=("", ""), i_start=i_index)
         return f"in {reader.ref_to_repr(i_ref)}"
 
-    def make_common_text_error_notes(
+    def _make_common_text_error_notes(
         self,
         reader: SourceReader,
         tnode: TText | TComment,
         i_index: int | None,
         tnode_repr: str,
     ) -> tuple[str, ...]:
-        pos_msg = self.make_pos_msg(reader, tnode.source_pos)
+        pos_msg = self._make_pos_msg(reader, tnode.source_pos)
         if i_index is not None and not tnode.ref.is_singleton:
-            i_blurb = self.make_interpolation_blurb(reader, i_index)
+            i_blurb = self._make_interpolation_blurb(reader, i_index)
             return (f"... {i_blurb} within {tnode_repr} at {pos_msg}",)
         else:
             return (f"... in {tnode_repr} at {pos_msg}",)
 
-    def make_document_type_error_notes(
+    def _make_document_type_error_notes(
         self,
         reader: SourceReader,
         tnode: TDocumentType,
     ) -> tuple[str, ...]:
         tnode_repr = f"<!DOCTYPE {tnode.text}>"
-        pos_msg = self.make_pos_msg(reader, tnode.source_pos)
+        pos_msg = self._make_pos_msg(reader, tnode.source_pos)
         return (f"... in {tnode_repr} at {pos_msg}",)
 
-    def make_tag_error_notes(
+    def _make_tag_error_notes(
         self,
         reader: SourceReader,
         sinfo_table: dict[PartPosition, TagSourceInfo],
         tnode: TElement | TComponent,
         tattr: TAttribute | None,
     ) -> tuple[str, ...]:
-        attr_blurb = self.make_attribute_blurb(reader, tattr)
-        pos_msg = self.make_pos_msg(reader, tnode.source_pos)
+        attr_blurb = self._make_attribute_blurb(reader, tattr)
+        pos_msg = self._make_pos_msg(reader, tnode.source_pos)
         sinfo = sinfo_table.get(tnode.source_pos, None) if tnode.source_pos else None
         if sinfo:
             tnode_repr = reader.span_to_repr(sinfo.starttag_span)
         else:
             if isinstance(tnode, TElement):
-                tnode_repr = self.fallback_element_repr(tnode)
+                tnode_repr = self._fallback_element_repr(tnode)
             else:
-                tnode_repr = self.fallback_component_repr(reader, tnode)
+                tnode_repr = self._fallback_component_repr(reader, tnode)
         if attr_blurb:
             return (f"... {attr_blurb} for {tnode_repr} at {pos_msg}",)
         else:
             return (f"... in {tnode_repr} at {pos_msg}",)
 
-    def fallback_element_repr(self, tnode: TElement) -> str:
+    def _fallback_element_repr(self, tnode: TElement) -> str:
         return f"<{tnode.tag} ...>"
 
-    def fallback_component_repr(
+    def _fallback_component_repr(
         self,
         reader: SourceReader,
         tnode: TComponent,
@@ -273,54 +273,54 @@ class ProcessingErrorHelper:
             TemplateRef(strings=("<", "...>"), i_start=tnode.start_i_index)
         )
 
-    def make_template_error_notes(self, error_markers: TemplateErrorState) -> list[str]:
+    def _make_template_error_notes(self, error_state: TemplateErrorState) -> list[str]:
         """
         Add notes accumulated either at the initial tnode of the error or
         a subsequent tnode in another template passed through during unwinding
         from nested processing.
         """
-        reader = SourceReader(error_markers.template)
+        reader = SourceReader(error_state.template)
         error_notes = []
-        sinfo_table = error_markers.ttree.unpack_sinfo_table()
-        match error_markers.tnode:
+        sinfo_table = error_state.ttree.unpack_sinfo_table()
+        match error_state.tnode:
             case TElement() | TComponent():
                 error_notes.extend(
-                    self.make_tag_error_notes(
-                        reader, sinfo_table, error_markers.tnode, error_markers.tattr
+                    self._make_tag_error_notes(
+                        reader, sinfo_table, error_state.tnode, error_state.tattr
                     ),
                 )
             case TText():
                 error_notes.extend(
-                    self.make_common_text_error_notes(
+                    self._make_common_text_error_notes(
                         reader,
-                        error_markers.tnode,
-                        error_markers.i_index,
-                        tnode_repr=self.make_ttext_repr(reader, error_markers.tnode),
+                        error_state.tnode,
+                        error_state.i_index,
+                        tnode_repr=self._make_ttext_repr(reader, error_state.tnode),
                     )
                 )
-                if isinstance(error_markers.parent_tnode, (TElement, TComponent)):
+                if isinstance(error_state.parent_tnode, (TElement, TComponent)):
                     error_notes.extend(
-                        self.make_tag_error_notes(
-                            reader, sinfo_table, error_markers.parent_tnode, tattr=None
+                        self._make_tag_error_notes(
+                            reader, sinfo_table, error_state.parent_tnode, tattr=None
                         )
                     )
             case TComment():
                 error_notes.extend(
-                    self.make_common_text_error_notes(
+                    self._make_common_text_error_notes(
                         reader,
-                        error_markers.tnode,
-                        error_markers.i_index,
-                        tnode_repr=self.make_tcomment_repr(reader, error_markers.tnode),
+                        error_state.tnode,
+                        error_state.i_index,
+                        tnode_repr=self._make_tcomment_repr(reader, error_state.tnode),
                     ),
                 )
             case TDocumentType():
                 error_notes.extend(
-                    self.make_document_type_error_notes(reader, error_markers.tnode),
+                    self._make_document_type_error_notes(reader, error_state.tnode),
                 )
             case TFragment():
                 pass
             case _:
-                assert error_markers.tnode is not None
+                assert error_state.tnode is not None
         return error_notes
 
 
@@ -971,7 +971,7 @@ class TemplateProcessor(ITemplateProcessor):
             except Exception as e:
                 helper = ProcessingErrorCtx.get()
                 assert helper is not None, "Helper instance must be set in ctx."
-                for note in helper.pop_process_error_notes(template, ttree):
+                for note in helper.pop_error_notes(template, ttree):
                     e.add_note(note)
                 raise
 
