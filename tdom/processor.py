@@ -3,7 +3,6 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from functools import lru_cache
-from itertools import chain
 from string.templatelib import Interpolation, Template
 
 from markupsafe import Markup
@@ -173,13 +172,7 @@ class ProcessingErrorHelper:
         Add the accumulated notes from unwinding nested processing.
         """
         error_state = self.pop_error_state(template, ttree)
-        error_states = [error_state] if error_state is not None else []
-        return tuple(
-            chain.from_iterable(
-                self.make_template_error_notes(e_state)
-                for e_state in error_states  # reversed?
-            )
-        )
+        return tuple(self.make_template_error_notes(error_state))
 
     def make_attribute_blurb(
         self, reader: SourceReader, tattr: TAttribute | None
