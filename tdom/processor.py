@@ -136,20 +136,15 @@ class ProcessingErrorHelper:
     )
     " Currently tracked template error state. "
 
-    error_states: list[TemplateErrorState] | None = None
-    " Stack of processor template error states if applicable. "
-
-    def push_error_state(
+    def pop_error_state(
         self,
         template: Template,
         ttree: TTree,
-    ) -> None:
+    ) -> TemplateErrorState:
         """Close currently tracked template error state and push on stack."""
         closed_state = self.open_error_state.close(template, ttree)
         self.open_error_state = OpenTemplateErrorState()
-        if self.error_states is None:
-            self.error_states = []
-        self.error_states.append(closed_state)
+        return closed_state
 
     def stash_nearest_tnode(self, tnode: TNode) -> None:
         if self.open_error_state.tnode is None:
@@ -169,14 +164,16 @@ class ProcessingErrorHelper:
         if self.open_error_state.i_index is None:
             self.open_error_state.i_index = i_index
 
-    def make_process_error_notes(
+    def pop_process_error_notes(
         self,
-        e: Exception,
+        template: Template,
+        ttree: TTree,
     ) -> tuple[str, ...]:
         """
         Add the accumulated notes from unwinding nested processing.
         """
-        error_states = self.error_states if self.error_states is not None else []
+        error_state = self.pop_error_state(template, ttree)
+        error_states = [error_state] if error_state is not None else []
         return tuple(
             chain.from_iterable(
                 self.make_template_error_notes(e_state)
@@ -971,25 +968,19 @@ class TemplateProcessor(ITemplateProcessor):
         """
         Process a TDOM compatible template into a string.
         """
-        with ProcessingErrorCtx.set(ProcessingErrorHelper()):
-            try:
-                return self._process_template(root_template, assume_ctx)
-            except Exception as e:
-                helper = ProcessingErrorCtx.get()
-                assert helper is not None, "Helper instance must be set in ctx."
-                for note in helper.make_process_error_notes(e):
-                    e.add_note(note)
-                raise
+        return self._process_template(root_template, assume_ctx)
 
     def _process_template(self, template: Template, last_ctx: ProcessContext) -> str:
         ttree = self.parser_api.to_ttree(template)
-        try:
-            return self._process_tnode(template, last_ctx, ttree.root)
-        except Exception:
-            helper = ProcessingErrorCtx.get()
-            assert helper is not None, "Helper instance must be set in ctx."
-            helper.push_error_state(template, ttree)
-            raise
+        with ProcessingErrorCtx.set(ProcessingErrorHelper()):
+            try:
+                return self._process_tnode(template, last_ctx, ttree.root)
+            except Exception as e:
+                helper = ProcessingErrorCtx.get()
+                assert helper is not None, "Helper instance must be set in ctx."
+                for note in helper.pop_process_error_notes(template, ttree):
+                    e.add_note(note)
+                raise
 
     def _process_tnode(
         self, template: Template, last_ctx: ProcessContext, tnode: TNode
