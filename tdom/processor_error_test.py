@@ -5,6 +5,7 @@ Tests for processing errors.
 from string.templatelib import Template
 
 import pytest
+from markupsafe import Markup
 
 from .processor import (
     ProcessContext,
@@ -51,7 +52,7 @@ def cb_value_error():
     """Callback that just raises value error."""
 
     def _cb_value_error():
-        raise ValueError("Failed.")
+        raise ValueError("Callback failed.")
 
     return _cb_value_error
 
@@ -230,5 +231,50 @@ class TestComponentNotes:
                 "... in {children} at line 1 offset 5",
                 "... in <div> at line 1 offset 0",
                 "... in <{self.Wrapper}> at line 1 offset 0",
+            ],
+        )
+
+
+class TestAnotherProcessor:
+    def test_another_html_via_callback(self, cb_value_error):
+        """Make a 2nd call to html() from a callback during processing the 1st html() call."""
+
+        def nofmt():
+            # fmt: off
+            def get_content():
+                return Markup(html(t"<span>{cb_value_error:callback}</span>"))
+            return t"<div>{get_content:callback}</div>"
+
+        with pytest.raises(ValueError, match="Callback failed") as exc_info:
+            _ = html(nofmt())
+        assert_notes(
+            exc_info.value.__notes__,
+            [
+                "... in {cb_value_error:callback} at line 1 offset 6",
+                "... in <span> at line 1 offset 0",
+                "... in {get_content:callback} at line 1 offset 5",
+                "... in <div> at line 1 offset 0",
+            ],
+        )
+
+    def test_another_html_via_component(self, cb_value_error):
+        """Make a 2nd call to html() from a component during processing the 1st html() call."""
+
+        def nofmt():
+            def Content(children: Template) -> Template:
+                # @TODO: calling html is already not great, this is somehow worse
+                content = Markup(html(children))
+                return t"<span>{content}</span>"
+
+            return t"<div><{Content}><b>{cb_value_error:callback}</b></{Content}></div>"
+
+        with pytest.raises(ValueError, match="Callback failed") as exc_info:
+            _ = html(nofmt())
+        assert_notes(
+            exc_info.value.__notes__,
+            [
+                "... in {cb_value_error:callback} at line 1 offset 3",
+                "... in <b> at line 1 offset 0",
+                "... in <{Content}> at line 1 offset 5",
             ],
         )
