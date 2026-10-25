@@ -1,5 +1,6 @@
 import datetime
 import math
+import re
 import typing as t
 from collections import UserDict
 from collections.abc import Callable
@@ -14,10 +15,13 @@ from markupsafe import escape as markupsafe_escape
 from .callables import get_callable_info
 from .escaping import escape_html_text
 from .processor import (
+    AttributeProcessingError,
     CachedTemplateParserProxy,
+    ComponentProcessingError,
     ProcessContext,
     TemplateParserProxy,
     TemplateProcessor,
+    TextProcessingError,
     _make_default_template_processor,
 )
 from .processor import (
@@ -184,11 +188,11 @@ class TestComment:
     def test_templated_has_html_dunder_error(self, html_dunder_cls):
         """Objects with __html__ are not processed with literal text or other interpolations."""
         text = html_dunder_cls("in a comment")
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<!--This is a {text}-->")
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<!--{None}{text}-->")
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<!--This is a {Markup('Also check specialized cls.')}-->")
 
     def test_templated_multiple_interpolations(self):
@@ -208,12 +212,12 @@ class TestComment:
 
     def test_not_supported__recursive_template_error(self):
         text_t = t"comment"
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<!--{text_t}-->")
 
     def test_not_supported_recursive_iterable_error(self):
         texts = ["This", "is", "a", "comment"]
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<!--{texts}-->")
 
 
@@ -411,12 +415,12 @@ class TestRawTextElementLiteral:
 
     def test_not_supported_recursive_template_error(self):
         text_t = t"comment"
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<!--{text_t}-->")
 
     def test_not_supported_recursive_iterable_error(self):
         texts = ["This", "is", "a", "comment"]
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<!--{texts}-->")
 
 
@@ -521,7 +525,7 @@ class TestRawTextScriptDynamic:
     )
     def test_templated_has_html_dunder(self, html_dunder_cls):
         content = html_dunder_cls("anything")
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<script>var x = 1;{content}</script>")
 
     def test_templated_escaping(self):
@@ -539,12 +543,12 @@ class TestRawTextScriptDynamic:
 
     def test_not_supported_recursive_template_error(self):
         text_t = t"script"
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<script>{text_t}</script>")
 
     def test_not_supported_recursive_iterable_error(self):
         texts = ["This", "is", "a", "script"]
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<script>{texts}</script>")
 
 
@@ -626,7 +630,7 @@ class TestRawTextStyleDynamic:
     )
     def test_templated_has_html_dunder(self, html_dunder_cls):
         content = html_dunder_cls("anything")
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<style>h1 {{ color: red; }};{content}</style>")
 
     def test_templated_escaping(self):
@@ -648,22 +652,22 @@ class TestRawTextStyleDynamic:
 
     def test_exact_not_supported_recursive_template_error(self):
         text_t = t"style"
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<style>{text_t}</style>")
 
     def test_inexact_not_supported_recursive_template_error(self):
         text_t = t"style"
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<style>{text_t} and more</style>")
 
     def test_exact_not_supported_recursive_iterable_error(self):
         texts = ["This", "is", "a", "style"]
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<style>{texts}</style>")
 
     def test_inexact_not_supported_recursive_iterable_error(self):
         texts = ["This", "is", "a", "style"]
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<style>{texts} and more</style>")
 
 
@@ -737,7 +741,7 @@ class TestEscapableRawTextTitleDynamic:
     )
     def test_templated_has_html_dunder(self, html_dunder_cls):
         content = html_dunder_cls("No")
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<title>Literal html?: {content}</title>")
 
     def test_templated_escaping(self):
@@ -755,22 +759,22 @@ class TestEscapableRawTextTitleDynamic:
 
     def test_exact_not_supported_recursive_template_error(self):
         text_t = t"title"
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<title>{text_t}</title>")
 
     def test_exact_not_supported_recursive_iterable_error(self):
         texts = ["This", "is", "a", "title"]
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<title>{texts}</title>")
 
     def test_inexact_not_supported_recursive_template_error(self):
         text_t = t"title"
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<title>{text_t} and more</title>")
 
     def test_inexact_not_supported_recursive_iterable_error(self):
         texts = ["This", "is", "a", "title"]
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<title>{texts} and more</title>")
 
 
@@ -851,7 +855,7 @@ class TestEscapableRawTextTextareaDynamic:
     )
     def test_templated_has_html_dunder(self, html_dunder_cls):
         content = html_dunder_cls("No")
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<textarea>Literal html?: {content}</textarea>")
 
     def test_templated_multiple_interpolations(self):
@@ -869,12 +873,12 @@ class TestEscapableRawTextTextareaDynamic:
 
     def test_not_supported_recursive_template_error(self):
         text_t = t"textarea"
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<textarea>{text_t}</textarea>")
 
     def test_not_supported_recursive_iterable_error(self):
         texts = ["This", "is", "a", "textarea"]
-        with pytest.raises(ValueError, match="not supported"):
+        with pytest.raises(TextProcessingError, match="not supported"):
             _ = html(t"<textarea>{texts}</textarea>")
 
 
@@ -1009,12 +1013,22 @@ class TestInterpolationFormatSpec:
         assert add(1, 2) == 3, "Make sure fixture could work..."
 
         for tag in ("p", "script", "style"):
-            with pytest.raises(TypeError):
+            with pytest.raises(
+                TypeError,
+                match=re.compile(".* missing 2 required positional arguments"),
+            ):
                 _ = html(
                     Template(f"<{tag}>")
                     + t"The sum is {add:callback}."
                     + Template(f"</{tag}>")
                 )
+
+    def test_callback_internal_error(self):
+        def raise_value_error():
+            raise ValueError("Failed to compute count.")
+
+        with pytest.raises(ValueError, match=re.escape("Failed to compute count.")):
+            _ = html(t"<div count={raise_value_error:callback}></div>")
 
 
 # --------------------------------------------------------------------------
@@ -1118,7 +1132,7 @@ class TestSpreadAttribute:
 
     def test_spread_attr_type_errors(self):
         for attrs in (0, [], (), False, True):
-            with pytest.raises(TypeError):
+            with pytest.raises(AttributeProcessingError):
                 _ = html(t"<a {attrs}></a>")
 
 
@@ -1229,7 +1243,7 @@ class TestSpecialDataAttribute:
     def test_data_attr_templated_error(self):
         data1 = {"user-id": "user-123"}
         data2 = {"role": "admin"}
-        with pytest.raises(TypeError):
+        with pytest.raises(AttributeProcessingError):
             _ = html(t'<div data="{data1} {data2}"></div>')
 
     def test_data_attr_none(self):
@@ -1239,7 +1253,7 @@ class TestSpecialDataAttribute:
 
     def test_data_attr_errors(self):
         for v in [False, [], (), 0, "data?"]:
-            with pytest.raises(TypeError):
+            with pytest.raises(AttributeProcessingError):
                 _ = html(t"<button data={v}>X</button>")
 
     def test_data_literal_attr_bypass(self):
@@ -1256,7 +1270,7 @@ class TestSpecialAriaAttribute:
     def test_aria_templated_attr_error(self):
         aria1 = {"label": "close"}
         aria2 = {"hidden": "true"}
-        with pytest.raises(TypeError):
+        with pytest.raises(AttributeProcessingError):
             _ = html(t'<div aria="{aria1} {aria2}"></div>')
 
     def test_interpolated_mapping(self):
@@ -1278,7 +1292,7 @@ class TestSpecialAriaAttribute:
 
     def test_aria_attr_errors(self):
         for v in [False, [], (), 0, "aria?"]:
-            with pytest.raises(TypeError):
+            with pytest.raises(AttributeProcessingError):
                 _ = html(t"<button aria={v}>X</button>")
 
     def test_aria_literal_attr_bypass(self):
@@ -1360,9 +1374,9 @@ class TestSpecialClassAttribute:
 
     def test_class_type_errors(self):
         for class_item in (False, True, 0):
-            with pytest.raises(TypeError):
+            with pytest.raises(AttributeProcessingError):
                 _ = html(t"<p class={class_item}></p>")
-            with pytest.raises(TypeError):
+            with pytest.raises(AttributeProcessingError):
                 _ = html(t"<p class={[class_item]}></p>")
 
     def test_class_merge_literals(self):
@@ -1433,7 +1447,7 @@ class TestSpecialStyleAttribute:
         # CONSIDER: Is this what we want? Currently, when we have multiple
         # placeholders in a single attribute, we treat it as a string attribute
         # which produces an invalid style attribute.
-        with pytest.raises(ValueError):
+        with pytest.raises(AttributeProcessingError):
             _ = html(t"<p style='{styles1} {styles2}'>Warning!</p>")
 
     def test_interpolated_style_attribute_merged(self):
@@ -1455,7 +1469,7 @@ class TestSpecialStyleAttribute:
 
     def test_style_attribute_non_str_non_dict(self):
         styles = [1, 2]
-        with pytest.raises(TypeError):
+        with pytest.raises(AttributeProcessingError):
             _ = html(t"<p style={styles}>Warning!</p>")
 
     def test_style_literal_attr_bypass(self):
@@ -1512,7 +1526,7 @@ class TestPrepComponentKwargs:
             pass
 
         callable_info = get_callable_info(InputElement)
-        with pytest.raises(ValueError):
+        with pytest.raises(ComponentProcessingError):
             assert (
                 prep_component_kwargs(callable_info, {"type2": 15}, children=t"") == {}
             )
@@ -1556,7 +1570,9 @@ class TestPrepComponentKwargs:
             return t"<div>{children}</div>"
 
         callable_info = get_callable_info(Comp)
-        with pytest.raises(ValueError, match="The children attribute is reserved"):
+        with pytest.raises(
+            ComponentProcessingError, match="The children attribute is reserved"
+        ):
             _ = prep_component_kwargs(
                 callable_info, {"children": t""}, children=t"<span></span>"
             )
@@ -1602,7 +1618,7 @@ class TestPrepComponentKwargs:
             pass
 
         callable_info = get_callable_info(Wrapper)
-        with pytest.raises(ValueError, match="Ambiguous attribute "):
+        with pytest.raises(ComponentProcessingError, match="Ambiguous attribute "):
             _ = prep_component_kwargs(
                 callable_info,
                 dict(attrs),
@@ -1646,7 +1662,7 @@ class TestFunctionComponent:
         )
 
     def test_missing_props_error(self):
-        with pytest.raises(TypeError):
+        with pytest.raises(ComponentProcessingError):
             _ = html(
                 t"<{self.FunctionComponent}>Missing props</{self.FunctionComponent}>"
             )
@@ -1872,14 +1888,37 @@ def test_attribute_type_component():
 
 class TestComponentErrors:
     def test_component_non_callable_fails(self):
-        with pytest.raises(TypeError):
+        with pytest.raises(ComponentProcessingError, match="must be callable"):
             _ = html(t"<{'not a function'} />")
+
+    def test_catchall_for_attr_prep_callback_error(self):
+        def prep_attr():
+            return 1 / 0
+
+        def Repeat(count: int = 0, children: Template = t"") -> Template:
+            return sum([children] * count, t"")
+
+        with pytest.raises(
+            ZeroDivisionError,
+        ):
+            _ = html(t"<{Repeat} count={prep_attr:callback}><span>OK</span></{Repeat}>")
+
+    def test_normal_attr_error(self):
+        def Comp(children: Template, **kwargs) -> Template:
+            return t"<div {kwargs}>{children}</div>"
+
+        with pytest.raises(
+            AttributeProcessingError, match="Cannot use int as value for aria attribute"
+        ):
+            _ = html(t"<{Comp} aria={0}><span>OK</span></{Comp}>")
 
     def test_component_requiring_positional_arg_fails(self):
         def RequiresPositional(whoops: int, /) -> Template:  # pragma: no cover
             return t"<p>Positional arg: {whoops}</p>"
 
-        with pytest.raises(TypeError):
+        with pytest.raises(
+            ComponentProcessingError, match="cannot have required positional arguments"
+        ):
             _ = html(t"<{RequiresPositional} />")
 
     def test_mismatched_component_closing_tag_fails(self):
@@ -1889,8 +1928,30 @@ class TestComponentErrors:
         def CloseTag(children: Template) -> Template:
             return t"<div>close</div>"
 
-        with pytest.raises(TypeError):
+        with pytest.raises(
+            ComponentProcessingError, match="must match component callable"
+        ):
             _ = html(t"<{OpenTag}>Hello</{CloseTag}>")
+
+    def test_func_comp_error(self):
+        def RaisesValueError(children: Template) -> Template:
+            raise ValueError("Failed to build template.")
+
+        with pytest.raises(
+            ValueError,
+            match=re.escape("Failed to build template"),
+        ):
+            _ = html(t"<{RaisesValueError}>Hello</{RaisesValueError}>")
+
+    def test_factory_comp_error(self):
+        def RaisesValueError(children: Template) -> Callable[[], Template]:
+            def _RaisesValueError() -> Template:
+                raise ValueError("Failed to build template.")
+
+            return _RaisesValueError
+
+        with pytest.raises(ValueError, match=re.escape("Failed to build template.")):
+            _ = html(t"<{RaisesValueError}>Hello</{RaisesValueError}>")
 
     @pytest.mark.parametrize(
         "bad_value", ("", "text", None, 1, ("tuple", "of", "strs"))
@@ -1900,7 +1961,8 @@ class TestComponentErrors:
             return bad_value
 
         with pytest.raises(
-            TypeError, match="Component callable must return Template or Callable:"
+            ComponentProcessingError,
+            match="Component callable must return Template or Callable:",
         ):
             _ = html(t"<{BadFunctionComp}>Hello</{BadFunctionComp}>")
 
@@ -1915,7 +1977,8 @@ class TestComponentErrors:
             return component_object
 
         with pytest.raises(
-            TypeError, match="Component object must return Template when called:"
+            ComponentProcessingError,
+            match="Component object must return Template when called:",
         ):
             _ = html(t"<{BadFactoryComp}>Hello</{BadFactoryComp}>")
 
@@ -2166,7 +2229,8 @@ class TestInterpolatingHTMLInTemplateWithDynamicParentTag:
         content_t = t"{content}"
         content_t = t'<script>console.log("{123}!");</script>'
         with pytest.raises(
-            ValueError, match="Recursive includes are not supported within script"
+            TextProcessingError,
+            match="Template and Iterable interpolation values are not supported within script",
         ):
             _ = html(t"<script>{content_t}</script>")
 
@@ -2175,7 +2239,8 @@ class TestInterpolatingHTMLInTemplateWithDynamicParentTag:
         content = '<script>console.log("123!");</script>'
         content_t = t"{content}"
         with pytest.raises(
-            ValueError, match="Recursive includes are not supported within textarea"
+            TextProcessingError,
+            match="Template and Iterable interpolation values are not supported within textarea",
         ):
             _ = html(t"<textarea>{content_t}</textarea>")
 
@@ -2280,3 +2345,13 @@ def test_issue_166():
     template = t"<button disabled={True}>x</button><button disabled={True}>y</button>"
     expected = "<button disabled>x</button><button disabled>y</button>"
     assert html(template) == expected
+
+
+@pytest.fixture
+def bad_html_dunder():
+    return _BadHTMLDunder()
+
+
+class _BadHTMLDunder:
+    def __html__(self):
+        raise ValueError("bad value")
