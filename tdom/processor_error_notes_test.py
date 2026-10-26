@@ -88,6 +88,27 @@ class MarkupMaker:
         return self.payload
 
 
+@pytest.fixture
+def wrapper_maker():
+    return WrapperMaker
+
+
+@dataclass
+class WrapperMaker:
+    """
+    Configure a component that wraps all children in the specified tag.
+
+    Use fixture `wrapper_maker` instead of using this directly.
+
+    @NOTE: This component only supports the "1st call" usage because it is preconfigured.
+    """
+
+    tag: str = "div"
+
+    def __call__(self, children: Template) -> Template:
+        return Template(f"<{self.tag}>") + t"{children}" + Template(f"</{self.tag}>")
+
+
 class TestAttributes:
     """
     Test error notes from attributes.
@@ -241,25 +262,6 @@ class TestCommentInterpolations:
                 "... in {cb_value_error:callback} within <!--ok {cb_value_error:callback}--> at line 1 offset 0",
             ],
         )
-
-
-@pytest.fixture
-def wrapper_maker():
-    return WrapperMaker
-
-
-@dataclass
-class WrapperMaker:
-    """
-    Configure a component that wraps all children in the specified tag.
-
-    @NOTE: This component only supports the "1st call" usage because it is preconfigured.
-    """
-
-    tag: str = "div"
-
-    def __call__(self, children: Template) -> Template:
-        return Template(f"<{self.tag}>") + t"{children}" + Template(f"</{self.tag}>")
 
 
 class TestComponentInterpolations:
