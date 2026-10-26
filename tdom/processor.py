@@ -62,10 +62,7 @@ type AttributesDict = dict[str, object]
 @dataclass(frozen=True)
 class TemplateErrorState:
     """
-    Accumulated and frozen template processing state after exception occurred.
-
-    *EACH* template could have a different state as the recursion is unwound from
-    the original source of the exception.
+    Accumulated and finalized template error state.
     """
 
     template: Template
@@ -171,6 +168,8 @@ class ProcessingErrorHelper:
     ) -> TemplateErrorState:
         """Close and return currently tracked template error state."""
         closed_state = self.open_error_state.close(template, ttree)
+        # @NOTE: We nuke the prior clump of state with a new object because
+        # its less error prone than trying to "reset" it manually.
         self.open_error_state = OpenTemplateErrorState()
         return closed_state
 
