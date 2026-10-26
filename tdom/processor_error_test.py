@@ -8,6 +8,8 @@ import pytest
 from markupsafe import Markup
 
 from .processor import (
+    AttributeProcessingError,
+    ComponentProcessingError,
     ProcessContext,
     TemplateParserProxy,
     _make_default_template_processor,
@@ -59,7 +61,9 @@ def cb_value_error():
 
 class TestAttributeErrors:
     def test_interpolated_attribute_error(self):
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(
+            AttributeProcessingError, match="Cannot use int as value"
+        ) as exc_info:
             _ = html(t"<div aria={0}></div>")
         assert_notes(
             exc_info.value.__notes__,
@@ -68,18 +72,20 @@ class TestAttributeErrors:
             ],
         )
 
-    def test_templated_attribute_error(self, cb_value_error):
-        with pytest.raises(Exception) as exc_info:
-            _ = html(t'<div label="label_{cb_value_error:callback}"></div>')
+    def test_templated_attribute_error(self):
+        with pytest.raises(
+            AttributeProcessingError, match="data attributes cannot be templated"
+        ) as exc_info:
+            _ = html(t'<div data="label_{0}"></div>')
         assert_notes(
             exc_info.value.__notes__,
             [
-                '... in templated attribute label=label_{cb_value_error:callback} for <div label="label_{cb_value_error:callback}"> at line 1 offset 0'
+                '... in templated attribute data=label_{0} for <div data="label_{0}"> at line 1 offset 0'
             ],
         )
 
     def test_spread_attribute_error(self):
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(AttributeProcessingError, match="no") as exc_info:
             _ = html(t"<div {0}></div>")
         assert_notes(
             exc_info.value.__notes__,
@@ -87,7 +93,9 @@ class TestAttributeErrors:
         )
 
     def test_literal_attribute_error(self):
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(
+            AttributeProcessingError, match="Invalid number of parts"
+        ) as exc_info:
             _ = html(t'<div style="status:great" style="status:"></div>')
         assert_notes(
             exc_info.value.__notes__,
@@ -111,7 +119,6 @@ class TestTextInterpolationNotes:
 
     def test_mixed_multiline(self, cb_value_error):
         def nofmt():
-            # fmt: off
             return t"""<div>\n    {cb_value_error:callback}\n</div>"""
 
         with pytest.raises(Exception) as exc_info:
@@ -129,7 +136,7 @@ class TestTextInterpolationNotes:
             inner_t = t"{cb_value_error:callback}"
             return t"<div>{inner_t}</div>"
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValueError, match="Callback failed") as exc_info:
             _ = html(outer_t())
         assert_notes(
             exc_info.value.__notes__,
@@ -145,7 +152,7 @@ class TestTextInterpolationNotes:
             inner_t = t"{cb_value_error:callback}"
             return t"<div>ok {inner_t}</div>"
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValueError, match="Callback failed") as exc_info:
             _ = html(outer_t())
         assert_notes(
             exc_info.value.__notes__,
@@ -161,7 +168,7 @@ class TestTextInterpolationNotes:
             inner_t = t"ok {cb_value_error:callback}"
             return t"<div>{inner_t}</div>"
 
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValueError, match="Callback failed") as exc_info:
             _ = html(outer_t())
         assert_notes(
             exc_info.value.__notes__,
@@ -175,7 +182,7 @@ class TestTextInterpolationNotes:
 
 class TestCommentInterpolationNotes:
     def test_singleton(self, cb_value_error):
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValueError, match="Callback failed") as exc_info:
             _ = html(t"<!--{cb_value_error:callback}-->")
         assert_notes(
             exc_info.value.__notes__,
@@ -185,7 +192,7 @@ class TestCommentInterpolationNotes:
         )
 
     def test_mixed(self, cb_value_error):
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValueError, match="Callback failed") as exc_info:
             _ = html(t"<!--ok {cb_value_error:callback}-->")
         assert_notes(
             exc_info.value.__notes__,
@@ -196,31 +203,34 @@ class TestCommentInterpolationNotes:
 
 
 class TestComponentNotes:
-    def Wrapper(self, children: Template) -> Template:
-        return t"<div>{children}</div>"
+    @pytest.fixture
+    def Wrapper(self):
+        def _Wrapper(children: Template) -> Template:
+            return t"<div>{children}</div>"
 
-    def test_children_mixed_interpolation(self, cb_value_error):
+        return _Wrapper
+
+    def test_children_mixed_interpolation(self, cb_value_error, Wrapper):
         def nofmt() -> Template:
-            # fmt: off
-            return t"""<{self.Wrapper}>ok? {cb_value_error:callback}</{self.Wrapper}>"""
+            DivWrapper = Wrapper  # avoidqa: RUF027
+            return t"""<{DivWrapper}>ok? {cb_value_error:callback}</{DivWrapper}>"""
 
         with pytest.raises(ValueError) as exc_info:
             _ = html(nofmt())
         assert_notes(
             exc_info.value.__notes__,
             [
-                # @TODO: Should location be location of interpolation itself?
                 "... in {cb_value_error:callback} within ok? {cb_value_error:callback} at line 1 offset 0",
                 "... in {children} at line 1 offset 5",  # @TODO: Should this be inlined into the parent tag?
                 "... in <div> at line 1 offset 0",
-                "... in <{self.Wrapper}> at line 1 offset 0",
+                "... in <{DivWrapper}> at line 1 offset 0",
             ],
         )
 
-    def test_children_singleton_interpolation(self, cb_value_error):
+    def test_children_singleton_interpolation(self, cb_value_error, Wrapper):
         def nofmt() -> Template:
-            # fmt: off
-            return t"""<{self.Wrapper}>{cb_value_error:callback}</{self.Wrapper}>"""
+            DivWrapper = Wrapper  # avoidqa: RUF027
+            return t"""<{DivWrapper}>{cb_value_error:callback}</{DivWrapper}>"""
 
         with pytest.raises(ValueError) as exc_info:
             _ = html(nofmt())
@@ -230,7 +240,26 @@ class TestComponentNotes:
                 "... in {cb_value_error:callback} at line 1 offset 0",
                 "... in {children} at line 1 offset 5",
                 "... in <div> at line 1 offset 0",
-                "... in <{self.Wrapper}> at line 1 offset 0",
+                "... in <{DivWrapper}> at line 1 offset 0",
+            ],
+        )
+
+    def test_component_attribute_error(self):
+        def nofmt() -> Template:
+            def Badge(label: str) -> Template:
+                return t"<b>{label}</b>"
+
+            return t"<div><{Badge}/></div>"
+
+        with pytest.raises(
+            ComponentProcessingError,
+            match="Missing required parameters for component: label",
+        ) as exc_info:
+            _ = html(nofmt())
+        assert_notes(
+            exc_info.value.__notes__,
+            [
+                "... in <{Badge}/> at line 1 offset 5",
             ],
         )
 
@@ -239,10 +268,10 @@ class TestAnotherProcessor:
     def test_another_html_via_callback(self, cb_value_error):
         """Make a 2nd call to html() from a callback during processing the 1st html() call."""
 
-        def nofmt():
-            # fmt: off
-            def get_content():
+        def nofmt() -> Template:
+            def get_content() -> str:
                 return Markup(html(t"<span>{cb_value_error:callback}</span>"))
+
             return t"<div>{get_content:callback}</div>"
 
         with pytest.raises(ValueError, match="Callback failed") as exc_info:
@@ -260,9 +289,8 @@ class TestAnotherProcessor:
     def test_another_html_via_component(self, cb_value_error):
         """Make a 2nd call to html() from a component during processing the 1st html() call."""
 
-        def nofmt():
+        def nofmt() -> Template:
             def Content(children: Template) -> Template:
-                # @TODO: calling html is already not great, this is somehow worse
                 content = Markup(html(children))
                 return t"<span>{content}</span>"
 
