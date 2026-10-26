@@ -1,7 +1,12 @@
 """
-Tests for processing errors.
+Tests for error notes generated during template processing exceptions.
+
+@NOTE: These tests are meant to only check the strings in `e.__notes__` are correct.
+
+The primary tests for the processor are meant to check that all error conditions are "handled".
 """
 
+from dataclasses import dataclass
 from string.templatelib import Template
 
 import pytest
@@ -12,6 +17,7 @@ from .processor import (
     ComponentProcessingError,
     ProcessContext,
     TemplateParserProxy,
+    TextProcessingError,
     _make_default_template_processor,
 )
 
@@ -59,8 +65,35 @@ def cb_value_error():
     return _cb_value_error
 
 
-class TestAttributeErrors:
-    def test_interpolated_attribute_error(self):
+@pytest.fixture
+def markup_maker():
+    return MarkupMaker
+
+
+@dataclass
+class MarkupMaker:
+    """
+    Returns supposedly sanitized HTML via __html__().
+
+    Use the fixture `markup_maker` instead of using this directly.
+    """
+
+    payload: str = ""
+
+    throw: bool = False
+
+    def __html__(self) -> str:
+        if self.throw:
+            raise ValueError("Failed to make markup.")
+        return self.payload
+
+
+class TestAttributes:
+    """
+    Test error notes from attributes.
+    """
+
+    def test_interpolated_attribute(self):
         with pytest.raises(
             AttributeProcessingError, match="Cannot use int as value"
         ) as exc_info:
@@ -72,7 +105,7 @@ class TestAttributeErrors:
             ],
         )
 
-    def test_templated_attribute_error(self):
+    def test_templated_attribute(self):
         with pytest.raises(
             AttributeProcessingError, match="data attributes cannot be templated"
         ) as exc_info:
@@ -84,7 +117,7 @@ class TestAttributeErrors:
             ],
         )
 
-    def test_spread_attribute_error(self):
+    def test_spread_attribute(self):
         with pytest.raises(AttributeProcessingError, match="no") as exc_info:
             _ = html(t"<div {0}></div>")
         assert_notes(
@@ -92,7 +125,7 @@ class TestAttributeErrors:
             ["... in spread attribute {0} for <div {0}> at line 1 offset 0"],
         )
 
-    def test_literal_attribute_error(self):
+    def test_literal_attribute(self):
         with pytest.raises(
             AttributeProcessingError, match="Invalid number of parts"
         ) as exc_info:
@@ -105,7 +138,11 @@ class TestAttributeErrors:
         )
 
 
-class TestTextInterpolationNotes:
+class TestTextInterpolations:
+    """
+    Test error notes from text node interpolations.
+    """
+
     def test_singleton(self, cb_value_error):
         with pytest.raises(Exception) as exc_info:
             _ = html(t"<div>{cb_value_error:callback}</div>")
@@ -118,11 +155,11 @@ class TestTextInterpolationNotes:
         )
 
     def test_mixed_multiline(self, cb_value_error):
-        def nofmt():
+        def setup_template():
             return t"""<div>\n    {cb_value_error:callback}\n</div>"""
 
         with pytest.raises(Exception) as exc_info:
-            _ = html(nofmt())
+            _ = html(setup_template())
         assert_notes(
             exc_info.value.__notes__,
             [
@@ -180,7 +217,11 @@ class TestTextInterpolationNotes:
         )
 
 
-class TestCommentInterpolationNotes:
+class TestCommentInterpolations:
+    """
+    Test error notes from comment node interpolations.
+    """
+
     def test_singleton(self, cb_value_error):
         with pytest.raises(ValueError, match="Callback failed") as exc_info:
             _ = html(t"<!--{cb_value_error:callback}-->")
@@ -202,21 +243,37 @@ class TestCommentInterpolationNotes:
         )
 
 
-class TestComponentNotes:
-    @pytest.fixture
-    def Wrapper(self):
-        def _Wrapper(children: Template) -> Template:
-            return t"<div>{children}</div>"
+@pytest.fixture
+def wrapper_maker():
+    return WrapperMaker
 
-        return _Wrapper
 
-    def test_children_mixed_interpolation(self, cb_value_error, Wrapper):
-        def nofmt() -> Template:
-            DivWrapper = Wrapper  # avoidqa: RUF027
+@dataclass
+class WrapperMaker:
+    """
+    Configure a component that wraps all children in the specified tag.
+
+    @NOTE: This component only supports the "1st call" usage because it is preconfigured.
+    """
+
+    tag: str = "div"
+
+    def __call__(self, children: Template) -> Template:
+        return Template(f"<{self.tag}>") + t"{children}" + Template(f"</{self.tag}>")
+
+
+class TestComponentInterpolations:
+    """
+    Test error notes from component node interpolations.
+    """
+
+    def test_children_mixed_interpolation(self, cb_value_error, wrapper_maker):
+        def setup_template() -> Template:
+            DivWrapper = wrapper_maker("div")  # avoidqa: RUF027
             return t"""<{DivWrapper}>ok? {cb_value_error:callback}</{DivWrapper}>"""
 
         with pytest.raises(ValueError) as exc_info:
-            _ = html(nofmt())
+            _ = html(setup_template())
         assert_notes(
             exc_info.value.__notes__,
             [
@@ -227,13 +284,13 @@ class TestComponentNotes:
             ],
         )
 
-    def test_children_singleton_interpolation(self, cb_value_error, Wrapper):
-        def nofmt() -> Template:
-            DivWrapper = Wrapper  # avoidqa: RUF027
+    def test_children_singleton_interpolation(self, cb_value_error, wrapper_maker):
+        def setup_template() -> Template:
+            DivWrapper = wrapper_maker("div")  # avoidqa: RUF027
             return t"""<{DivWrapper}>{cb_value_error:callback}</{DivWrapper}>"""
 
         with pytest.raises(ValueError) as exc_info:
-            _ = html(nofmt())
+            _ = html(setup_template())
         assert_notes(
             exc_info.value.__notes__,
             [
@@ -244,8 +301,14 @@ class TestComponentNotes:
             ],
         )
 
-    def test_component_attribute_error(self):
-        def nofmt() -> Template:
+
+class TestComponentAttributes:
+    """
+    Test error notes from component node attributes.
+    """
+
+    def test_missing(self):
+        def setup_template() -> Template:
             def Badge(label: str) -> Template:
                 return t"<b>{label}</b>"
 
@@ -255,7 +318,7 @@ class TestComponentNotes:
             ComponentProcessingError,
             match="Missing required parameters for component: label",
         ) as exc_info:
-            _ = html(nofmt())
+            _ = html(setup_template())
         assert_notes(
             exc_info.value.__notes__,
             [
@@ -264,18 +327,25 @@ class TestComponentNotes:
         )
 
 
-class TestAnotherProcessor:
+class TestNestedProcessorCallout:
+    """
+    Test error notes involving nested calls to html() while already actively processing a template with html().
+
+    @NOTE: This isn't recommended usage but it should still work and
+    is helpful as a sanity check if we are cleaning up properly.
+    """
+
     def test_another_html_via_callback(self, cb_value_error):
         """Make a 2nd call to html() from a callback during processing the 1st html() call."""
 
-        def nofmt() -> Template:
+        def setup_template() -> Template:
             def get_content() -> str:
                 return Markup(html(t"<span>{cb_value_error:callback}</span>"))
 
             return t"<div>{get_content:callback}</div>"
 
         with pytest.raises(ValueError, match="Callback failed") as exc_info:
-            _ = html(nofmt())
+            _ = html(setup_template())
         assert_notes(
             exc_info.value.__notes__,
             [
@@ -289,7 +359,7 @@ class TestAnotherProcessor:
     def test_another_html_via_component(self, cb_value_error):
         """Make a 2nd call to html() from a component during processing the 1st html() call."""
 
-        def nofmt() -> Template:
+        def setup_template() -> Template:
             def Content(children: Template) -> Template:
                 content = Markup(html(children))
                 return t"<span>{content}</span>"
@@ -297,12 +367,69 @@ class TestAnotherProcessor:
             return t"<div><{Content}><b>{cb_value_error:callback}</b></{Content}></div>"
 
         with pytest.raises(ValueError, match="Callback failed") as exc_info:
-            _ = html(nofmt())
+            _ = html(setup_template())
         assert_notes(
             exc_info.value.__notes__,
             [
                 "... in {cb_value_error:callback} at line 1 offset 3",
                 "... in <b> at line 1 offset 0",
                 "... in <{Content}> at line 1 offset 5",
+            ],
+        )
+
+
+class TestHTMLDunder:
+    """
+    Test error notes involving objects with __html__ methods.
+    """
+
+    def test_via_normal_interpolation(self, markup_maker):
+        def setup_template():
+            content = markup_maker(throw=True)
+            return t"<div>{content}</div>"
+
+        with pytest.raises(ValueError, match="Failed to make markup") as exc_info:
+            _ = html(setup_template())
+        assert_notes(
+            exc_info.value.__notes__,
+            [
+                "... in {content} at line 1 offset 5",
+                "... in <div> at line 1 offset 0",
+            ],
+        )
+
+    def test_via_script_interpolation(self, markup_maker):
+        def setup_template():
+            content = markup_maker(throw=True)
+            return t"<div><script>{content}</script></div>"
+
+        with pytest.raises(ValueError, match="Failed to make markup") as exc_info:
+            _ = html(setup_template())
+        assert_notes(
+            exc_info.value.__notes__,
+            [
+                "... in {content} at line 1 offset 13",
+                "... in <script> at line 1 offset 5",
+            ],
+        )
+
+    def test_via_script_mixed_not_allowed(self, markup_maker):
+        """
+        Markup objects are not allowed inside scripts unless the content is a single interpolation.
+        """
+
+        def setup_template() -> Template:
+            content = markup_maker(payload="<span></span>", throw=False)
+            return t"<div><script>Ok? {content}</script></div>"
+
+        with pytest.raises(
+            TextProcessingError, match="are not supported within script"
+        ) as exc_info:
+            _ = html(setup_template())
+        assert_notes(
+            exc_info.value.__notes__,
+            [
+                "... in {content} within Ok? {content} at line 1 offset 13",
+                "... in <script> at line 1 offset 5",
             ],
         )
