@@ -162,7 +162,26 @@ class TestAttributes:
 class TestTextInterpolations:
     """
     Test error notes from text node interpolations.
+
+    A singleton TemplateRef is exactly 1 interpolation without any leading or trailing text.
+    - <div>{singleton}</div>
+    - <script>{singleton}</script>
+    - <!--{singleton}-->
+    - {singleton}
+
+    A "mixed" TemplateRef is either 1 interpolation with non-empty leading and/or trailing text or 2 or more interpolations.
     """
+
+    def test_ambiguous_singleton(self, cb_value_error):
+        with pytest.raises(Exception) as exc_info:
+            # This text is not in any element at all.
+            _ = html(t"{cb_value_error:callback}")
+        assert_notes(
+            exc_info.value.__notes__,
+            [
+                "... in {cb_value_error:callback} at line 1 offset 0",
+            ],
+        )
 
     def test_singleton(self, cb_value_error):
         with pytest.raises(Exception) as exc_info:
@@ -175,27 +194,40 @@ class TestTextInterpolations:
             ],
         )
 
+    def test_ambiguous_mixed(self, cb_value_error):
+        with pytest.raises(Exception) as exc_info:
+            # This text is not in any element at all.
+            _ = html(t"ok {cb_value_error:callback}")
+        assert_notes(
+            exc_info.value.__notes__,
+            [
+                "... in {cb_value_error:callback} within ok {cb_value_error:callback} at line 1 offset 0",
+            ],
+        )
+
     def test_mixed_multiline(self, cb_value_error):
         def setup_template():
-            return t"""<div>\n    {cb_value_error:callback}\n</div>"""
+            return t"""<b>\nabc   {cb_value_error:callback}\n</b>"""
 
         with pytest.raises(Exception) as exc_info:
             _ = html(setup_template())
         assert_notes(
             exc_info.value.__notes__,
             [
-                "... in {cb_value_error:callback} within \n    {cb_value_error:callback}\n at line 1 offset 5",
-                "... in <div> at line 1 offset 0",
+                # @NOTE: This offset is to the TText position in the Template
+                # and not the interpolation's location WITHIN the TText.
+                "... in {cb_value_error:callback} within \nabc   {cb_value_error:callback}\n at line 1 offset 3",
+                "... in <b> at line 1 offset 0",
             ],
         )
 
-    def test_singleton_with_singleton_template(self, cb_value_error):
-        def outer_t():  # avoidqa: RUF027
+    def test_singleton_with_ambiguous_singleton_template(self, cb_value_error):
+        def setup_template():  # avoidqa: RUF027
             inner_t = t"{cb_value_error:callback}"
             return t"<div>{inner_t}</div>"
 
         with pytest.raises(ValueError, match="Callback failed") as exc_info:
-            _ = html(outer_t())
+            _ = html(setup_template())
         assert_notes(
             exc_info.value.__notes__,
             [
@@ -205,13 +237,13 @@ class TestTextInterpolations:
             ],
         )
 
-    def test_mixed_with_singleton_template(self, cb_value_error):
-        def outer_t():  # avoidqa: RUF027
+    def test_mixed_with_ambiguous_singleton_template(self, cb_value_error):
+        def setup_template():  # avoidqa: RUF027
             inner_t = t"{cb_value_error:callback}"
             return t"<div>ok {inner_t}</div>"
 
         with pytest.raises(ValueError, match="Callback failed") as exc_info:
-            _ = html(outer_t())
+            _ = html(setup_template())
         assert_notes(
             exc_info.value.__notes__,
             [
@@ -222,12 +254,12 @@ class TestTextInterpolations:
         )
 
     def test_singleton_with_mixed_template(self, cb_value_error):
-        def outer_t():  # avoidqa: RUF027
+        def setup_template():  # avoidqa: RUF027
             inner_t = t"ok {cb_value_error:callback}"
             return t"<div>{inner_t}</div>"
 
         with pytest.raises(ValueError, match="Callback failed") as exc_info:
-            _ = html(outer_t())
+            _ = html(setup_template())
         assert_notes(
             exc_info.value.__notes__,
             [
