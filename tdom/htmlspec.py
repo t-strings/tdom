@@ -139,55 +139,61 @@ def make_invalid_attribute_name_re():
     attribute name to find any invalid characters.
     """
     # disallowed controls -- U+007F DELETE to U+009F APPLICATION PROGRAM COMMAND
-    control_chars = tuple([chr(i) for i in range(0x007F, 0x009F + 1)])
+    control_chars = tuple(chr(i) for i in range(0x007F, 0x009F + 1))
     # disallowed chars -- U+0020 SPACE, U+0022 ("), U+0027 ('), U+003E (>), U+002F (/), U+003D (=)
-    special_chars = (
-        chr(0x0020),
-        chr(0x0022),
-        chr(0x0027),
-        chr(0x003E),
-        chr(0x002F),
-        chr(0x003D),
+    special_chars = tuple(
+        chr(i)
+        for i in [
+            0x0020,
+            0x0022,
+            0x0027,
+            0x003E,
+            0x002F,
+            0x003D,
+        ]
     )
     # disallowed nonchars -- U+FDD0 to U+FDEF, inclusive, or U+FFFE, U+FFFF, U+1FFFE, U+1FFFF, U+2FFFE, U+2FFFF, U+3FFFE, U+3FFFF, U+4FFFE, U+4FFFF, U+5FFFE, U+5FFFF, U+6FFFE, U+6FFFF, U+7FFFE, U+7FFFF, U+8FFFE, U+8FFFF, U+9FFFE, U+9FFFF, U+AFFFE, U+AFFFF, U+BFFFE, U+BFFFF, U+CFFFE, U+CFFFF, U+DFFFE, U+DFFFF, U+EFFFE, U+EFFFF, U+FFFFE, U+FFFFF, U+10FFFE, or U+10FFFF
     disallowed_chars = tuple(
-        [chr(j) for j in range(0xFDD0, 0xFDEF + 1)]
-        + [
-            chr(0xFFFE),
-            chr(0xFFFF),
-            chr(0x1FFFE),
-            chr(0x1FFFF),
-            chr(0x2FFFE),
-            chr(0x2FFFF),
-            chr(0x3FFFE),
-            chr(0x3FFFF),
-            chr(0x4FFFE),
-            chr(0x4FFFF),
-            chr(0x5FFFE),
-            chr(0x5FFFF),
-            chr(0x6FFFE),
-            chr(0x6FFFF),
-            chr(0x7FFFE),
-            chr(0x7FFFF),
-            chr(0x8FFFE),
-            chr(0x8FFFF),
-            chr(0x9FFFE),
-            chr(0x9FFFF),
-            chr(0xAFFFE),
-            chr(0xAFFFF),
-            chr(0xBFFFE),
-            chr(0xBFFFF),
-            chr(0xCFFFE),
-            chr(0xCFFFF),
-            chr(0xDFFFE),
-            chr(0xDFFFF),
-            chr(0xEFFFE),
-            chr(0xEFFFF),
-            chr(0xFFFFE),
-            chr(0xFFFFF),
-            chr(0x10FFFE),
-            chr(0x10FFFF),
-        ]
+        chr(c)
+        for c in (
+            list(range(0xFDD0, 0xFDEF + 1))
+            + [
+                0xFFFE,
+                0xFFFF,
+                0x1FFFE,
+                0x1FFFF,
+                0x2FFFE,
+                0x2FFFF,
+                0x3FFFE,
+                0x3FFFF,
+                0x4FFFE,
+                0x4FFFF,
+                0x5FFFE,
+                0x5FFFF,
+                0x6FFFE,
+                0x6FFFF,
+                0x7FFFE,
+                0x7FFFF,
+                0x8FFFE,
+                0x8FFFF,
+                0x9FFFE,
+                0x9FFFF,
+                0xAFFFE,
+                0xAFFFF,
+                0xBFFFE,
+                0xBFFFF,
+                0xCFFFE,
+                0xCFFFF,
+                0xDFFFE,
+                0xDFFFF,
+                0xEFFFE,
+                0xEFFFF,
+                0xFFFFE,
+                0xFFFFF,
+                0x10FFFE,
+                0x10FFFF,
+            ]
+        )
     )
     return re.compile(
         r".*([" + r"".join(control_chars + special_chars + disallowed_chars) + r"])"
