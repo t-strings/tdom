@@ -26,11 +26,11 @@ from .format import format_template
 from .htmlspec import (
     CDATA_CONTENT_ELEMENTS,
     DEFAULT_NORMAL_TEXT_ELEMENT,
+    INVALID_ATTRIBUTE_NAME_CHARS,
     RCDATA_CONTENT_ELEMENTS,
     SVG_ATTR_FIX,
     SVG_TAG_FIX,
     VOID_ELEMENTS,
-    invalid_attribute_name_re,
 )
 from .parser import TemplateParser
 from .parser_utils import HTMLAttribute
@@ -574,10 +574,10 @@ type AttributeValueAccumulator = StyleAccumulator | ClassAccumulator
 
 def validate_attr_name(attr_name: str) -> None:
     """If the given attribute name contains invalid characters then raise an exception."""
-    match_info = invalid_attribute_name_re.match(attr_name)
-    if match_info:
+    invalid_chars = INVALID_ATTRIBUTE_NAME_CHARS & set(attr_name)
+    if invalid_chars:
         raise AttributeProcessingError(
-            f"Attribute name contains invalid characters: {match_info.groups()[0]}"
+            f"Attribute name contains invalid characters: {''.join(invalid_chars)}"
         )
 
 

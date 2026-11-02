@@ -1,5 +1,3 @@
-import re
-
 # See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
 VOID_ELEMENTS = frozenset(
     [
@@ -133,7 +131,7 @@ SVG_ATTR_FIX = {
 DEFAULT_NORMAL_TEXT_ELEMENT = "div"
 
 
-def make_invalid_attribute_name_re():
+def make_invalid_attr_name_chars() -> set:
     """
     Create a regular expression that can be used to match an HTML
     attribute name to find any invalid characters.
@@ -195,9 +193,7 @@ def make_invalid_attribute_name_re():
             ]
         )
     )
-    return re.compile(
-        r".*([" + r"".join(control_chars + special_chars + disallowed_chars) + r"])"
-    )
+    return set(control_chars + special_chars + disallowed_chars)
 
 
-invalid_attribute_name_re = make_invalid_attribute_name_re()
+INVALID_ATTRIBUTE_NAME_CHARS = make_invalid_attr_name_chars()
