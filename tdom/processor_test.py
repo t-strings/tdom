@@ -1135,6 +1135,11 @@ class TestSpreadAttribute:
             with pytest.raises(AttributeProcessingError):
                 _ = html(t"<a {attrs}></a>")
 
+    def test_spread_attr_invalid_attr_name(self):
+        attrs = {"x>v": "ok"}
+        with pytest.raises(AttributeProcessingError, match="invalid characters: >"):
+            _ = html(t"<div {attrs}></div>")
+
 
 class TestTemplatedAttribute:
     def test_templated_attr_mixed_interpolations_start_end_and_nest(self):
@@ -1263,6 +1268,11 @@ class TestSpecialDataAttribute:
             "A single literal attribute should not trigger data expansion."
         )
 
+    def test_invalid_attr_name(self):
+        data = {"x>v": "ok"}
+        with pytest.raises(AttributeProcessingError, match="invalid characters: >"):
+            _ = html(t"<div data={data}></div>")
+
 
 class TestSpecialAriaAttribute:
     """Special aria attribute handling."""
@@ -1301,6 +1311,11 @@ class TestSpecialAriaAttribute:
         assert res == '<p aria="passthru" id="resolved"></p>', (
             "A single literal attribute should not trigger aria expansion."
         )
+
+    def test_invalid_attr_name(self):
+        aria = {"x>v": "ok"}
+        with pytest.raises(AttributeProcessingError, match="invalid characters: >"):
+            _ = html(t"<div aria={aria}></div>")
 
 
 class TestSpecialClassAttribute:

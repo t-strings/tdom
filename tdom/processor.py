@@ -30,6 +30,7 @@ from .htmlspec import (
     SVG_ATTR_FIX,
     SVG_TAG_FIX,
     VOID_ELEMENTS,
+    invalid_attribute_name_re,
 )
 from .parser import TemplateParser
 from .parser_utils import HTMLAttribute
@@ -571,6 +572,15 @@ ATTR_ACCUMULATOR_MAKERS = {
 type AttributeValueAccumulator = StyleAccumulator | ClassAccumulator
 
 
+def validate_attr_name(attr_name: str) -> None:
+    """If the given attribute name contains invalid characters then raise an exception."""
+    match_info = invalid_attribute_name_re.match(attr_name)
+    if match_info:
+        raise AttributeProcessingError(
+            f"Attribute name contains invalid characters: {match_info.groups()[0]}"
+        )
+
+
 def _resolve_t_attrs(
     attrs: Sequence[TAttribute], interpolations: tuple[Interpolation, ...]
 ) -> AttributesDict:
@@ -610,6 +620,7 @@ def _resolve_t_attrs(
                         new_attrs[name] = attr_accs[name].merge_value(attr_value)
                     elif expander := ATTR_EXPANDERS.get(name):
                         for sub_k, sub_v in expander(attr_value):
+                            validate_attr_name(sub_k)
                             new_attrs[sub_k] = sub_v
                     else:
                         new_attrs[name] = attr_value
@@ -640,8 +651,10 @@ def _resolve_t_attrs(
                             new_attrs[sub_k] = attr_accs[sub_k].merge_value(sub_v)
                         elif expander := ATTR_EXPANDERS.get(sub_k):
                             for exp_k, exp_v in expander(sub_v):
+                                validate_attr_name(exp_k)
                                 new_attrs[exp_k] = exp_v
                         else:
+                            validate_attr_name(sub_k)
                             new_attrs[sub_k] = sub_v
                 case _:
                     # @NOTE: This would be an internal error so we use a native
