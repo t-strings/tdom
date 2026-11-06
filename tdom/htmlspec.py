@@ -135,28 +135,20 @@ def make_invalid_attr_name_chars() -> set:
     """
     Create the set of invalid attribute name characters.
 
-    @SOURCE: HTML: The Living Standard — Last Updated 19 October 2026 (https://html.spec.whatwg.org/dev/)
-
-        - "Attribute names must consist of one or more characters other than controls, U+0020 SPACE, U+0022 ("), U+0027 ('), U+003E (>), U+002F (/), U+003D (=), and noncharacters."
-
-        - "A control is a C0 control or a code point in the range U+007F DELETE to U+009F APPLICATION PROGRAM COMMAND, inclusive."
-
-        - "A C0 control is a code point in the range U+0000 NULL to U+001F INFORMATION SEPARATOR ONE, inclusive."
-
-        - "A noncharacter is a code point that is in the range U+FDD0 to U+FDEF, inclusive, or U+FFFE, U+FFFF, U+1FFFE, U+1FFFF, U+2FFFE, U+2FFFF, U+3FFFE, U+3FFFF, U+4FFFE, U+4FFFF, U+5FFFE, U+5FFFF, U+6FFFE, U+6FFFF, U+7FFFE, U+7FFFF, U+8FFFE, U+8FFFF, U+9FFFE, U+9FFFF, U+AFFFE, U+AFFFF, U+BFFFE, U+BFFFF, U+CFFFE, U+CFFFF, U+DFFFE, U+DFFFF, U+EFFFE, U+EFFFF, U+FFFFE, U+FFFFF, U+10FFFE, or U+10FFFF."
-
+    @NOTE: See "HTML: The Living Standard" at https://html.spec.whatwg.org/dev/
+    for source of character restrictions.
     """
     c0_control_chars = tuple(chr(i) for i in range(0x0000, 0x001F + 1))  # noqa: PIE808 match-spec
     control_chars = c0_control_chars + tuple(chr(i) for i in range(0x007F, 0x009F + 1))
     special_chars = tuple(
         chr(i)
         for i in [
-            0x0020,
-            0x0022,
-            0x0027,
-            0x003E,
-            0x002F,
-            0x003D,
+            0x0020,  # SPACE
+            0x0022,  # "
+            0x0027,  # '
+            0x003E,  # >
+            0x002F,  # /
+            0x003D,  # =
         ]
     )
     non_chars = tuple(
