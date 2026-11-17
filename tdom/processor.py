@@ -1308,8 +1308,6 @@ def resolve_text_without_recursion(
             elif isinstance(value, str):
                 return value
             elif isinstance(value, HasHTMLDunder):
-                # @DESIGN: We could also force callers to use `:safe` to trigger
-                # the interpolation in this special case.
                 return Markup(value.__html__())
             elif isinstance(value, (Template, Iterable)):
                 raise TextProcessingError(
