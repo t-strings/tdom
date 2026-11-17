@@ -97,3 +97,17 @@ def test_format_template():
     t = t"Value: {42.19:.1f}, Text: {Convertible()!s}, Raw: {Convertible()!r}"
     result = format_template(t)
     assert result == "Value: 42.2, Text: Convertible str, Raw: Convertible repr"
+
+
+def test_format_template_custom_formatter():
+    value = 42
+
+    def formatter(val: object, spec: str) -> str:
+        return f"formatted-{val}-{spec}"
+
+    assert (
+        format_template(
+            t"The value is: {value:custom}.", formatters=(("custom", formatter),)
+        )
+        == "The value is: formatted-42-custom."
+    )
