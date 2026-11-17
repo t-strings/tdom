@@ -1136,6 +1136,53 @@ class TestSpreadAttribute:
                 _ = html(t"<a {attrs}></a>")
 
 
+class TestInvalidAttributeName:
+    """Attribute names cannot be escaped, so unsafe names must raise (#179)."""
+
+    BAD_NAMES = ("", "x>v", "x=v", "x v", 'x"v', "x'v", "x/v", "x\tv", "x\x00v")
+
+    @pytest.mark.parametrize("name", BAD_NAMES)
+    def test_spread(self, name):
+        attrs = {name: "ok"}
+        with pytest.raises(AttributeProcessingError, match="Invalid attribute name"):
+            _ = html(t"<div {attrs}></div>")
+
+    @pytest.mark.parametrize("name", BAD_NAMES)
+    def test_spread_bool(self, name):
+        attrs = {name: True}
+        with pytest.raises(AttributeProcessingError, match="Invalid attribute name"):
+            _ = html(t"<div {attrs}></div>")
+
+    def test_data(self):
+        data = {"x>v": "ok"}
+        with pytest.raises(AttributeProcessingError, match="Invalid attribute name"):
+            _ = html(t"<div data={data}></div>")
+
+    def test_aria(self):
+        aria = {"x>v": "ok"}
+        with pytest.raises(AttributeProcessingError, match="Invalid attribute name"):
+            _ = html(t"<div aria={aria}></div>")
+
+    def test_svg(self):
+        attrs = {"x>v": "ok"}
+        with pytest.raises(AttributeProcessingError, match="Invalid attribute name"):
+            _ = html(t"<svg {attrs}></svg>")
+
+    def test_unusual_but_valid_names_still_render(self):
+        attrs = {"@click": "go", ":x": "1", "x.y": "2", "Ä": "3", 1: "4"}
+        assert (
+            html(t"<div {attrs}></div>")
+            == '<div @click="go" :x="1" x.y="2" Ä="3" 1="4"></div>'
+        )
+
+    def test_component_kwargs_not_validated(self):
+        def Comp(**kwargs: object) -> Template:
+            return t"<p>{list(kwargs)}</p>"
+
+        attrs = {"x>v": "ok"}
+        assert html(t"<{Comp} {attrs} />") == "<p>x&gt;v</p>"
+
+
 class TestTemplatedAttribute:
     def test_templated_attr_mixed_interpolations_start_end_and_nest(self):
         left, middle, right = 1, 3, 5

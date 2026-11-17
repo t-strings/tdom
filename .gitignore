@@ -166,3 +166,6 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# This is dev local only. But I use it sometimes. -Dave
+.npmrc
