@@ -1,3 +1,5 @@
+import re
+
 # See https://developer.mozilla.org/en-US/docs/Glossary/Void_element
 VOID_ELEMENTS = frozenset(
     [
@@ -129,3 +131,12 @@ SVG_ATTR_FIX = {
 # Used for fragments that do not have a tag
 # to assume that text is inside this element.
 DEFAULT_NORMAL_TEXT_ELEMENT = "div"
+
+
+# Per the HTML spec, attribute names are one or more characters other than
+# controls, space, `"`, `'`, `>`, `/`, `=` and noncharacters. Noncharacters
+# are U+FDD0..U+FDEF plus the last two code points of every plane.
+_NONCHARACTERS = "\ufdd0-\ufdef" + "".join(
+    chr(plane | 0xFFFE) + chr(plane | 0xFFFF) for plane in range(0, 0x110000, 0x10000)
+)
+VALID_ATTR_NAME_RE = re.compile(f"[^\\x00-\\x20\\x7f-\\x9f\"'/=>{_NONCHARACTERS}]+")

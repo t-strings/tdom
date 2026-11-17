@@ -4,7 +4,7 @@ from html.parser import HTMLParser
 from string.templatelib import Template
 
 from .exc import TemplatingError
-from .htmlspec import VOID_ELEMENTS
+from .htmlspec import VALID_ATTR_NAME_RE, VOID_ELEMENTS
 from .parser_utils import (
     HTMLAttribute,
     ParserPositionTranslator,
@@ -325,6 +325,8 @@ class TemplateParser(HTMLParser):
         value_ref = source.remove_placeholders(value) if value is not None else None
 
         if name_ref.is_literal:
+            if not VALID_ATTR_NAME_RE.fullmatch(name):
+                raise AttributeParsingError(f"Invalid attribute name: {name!r}")
             if value_ref is None or value_ref.is_literal:
                 return TLiteralAttribute(name=name, value=value)
             elif value_ref.is_singleton:
