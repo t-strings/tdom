@@ -1139,7 +1139,22 @@ class TestSpreadAttribute:
 class TestInvalidAttributeName:
     """Attribute names cannot be escaped, so unsafe names must raise (#179)."""
 
-    BAD_NAMES = ("", "x>v", "x=v", "x v", 'x"v', "x'v", "x/v", "x\tv", "x\x00v")
+    BAD_NAMES = (
+        "",
+        "x>v",
+        "x=v",
+        "x v",
+        'x"v',
+        "x'v",
+        "x/v",
+        "x\tv",
+        "x\x00v",
+        "x\x85v",
+        "x\ufdd0v",
+        "x\ufffev",
+        "x\U0001ffffv",
+        "x\U0010ffffv",
+    )
 
     @pytest.mark.parametrize("name", BAD_NAMES)
     def test_spread(self, name):

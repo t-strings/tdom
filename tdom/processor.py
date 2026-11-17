@@ -754,9 +754,12 @@ def _prep_component_kwargs(
 
 
 # Per the HTML spec, attribute names are one or more characters other than
-# controls, space, `"`, `'`, `>`, `/` and `=`. (Noncharacters are also
-# disallowed but are omitted here since they cannot break the markup.)
-_VALID_ATTR_NAME_RE = re.compile(r"[^\x00-\x20\x7f-\x9f\"'/=>]+")
+# controls, space, `"`, `'`, `>`, `/`, `=` and noncharacters. Noncharacters
+# are U+FDD0..U+FDEF plus the last two code points of every plane.
+_NONCHARACTERS = "\ufdd0-\ufdef" + "".join(
+    chr(plane | 0xFFFE) + chr(plane | 0xFFFF) for plane in range(0, 0x110000, 0x10000)
+)
+_VALID_ATTR_NAME_RE = re.compile(f"[^\\x00-\\x20\\x7f-\\x9f\"'/=>{_NONCHARACTERS}]+")
 
 
 def _validate_attr_name(name: str) -> str:
