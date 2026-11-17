@@ -282,15 +282,6 @@ content = html(t"<div>{trusted_html}</div>")
 assert content == "<div><strong>This is safe HTML</strong></div>"
 ```
 
-As a convenience, `tdom` also supports a `:safe` format specifier that marks a
-string as safe HTML:
-
-```python
-trusted_html = "<em>Emphasized text</em>"
-page = html(t"<p>Here is some {trusted_html:safe} content.</p>")
-assert page == "<p>Here is some <em>Emphasized text</em> content.</p>"
-```
-
 For interoperability with other templating libraries, any object that implements
 a `__html__` method will be treated as safe HTML. Many popular libraries
 (including MarkupSafe and Django) use this convention:
@@ -305,15 +296,11 @@ page = html(t"<div>My widget: {SafeWidget()}</div>")
 assert page == "<div>My widget: <button>Custom Widget</button></div>"
 ```
 
-You can also explicitly mark a string as "unsafe" using the `:unsafe` format
-specifier. This forces the string to be escaped, even if it would normally be
-treated as safe:
+To escape a `Markup` value anyway, convert it to a plain string with `!s`:
 
 ```python
-from tdom import html, Markup
-
 trusted_html = Markup("<strong>This is safe HTML</strong>")
-page = html(t"<div>{trusted_html:unsafe}</div>")
+page = html(t"<div>{trusted_html!s}</div>")
 assert page == "<div>&lt;strong&gt;This is safe HTML&lt;/strong&gt;</div>"
 ```
 
@@ -583,7 +570,19 @@ page = html(t'<{ThemeProvider} value="dark">{current_theme.get()}</{ThemeProvide
 assert page == "light"
 ```
 
-So consumers of a scoped value need to be components, not inline interpolations.
+To defer an inline interpolation, pass a function and use the `:callback` format
+specifier. `tdom` calls the function while it processes the template, so it sees
+the active scope:
+
+```python
+page = html(
+    t'<{ThemeProvider} value="dark">{current_theme.get:callback}</{ThemeProvider}>'
+)
+assert page == "dark"
+```
+
+`:callback` works in both text and attributes. Every other format specifier is
+passed to Python's `format()`, just as in an f-string.
 
 `Scope` and `ScopedTemplate` are deliberately low-level; a friendlier provider
 API may follow.

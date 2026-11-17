@@ -93,12 +93,20 @@ def format_interpolation(
     )
 
 
-def format_template(template: Template) -> str:
-    """Fully render a template by formatting its interpolations."""
+def format_template(
+    template: Template,
+    *,
+    formatters: Sequence[MatcherAndFormatter] = (),
+) -> str:
+    """
+    Fully render a template by formatting its interpolations.
+
+    The optional `formatters` are passed along to `format_interpolation()`.
+    """
     parts: list[str] = []
     for part in template:
         if isinstance(part, str):
             parts.append(part)
         else:
-            parts.append(str(format_interpolation(part)))
+            parts.append(str(format_interpolation(part, formatters=formatters)))
     return "".join(parts)

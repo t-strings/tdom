@@ -945,53 +945,6 @@ class TestInterpolationConversion:
 
 
 class TestInterpolationFormatSpec:
-    def test_normal_text_safe(self):
-        raw_content = "<u>underlined</u>"
-        assert (
-            html(t"<p>This is {raw_content:safe} text.</p>")
-            == "<p>This is <u>underlined</u> text.</p>"
-        )
-
-    def test_raw_text_safe(self):
-        # @TODO: What should even happen here?
-        raw_content = "</script>"
-        assert (
-            html(t"<script>{raw_content:safe}</script>") == "<script></script></script>"
-        ), "DO NOT DO THIS! This is an advanced escape hatch."
-
-    def test_escapable_raw_text_safe(self):
-        raw_content = "<u>underlined</u>"
-        assert (
-            html(t"<textarea>{raw_content:safe}</textarea>")
-            == "<textarea><u>underlined</u></textarea>"
-        )
-
-    def test_normal_text_unsafe(self):
-        supposedly_safe = Markup("<i>italic</i>")
-        assert (
-            html(t"<p>This is {supposedly_safe:unsafe} text.</p>")
-            == "<p>This is &lt;i&gt;italic&lt;/i&gt; text.</p>"
-        )
-
-    def test_raw_text_unsafe(self):
-        # @TODO: What should even happen here?
-        supposedly_safe = "</script>"
-        assert (
-            html(t"<script>{supposedly_safe:unsafe}</script>")
-            == "<script>\\x3c/script></script>"
-        )
-        assert (
-            html(t"<script>{supposedly_safe:unsafe}</script>")
-            != "<script></script></script>"
-        )  # Sanity check
-
-    def test_escapable_raw_text_unsafe(self):
-        supposedly_safe = Markup("<i>italic</i>")
-        assert (
-            html(t"<textarea>{supposedly_safe:unsafe}</textarea>")
-            == "<textarea>&lt;i&gt;italic&lt;/i&gt;</textarea>"
-        )
-
     def test_all_text_callback(self):
         def get_value():
             return "dynamic"
@@ -1029,6 +982,19 @@ class TestInterpolationFormatSpec:
 
         with pytest.raises(ValueError, match=re.escape("Failed to compute count.")):
             _ = html(t"<div count={raise_value_error:callback}></div>")
+
+    def test_templated_attribute_callback(self):
+        def get_subject():
+            return "tickets"
+
+        assert (
+            html(t'<div label="early_{get_subject:callback}"></div>')
+            == '<div label="early_tickets"></div>'
+        )
+        assert (
+            html(t'<div class="a {get_subject:callback}"></div>')
+            == '<div class="a tickets"></div>'
+        )
 
 
 # --------------------------------------------------------------------------

@@ -138,6 +138,16 @@ class TestAttributes:
             ],
         )
 
+    def test_templated_attribute_callback(self, cb_value_error):
+        with pytest.raises(ValueError) as exc_info:
+            _ = html(t'<div title="ok {cb_value_error:callback}"></div>')
+        assert_notes(
+            exc_info.value.__notes__,
+            [
+                '... in templated attribute title=ok {cb_value_error:callback} for <div title="ok {cb_value_error:callback}"> at line 1 offset 0'
+            ],
+        )
+
     def test_spread_attribute(self):
         with pytest.raises(AttributeProcessingError, match="no") as exc_info:
             _ = html(t"<div {0}></div>")
