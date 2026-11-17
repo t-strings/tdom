@@ -1088,6 +1088,12 @@ class TestSpreadAttribute:
             with pytest.raises(AttributeProcessingError):
                 _ = html(t"<a {attrs}></a>")
 
+    def test_callback_formatter(self):
+        def get_attrs():
+            return {"status": "OK"}
+
+        assert html(t"<div {get_attrs:callback} />") == '<div status="OK"></div>'
+
 
 class TestInvalidAttributeName:
     """Attribute names cannot be escaped, so unsafe names must raise (#179)."""
@@ -1173,6 +1179,16 @@ class TestTemplatedAttribute:
         assert (
             html(t"<div data-range={start}-{end}></div>")
             == '<div data-range="1-5"></div>'
+        )
+
+    def test_callback_formatter(self):
+        def get_trip_description():
+            return "freezing"
+
+        trip_name = "holiday vacation"
+        assert (
+            html(t'<img alt="We had a {get_trip_description:callback} {trip_name}.">')
+            == '<img alt="We had a freezing holiday vacation." />'
         )
 
 
@@ -1278,6 +1294,17 @@ class TestSpecialDataAttribute:
             "A single literal attribute should not trigger data expansion."
         )
 
+    def test_callback_formatter(self):
+        status = {"secret": "123", "active": False}
+
+        def get_limited_status():
+            return {"active": status["active"]}
+
+        template = t"<div data={get_limited_status:callback} />"
+        assert html(template) == "<div></div>"
+        status["active"] = True
+        assert html(template) == "<div data-active></div>"
+
 
 class TestSpecialAriaAttribute:
     """Special aria attribute handling."""
@@ -1316,6 +1343,17 @@ class TestSpecialAriaAttribute:
         assert res == '<p aria="passthru" id="resolved"></p>', (
             "A single literal attribute should not trigger aria expansion."
         )
+
+    def test_callback_formatter(self):
+        latest = {"role": "button"}
+
+        def get_role():
+            return {"role": latest["role"]}
+
+        template = t"<a aria={get_role:callback} />"
+        assert html(template) == '<a aria-role="button"></a>'
+        latest["role"] = "link"
+        assert html(template) == '<a aria-role="link"></a>'
 
 
 class TestSpecialClassAttribute:
@@ -1402,6 +1440,13 @@ class TestSpecialClassAttribute:
         class_item = "blue"
         res = html(t'<p class="red" class="{[class_item]}"></p>')
         assert res == '<p class="red blue"></p>'
+
+    def test_callback_formatter(self):
+        def get_color():
+            return "red"
+
+        template = t"<a class=large class={get_color:callback} />"
+        assert html(template) == '<a class="large red"></a>'
 
 
 class TestSpecialStyleAttribute:
@@ -1498,6 +1543,15 @@ class TestSpecialStyleAttribute:
         styles = None
         res = html(t"<p style={styles}></p>")
         assert res == "<p></p>"
+
+    def test_callback_formatter(self):
+        def get_color():
+            return {"color": "red"}
+
+        assert (
+            html(t'<h1 style="font-size: 10px" style={get_color:callback} />')
+            == '<h1 style="font-size: 10px; color: red"></h1>'
+        )
 
 
 class TestSpecialAttrMerging:
