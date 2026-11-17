@@ -945,53 +945,6 @@ class TestInterpolationConversion:
 
 
 class TestInterpolationFormatSpec:
-    def test_normal_text_safe(self):
-        raw_content = "<u>underlined</u>"
-        assert (
-            html(t"<p>This is {raw_content:safe} text.</p>")
-            == "<p>This is <u>underlined</u> text.</p>"
-        )
-
-    def test_raw_text_safe(self):
-        # @TODO: What should even happen here?
-        raw_content = "</script>"
-        assert (
-            html(t"<script>{raw_content:safe}</script>") == "<script></script></script>"
-        ), "DO NOT DO THIS! This is an advanced escape hatch."
-
-    def test_escapable_raw_text_safe(self):
-        raw_content = "<u>underlined</u>"
-        assert (
-            html(t"<textarea>{raw_content:safe}</textarea>")
-            == "<textarea><u>underlined</u></textarea>"
-        )
-
-    def test_normal_text_unsafe(self):
-        supposedly_safe = Markup("<i>italic</i>")
-        assert (
-            html(t"<p>This is {supposedly_safe:unsafe} text.</p>")
-            == "<p>This is &lt;i&gt;italic&lt;/i&gt; text.</p>"
-        )
-
-    def test_raw_text_unsafe(self):
-        # @TODO: What should even happen here?
-        supposedly_safe = "</script>"
-        assert (
-            html(t"<script>{supposedly_safe:unsafe}</script>")
-            == "<script>\\x3c/script></script>"
-        )
-        assert (
-            html(t"<script>{supposedly_safe:unsafe}</script>")
-            != "<script></script></script>"
-        )  # Sanity check
-
-    def test_escapable_raw_text_unsafe(self):
-        supposedly_safe = Markup("<i>italic</i>")
-        assert (
-            html(t"<textarea>{supposedly_safe:unsafe}</textarea>")
-            == "<textarea>&lt;i&gt;italic&lt;/i&gt;</textarea>"
-        )
-
     def test_all_text_callback(self):
         def get_value():
             return "dynamic"

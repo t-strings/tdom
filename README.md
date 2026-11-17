@@ -282,15 +282,6 @@ content = html(t"<div>{trusted_html}</div>")
 assert content == "<div><strong>This is safe HTML</strong></div>"
 ```
 
-As a convenience, `tdom` also supports a `:safe` format specifier that marks a
-string as safe HTML:
-
-```python
-trusted_html = "<em>Emphasized text</em>"
-page = html(t"<p>Here is some {trusted_html:safe} content.</p>")
-assert page == "<p>Here is some <em>Emphasized text</em> content.</p>"
-```
-
 For interoperability with other templating libraries, any object that implements
 a `__html__` method will be treated as safe HTML. Many popular libraries
 (including MarkupSafe and Django) use this convention:
@@ -303,18 +294,6 @@ class SafeWidget:
 
 page = html(t"<div>My widget: {SafeWidget()}</div>")
 assert page == "<div>My widget: <button>Custom Widget</button></div>"
-```
-
-You can also explicitly mark a string as "unsafe" using the `:unsafe` format
-specifier. This forces the string to be escaped, even if it would normally be
-treated as safe:
-
-```python
-from tdom import html, Markup
-
-trusted_html = Markup("<strong>This is safe HTML</strong>")
-page = html(t"<div>{trusted_html:unsafe}</div>")
-assert page == "<div>&lt;strong&gt;This is safe HTML&lt;/strong&gt;</div>"
 ```
 
 ### Template Composition
