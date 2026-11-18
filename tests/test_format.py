@@ -1,6 +1,6 @@
 from string.templatelib import Interpolation
 
-from .format import convert, format_interpolation, format_template
+from tdom.format import convert, format_interpolation, format_template
 
 
 class Convertible:

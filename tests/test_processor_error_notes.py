@@ -12,7 +12,7 @@ from string.templatelib import Template
 import pytest
 from markupsafe import Markup
 
-from .processor import (
+from tdom.processor import (
     AttributeProcessingError,
     ComponentProcessingError,
     ProcessContext,

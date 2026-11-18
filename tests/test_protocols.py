@@ -1,6 +1,6 @@
 from markupsafe import Markup, escape
 
-from .protocols import HasHTMLDunder
+from tdom.protocols import HasHTMLDunder
 
 
 class LTEntity:

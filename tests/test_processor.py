@@ -12,9 +12,9 @@ import pytest
 from markupsafe import Markup
 from markupsafe import escape as markupsafe_escape
 
-from .callables import get_callable_info
-from .escaping import escape_html_text
-from .processor import (
+from tdom.callables import get_callable_info
+from tdom.escaping import escape_html_text
+from tdom.processor import (
     AttributeProcessingError,
     CachedTemplateParserProxy,
     ComponentProcessingError,
@@ -24,10 +24,10 @@ from .processor import (
     TextProcessingError,
     _make_default_template_processor,
 )
-from .processor import (
+from tdom.processor import (
     _prep_component_kwargs as prep_component_kwargs,
 )
-from .protocols import HasHTMLDunder
+from tdom.protocols import HasHTMLDunder
 
 processor_api = _make_default_template_processor(
     parser_api=TemplateParserProxy(),  # do not use cache

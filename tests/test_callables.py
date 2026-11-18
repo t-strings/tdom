@@ -1,6 +1,6 @@
 import typing as t
 
-from .callables import get_callable_info
+from tdom.callables import get_callable_info
 
 
 def callable_zero_args() -> None:  # pragma: no cover

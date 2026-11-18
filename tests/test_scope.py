@@ -9,8 +9,8 @@ from contextvars import ContextVar, copy_context
 from dataclasses import dataclass
 from string.templatelib import Template
 
-from . import html
-from .scope import Scope, ScopedTemplate
+from tdom import html
+from tdom.scope import Scope, ScopedTemplate
 
 
 def isolated(fn):

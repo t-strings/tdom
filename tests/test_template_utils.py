@@ -2,7 +2,7 @@ from string.templatelib import Interpolation, Template
 
 import pytest
 
-from .template_utils import (
+from tdom.template_utils import (
     PartPosition,
     TemplateRef,
     TemplateSpan,
