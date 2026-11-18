@@ -80,3 +80,7 @@ banned-from = ["typing"]
 
 [tool.ruff.lint.flake8-import-conventions.extend-aliases]
 typing = "t"
+
+[tool.uv.build-backend]
+source-include = ["tests/**", "docs/**", "conftest.py"]
+source-exclude = ["docs/_build"]
