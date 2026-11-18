@@ -23,7 +23,7 @@ from .escaping import (
 )
 from .exc import TemplatingError
 from .format import format_interpolation as base_format_interpolation
-from .format import format_template
+from .format import format_template as base_format_template
 from .htmlspec import (
     CDATA_CONTENT_ELEMENTS,
     DEFAULT_NORMAL_TEXT_ELEMENT,
@@ -347,6 +347,13 @@ CUSTOM_FORMATTERS = (("callback", _format_callback),)
 def format_interpolation(interpolation: Interpolation) -> object:
     return base_format_interpolation(
         interpolation,
+        formatters=CUSTOM_FORMATTERS,
+    )
+
+
+def format_template(template: Template) -> str:
+    return base_format_template(
+        template,
         formatters=CUSTOM_FORMATTERS,
     )
 
