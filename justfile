@@ -38,7 +38,7 @@ test-matrix:
 
 watch:
     # Watch for changes and run tests.
-    uv run ptw tdom/  
+    uv run ptw .
 
 build_docs:
     cd docs && uv run sphinx-build . _build

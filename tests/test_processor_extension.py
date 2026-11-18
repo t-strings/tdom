@@ -2,15 +2,15 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from string.templatelib import Template
 
-from .processor import (
+from tdom.processor import (
     Attribute,
     ComponentProcessor,
     IComponentProcessor,
     ProcessContext,
     TemplateProcessor,
 )
-from .scope import ScopedTemplate
-from .tnodes import TAttribute
+from tdom.scope import ScopedTemplate
+from tdom.tnodes import TAttribute
 
 
 @dataclass(frozen=True, slots=True)

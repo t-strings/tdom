@@ -2,13 +2,13 @@ from string.templatelib import Template
 
 import pytest
 
-from .parser_utils import (
+from tdom.parser_utils import (
     ParserPositionTranslator,
     make_parser_pos_translator,
 )
-from .placeholders import PlaceholderConfig, make_placeholder_config
-from .source import LinePosition
-from .template_utils import PartPosition, TemplateSpan
+from tdom.placeholders import PlaceholderConfig, make_placeholder_config
+from tdom.source import LinePosition
+from tdom.template_utils import PartPosition, TemplateSpan
 
 
 @pytest.fixture(scope="module")

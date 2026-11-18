@@ -54,11 +54,11 @@ dev = [
 ]
 
 [tool.pytest]
-testpaths = ["tdom", "docs", "README.md"]
-python_files = ["*_test.py"]
+testpaths = ["tests", "docs", "README.md"]
+addopts = ["--import-mode=importlib"]
 
 [tool.pyright]
-include = ["tdom"]
+include = ["src", "tests"]
 exclude = [
   ".venv",
   ".git",
@@ -82,6 +82,5 @@ banned-from = ["typing"]
 typing = "t"
 
 [tool.uv.build-backend]
-module-name = "tdom"
-module-root = ""
-wheel-exclude = ["*_test.py"]
+source-include = ["tests/**", "docs/**", "conftest.py"]
+source-exclude = ["docs/_build"]

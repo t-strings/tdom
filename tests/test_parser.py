@@ -2,15 +2,15 @@ from string.templatelib import Interpolation, Template
 
 import pytest
 
-from .parser import (
+from tdom.parser import (
     AttributeParsingError,
     ParsingError,
     TemplateParser,
     configure_source_tracker,
 )
-from .placeholders import make_placeholder_config
-from .template_utils import PartPosition, TemplateRef, TemplateSpan
-from .tnodes import (
+from tdom.placeholders import make_placeholder_config
+from tdom.template_utils import PartPosition, TemplateRef, TemplateSpan
+from tdom.tnodes import (
     TComment,
     TComponent,
     TDocumentType,

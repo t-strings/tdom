@@ -1,7 +1,7 @@
 import pytest
 
-from .template_utils import TemplateRef
-from .tnodes import TComment, TNode, TText
+from tdom.template_utils import TemplateRef
+from tdom.tnodes import TComment, TNode, TText
 
 
 def test_tnode_abstract_methods() -> None:

@@ -1,6 +1,6 @@
 import pytest
 
-from .placeholders import (
+from tdom.placeholders import (
     PlaceholderState,
     make_placeholder_config,
 )

@@ -11,6 +11,6 @@
   },
   "python.terminal.activateEnvironment": false,
   "python.terminal.activateEnvInCurrentTerminal": false,
-  "python.testing.pytestArgs": ["tdom"],
+  "python.testing.pytestArgs": ["tests"],
   "esbonio.server.enabled": false
 }

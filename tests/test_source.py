@@ -2,8 +2,8 @@ from string.templatelib import Template
 
 import pytest
 
-from .source import LinePosition, SourceReader, template_repr
-from .template_utils import PartPosition, TemplateRef
+from tdom.source import LinePosition, SourceReader, template_repr
+from tdom.template_utils import PartPosition, TemplateRef
 
 
 class TestSourceReader:

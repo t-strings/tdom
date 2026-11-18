@@ -1,6 +1,6 @@
 from markupsafe import Markup
 
-from .escaping import (
+from tdom.escaping import (
     escape_html_comment,
     escape_html_script,
     escape_html_style,
