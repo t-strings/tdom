@@ -335,29 +335,13 @@ ProcessingErrorCtx: ContextVar[ProcessingErrorHelper | None] = ContextVar(
 # --------------------------------------------------------------------------
 
 
-def _format_safe(value: object, format_spec: str) -> str:
-    """Use Markup() to mark a value as safe HTML."""
-    assert format_spec == "safe"
-    return Markup(value)
-
-
-def _format_unsafe(value: object, format_spec: str) -> str:
-    """Convert a value to a plain string, forcing it to be treated as unsafe."""
-    assert format_spec == "unsafe"
-    return str(value)
-
-
 def _format_callback(value: Callable[..., object], format_spec: str) -> object:
     """Execute a callback and return the value."""
     assert format_spec == "callback"
     return value()
 
 
-CUSTOM_FORMATTERS = (
-    ("safe", _format_safe),
-    ("unsafe", _format_unsafe),
-    ("callback", _format_callback),
-)
+CUSTOM_FORMATTERS = (("callback", _format_callback),)
 
 
 def format_interpolation(interpolation: Interpolation) -> object:
@@ -1324,8 +1308,6 @@ def resolve_text_without_recursion(
             elif isinstance(value, str):
                 return value
             elif isinstance(value, HasHTMLDunder):
-                # @DESIGN: We could also force callers to use `:safe` to trigger
-                # the interpolation in this special case.
                 return Markup(value.__html__())
             elif isinstance(value, (Template, Iterable)):
                 raise TextProcessingError(
