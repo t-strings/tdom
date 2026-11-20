@@ -1,4 +1,3 @@
-import re
 import typing as t
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from contextvars import ContextVar
@@ -30,6 +29,7 @@ from .htmlspec import (
     RCDATA_CONTENT_ELEMENTS,
     SVG_ATTR_FIX,
     SVG_TAG_FIX,
+    VALID_ATTR_NAME_RE,
     VOID_ELEMENTS,
 )
 from .parser import TemplateParser
@@ -744,18 +744,9 @@ def _prep_component_kwargs(
     return kwargs
 
 
-# Per the HTML spec, attribute names are one or more characters other than
-# controls, space, `"`, `'`, `>`, `/`, `=` and noncharacters. Noncharacters
-# are U+FDD0..U+FDEF plus the last two code points of every plane.
-_NONCHARACTERS = "\ufdd0-\ufdef" + "".join(
-    chr(plane | 0xFFFE) + chr(plane | 0xFFFF) for plane in range(0, 0x110000, 0x10000)
-)
-_VALID_ATTR_NAME_RE = re.compile(f"[^\\x00-\\x20\\x7f-\\x9f\"'/=>{_NONCHARACTERS}]+")
-
-
 def _validate_attr_name(name: str) -> str:
     """Attribute names cannot be escaped, so reject any unsafe name outright."""
-    if not _VALID_ATTR_NAME_RE.fullmatch(name):
+    if not VALID_ATTR_NAME_RE.fullmatch(name):
         raise AttributeProcessingError(f"Invalid attribute name: {name!r}")
     return name
 

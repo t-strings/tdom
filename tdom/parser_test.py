@@ -374,6 +374,15 @@ def test_templated_attribute_name_and_value_error():
         _ = parse_root(t'<div {attr_name}="{value}" />')
 
 
+def test_invalid_literal_attribute_name_error():
+    def Comp(**kwargs: object) -> Template:
+        return t"<p></p>"
+
+    for template in (t"<div ==5></div>", t"<{Comp} ==5></{Comp}>", t'<div "=15>'):
+        with pytest.raises(AttributeParsingError, match="Invalid attribute name"):
+            _ = parse_root(template)
+
+
 def test_adjacent_spread_attrs_error():
     attrs1 = {}
     attrs2 = {}
